@@ -1,0 +1,139 @@
+@layer utilities {
+  /* Professional Hover States */
+  .hover-lift {
+    @apply transition-all duration-200 hover:-translate-y-1 hover:shadow-lg;
+  }
+
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-105;
+  }
+
+  .hover-glow {
+    @apply transition-shadow duration-200 hover:shadow-xl;
+  }
+
+  /* Text Utilities */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-primary-hover bg-clip-text text-transparent;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Interactive Elements */
+  .interactive {
+    @apply transition-all duration-200 active:scale-[0.98];
+  }
+
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-2;
+  }
+
+  /* Loading States */
+  .skeleton {
+    @apply animate-pulse bg-muted rounded;
+  }
+
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+
+  .shimmer::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-card to-transparent;
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  /* Smooth Transitions */
+  .transition-smooth {
+    transition: all var(--transition-base);
+  }
+
+  .transition-fast {
+    transition: all var(--transition-fast);
+  }
+
+  .transition-slow {
+    transition: all var(--transition-slow);
+  }
+
+  /* Professional Shadows */
+  .shadow-subtle {
+    box-shadow: var(--shadow-xs);
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-sm);
+  }
+
+  .shadow-elevated {
+    box-shadow: var(--shadow-md);
+  }
+
+  .shadow-floating {
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Borders */
+  .border-subtle {
+    @apply border border-border/60;
+  }
+
+  .border-focus {
+    @apply border-2 border-primary/40;
+  }
+
+  /* Spacing */
+  .section-spacing {
+    @apply py-12 md:py-16 lg:py-20;
+  }
+
+  .container-padding {
+    @apply px-4 md:px-6 lg:px-8;
+  }
+
+  /* Typography */
+  .heading-1 {
+    @apply text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight text-foreground;
+  }
+
+  .heading-2 {
+    @apply text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight text-foreground;
+  }
+
+  .heading-3 {
+    @apply text-xl md:text-2xl font-semibold text-foreground;
+  }
+
+  .body-large {
+    @apply text-base md:text-lg text-foreground/80 leading-relaxed;
+  }
+
+  .body-regular {
+    @apply text-sm md:text-base text-foreground/70 leading-relaxed;
+  }
+
+  /* Empty States */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 px-4 text-center;
+  }
+
+  .empty-state-icon {
+    @apply w-16 h-16 mb-4 text-muted-foreground/40;
+  }
+
+  .empty-state-title {
+    @apply text-xl font-semibold text-foreground mb-2;
+  }
+
+  .empty-state-description {
+    @apply text-sm text-muted-foreground max-w-md;
+  }
+}
