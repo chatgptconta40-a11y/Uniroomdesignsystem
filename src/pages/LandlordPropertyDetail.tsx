@@ -34,9 +34,9 @@ import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { Badge } from '../components/Badge';
 import { toast } from 'sonner';
-import { Room } from '../types/property';
+import { Room, RoomStatus } from '../types/property';
+import { normalizeRoomStatus, getRoomStatusLabel, getRoomStatusBadgeClasses } from '../utils/roomStatus';
 
 const PROPERTY_STATUS_CONFIG = {
   active: { label: 'Ativa', color: 'bg-green-100 text-green-800 border-green-200' },
@@ -45,12 +45,12 @@ const PROPERTY_STATUS_CONFIG = {
   archived: { label: 'Arquivada', color: 'bg-red-100 text-red-700 border-red-200' },
 };
 
-const ROOM_STATUS_CONFIG = {
-  available: { label: 'Disponível', color: 'bg-green-100 text-green-800', icon: CheckCircle },
-  reserved: { label: 'Reservado', color: 'bg-blue-100 text-blue-800', icon: Clock },
-  occupied: { label: 'Ocupado', color: 'bg-purple-100 text-purple-800', icon: Ban },
-  paused: { label: 'Pausado', color: 'bg-amber-100 text-amber-800', icon: Pause },
-  draft: { label: 'Rascunho', color: 'bg-gray-100 text-gray-700', icon: FileEdit },
+const ROOM_STATUS_ICON: Record<RoomStatus, React.ElementType> = {
+  available: CheckCircle,
+  reserved: Clock,
+  occupied: Ban,
+  paused: Pause,
+  draft: FileEdit,
 };
 
 const ROOM_TYPE_LABELS = {
@@ -77,8 +77,8 @@ function RoomCard({ room, onEdit, onPause, onReactivate }: {
   onReactivate?: () => void;
 }) {
   const navigate = useNavigate();
-  const statusCfg = ROOM_STATUS_CONFIG[room.status];
-  const StatusIcon = statusCfg.icon;
+  const effectiveStatus = normalizeRoomStatus(room);
+  const StatusIcon = ROOM_STATUS_ICON[effectiveStatus];
 
   return (
     <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
@@ -87,9 +87,9 @@ function RoomCard({ room, onEdit, onPause, onReactivate }: {
           <p className="text-xs text-muted-foreground mb-0.5">{room.roomNumber}</p>
           <h3 className="font-semibold text-foreground truncate">{room.title}</h3>
         </div>
-        <span className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${statusCfg.color} whitespace-nowrap`}>
+        <span className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${getRoomStatusBadgeClasses(effectiveStatus)} whitespace-nowrap`}>
           <StatusIcon className="w-3 h-3" />
-          {statusCfg.label}
+          {getRoomStatusLabel(effectiveStatus)}
         </span>
       </div>
 
@@ -195,10 +195,10 @@ export function LandlordPropertyDetail() {
 
   const roomStats = {
     total: rooms.length,
-    available: rooms.filter(r => r.status === 'available').length,
-    reserved: rooms.filter(r => r.status === 'reserved').length,
-    occupied: rooms.filter(r => r.status === 'occupied').length,
-    paused: rooms.filter(r => r.status === 'paused').length,
+    available: rooms.filter(r => normalizeRoomStatus(r) === 'available').length,
+    reserved: rooms.filter(r => normalizeRoomStatus(r) === 'reserved').length,
+    occupied: rooms.filter(r => normalizeRoomStatus(r) === 'occupied').length,
+    paused: rooms.filter(r => normalizeRoomStatus(r) === 'paused').length,
   };
 
   const createdAt = new Date(property.createdAt).toLocaleDateString('pt-PT', {
@@ -424,8 +424,8 @@ export function LandlordPropertyDetail() {
                       key={room.id}
                       room={room}
                       onEdit={() => toast.info('Edição de quarto em desenvolvimento')}
-                      onPause={room.status === 'available' || room.status === 'reserved' ? () => handleRoomPause(room.id) : undefined}
-                      onReactivate={room.status === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
+                      onPause={normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved' ? () => handleRoomPause(room.id) : undefined}
+                      onReactivate={normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
                     />
                   ))}
                 </div>

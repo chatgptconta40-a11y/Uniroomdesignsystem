@@ -109,14 +109,8 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
-
-    setRooms(previous =>
-      previous.map(room =>
-        room.propertyId === id
-          ? { ...room, status: 'occupied' as RoomStatus, updatedAt: new Date() }
-          : room,
-      ),
-    );
+    // Rooms keep their original state; they are hidden from public search
+    // because the parent property is archived (SearchRooms filters by active properties).
   };
 
   const updateRoom = (id: string, updates: Partial<Room>) => {
@@ -143,7 +137,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     setRooms(previous =>
       previous.map(room =>
         room.id === id
-          ? { ...room, status: 'occupied' as RoomStatus, updatedAt: new Date() }
+          ? { ...room, status: 'paused' as RoomStatus, updatedAt: new Date() }
           : room,
       ),
     );

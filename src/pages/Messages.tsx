@@ -402,7 +402,7 @@ export function Messages() {
                           <p className="text-xs text-blue-600 font-medium mb-0.5">
                             {selectedConversation.roomId ? 'Quarto em discussão' : 'Alojamento em discussão'}
                           </p>
-                          <p className="text-sm font-bold text-[#111827] truncate">
+                          <p className="text-sm font-bold text-foreground truncate">
                             {selectedConversation.accommodationTitle}
                           </p>
                           <p className="text-sm font-semibold text-primary">

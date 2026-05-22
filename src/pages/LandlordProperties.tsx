@@ -7,6 +7,7 @@ import { PropertyStatus } from '../types/property';
 import { PropertyCard } from '../components/PropertyCard';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { normalizeRoomStatus } from '../utils/roomStatus';
 import { toast } from 'sonner';
 
 export function LandlordProperties() {
@@ -169,7 +170,10 @@ export function LandlordProperties() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProperties.map((property) => {
               const propertyRooms = getRoomsByProperty(property.id);
-              const availableRooms = propertyRooms.filter(r => r.status === 'available').length;
+              const availableRooms = propertyRooms.filter(r => normalizeRoomStatus(r) === 'available').length;
+              const reservedRooms = propertyRooms.filter(r => normalizeRoomStatus(r) === 'reserved').length;
+              const occupiedRooms = propertyRooms.filter(r => normalizeRoomStatus(r) === 'occupied').length;
+              const pausedRooms = propertyRooms.filter(r => normalizeRoomStatus(r) === 'paused').length;
 
               return (
                 <PropertyCard
@@ -177,6 +181,9 @@ export function LandlordProperties() {
                   property={property}
                   roomCount={propertyRooms.length}
                   availableRooms={availableRooms}
+                  reservedRooms={reservedRooms}
+                  occupiedRooms={occupiedRooms}
+                  pausedRooms={pausedRooms}
                   onView={() => handleView(property.id)}
                   onEdit={() => handleEdit(property.id)}
                   onPause={property.status === 'active' ? () => setPausingId(property.id) : undefined}
