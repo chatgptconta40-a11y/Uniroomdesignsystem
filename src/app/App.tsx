@@ -1,9 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { Toaster } from 'sonner';
+import { useState } from 'react';
 import { AuthProvider } from '../context/AuthContext';
 import { FavoritesProvider } from '../context/FavoritesContext';
 import { AccommodationsProvider } from '../context/AccommodationsContext';
 import { PropertiesProvider } from '../context/PropertiesContext';
+import { CompareProvider, useCompare } from '../context/CompareContext';
+import { CompareBar } from '../components/CompareBar';
+import { CompareModal } from '../components/CompareModal';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { Home } from '../pages/Home';
@@ -37,15 +41,14 @@ import { AdminReports } from '../pages/admin/AdminReports';
 import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
 import { AdminSettings } from '../pages/admin/AdminSettings';
 
-export default function App() {
+function AppShell() {
+  const { compareItems, removeFromCompare } = useCompare();
+  const [showCompareModal, setShowCompareModal] = useState(false);
+
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <PropertiesProvider>
-          <AccommodationsProvider>
-            <FavoritesProvider>
-              <div className="min-h-screen flex flex-col">
-                <Routes>
+    <>
+      <div className="min-h-screen flex flex-col">
+        <Routes>
                   <Route path="/login" element={<Login />} />
                   <Route path="/register" element={<Register />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -319,7 +322,34 @@ export default function App() {
                 </Routes>
 
                 <Toaster position="top-right" richColors />
-              </div>
+      </div>
+
+      <CompareBar onCompare={() => setShowCompareModal(true)} />
+
+      {showCompareModal && compareItems.length >= 2 && (
+        <CompareModal
+          items={compareItems}
+          onClose={() => setShowCompareModal(false)}
+          onRemove={(roomId) => {
+            removeFromCompare(roomId);
+            if (compareItems.length <= 2) setShowCompareModal(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <PropertiesProvider>
+          <AccommodationsProvider>
+            <FavoritesProvider>
+              <CompareProvider>
+                <AppShell />
+              </CompareProvider>
             </FavoritesProvider>
           </AccommodationsProvider>
         </PropertiesProvider>

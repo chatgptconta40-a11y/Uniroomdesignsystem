@@ -6,6 +6,7 @@ import { RangeSlider } from '../components/RangeSlider';
 import { Checkbox } from '../components/Checkbox';
 import { Card } from '../components/Card';
 import { useProperties } from '../context/PropertiesContext';
+import { useCompare } from '../context/CompareContext';
 import { Room, Property } from '../types/property';
 
 interface SearchFilters {
@@ -22,6 +23,7 @@ interface SearchFilters {
 
 export function SearchRooms() {
   const { rooms, properties } = useProperties();
+  const { isInCompare, toggleCompare, canAdd } = useCompare();
   const [showFilters, setShowFilters] = useState(true);
   const [results, setResults] = useState<{ room: Room; property: Property; availableRooms: number }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -327,6 +329,11 @@ export function SearchRooms() {
                     room={room}
                     property={property}
                     availableRooms={availableRooms}
+                    compareProps={{
+                      isComparing: isInCompare(room.id),
+                      onToggle: (e) => { e.stopPropagation(); toggleCompare(room, property); },
+                      disabled: !canAdd && !isInCompare(room.id),
+                    }}
                   />
                 ))
               ) : (

@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
-import { Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle, Clock, User, Wrench } from 'lucide-react';
+import { Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle, Clock, User, Wrench, AlertCircle, PauseCircle, Camera, BarChart2, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getLandlordMetrics, getDashboardActivity, getPerformanceData } from '../data/mockLandlord';
+import { getLandlordMetrics, getDashboardActivity, getPerformanceData, getLandlordListings } from '../data/mockLandlord';
 import { getMaintenanceStats } from '../data/mockMaintenance';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -15,6 +15,11 @@ export function LandlordDashboard() {
   const activities = getDashboardActivity(user?.id || '');
   const performanceData = getPerformanceData(user?.id || '', 30);
   const maintenanceStats = getMaintenanceStats(user?.id || '');
+  const allListings = getLandlordListings(user?.id || '');
+
+  const pausedListings = allListings.filter(l => l.status === 'paused');
+  const lowViewListings = allListings.filter(l => l.status === 'active' && l.views < 50);
+  const fewPhotosListings = allListings.filter(l => l.status !== 'draft' && l.applications === 0 && l.views > 0);
 
   const recentActivities = activities.slice(0, 5);
 
@@ -175,6 +180,124 @@ export function LandlordDashboard() {
             Ver Analytics Detalhadas
           </Button>
         </div>
+
+        {/* Ações Importantes */}
+        {(() => {
+          const actions: {
+            key: string;
+            icon: React.ReactNode;
+            iconBg: string;
+            title: string;
+            description: string;
+            actionLabel: string;
+            route: string;
+            badge?: number;
+          }[] = [];
+
+          if (metrics && metrics.pendingApplications > 0) {
+            actions.push({
+              key: 'applications',
+              icon: <FileText className="w-5 h-5 text-blue-600" />,
+              iconBg: 'bg-blue-50',
+              title: `${metrics.pendingApplications} candidatura${metrics.pendingApplications > 1 ? 's' : ''} pendente${metrics.pendingApplications > 1 ? 's' : ''}`,
+              description: 'Estudantes à espera de uma resposta tua.',
+              actionLabel: 'Ver candidaturas',
+              route: '/landlord/applications',
+              badge: metrics.pendingApplications,
+            });
+          }
+
+          if (metrics && metrics.unreadMessages > 0) {
+            actions.push({
+              key: 'messages',
+              icon: <MessageCircle className="w-5 h-5 text-emerald-600" />,
+              iconBg: 'bg-emerald-50',
+              title: `${metrics.unreadMessages} mensagem${metrics.unreadMessages > 1 ? 'ns' : ''} não lida${metrics.unreadMessages > 1 ? 's' : ''}`,
+              description: 'Há conversas que ainda não respondeste.',
+              actionLabel: 'Ver mensagens',
+              route: '/messages',
+              badge: metrics.unreadMessages,
+            });
+          }
+
+          if (pausedListings.length > 0) {
+            actions.push({
+              key: 'paused',
+              icon: <PauseCircle className="w-5 h-5 text-amber-600" />,
+              iconBg: 'bg-amber-50',
+              title: `${pausedListings.length} anúncio${pausedListings.length > 1 ? 's' : ''} pausado${pausedListings.length > 1 ? 's' : ''}`,
+              description: pausedListings.map(l => l.title).join(', '),
+              actionLabel: 'Reativar ou rever',
+              route: '/landlord/listings',
+            });
+          }
+
+          if (lowViewListings.length > 0) {
+            actions.push({
+              key: 'lowviews',
+              icon: <BarChart2 className="w-5 h-5 text-purple-600" />,
+              iconBg: 'bg-purple-50',
+              title: `${lowViewListings.length} anúncio${lowViewListings.length > 1 ? 's' : ''} com poucas visualizações`,
+              description: 'Alguns anúncios ativos têm menos de 50 visitas. Considera melhorar o título ou as fotos.',
+              actionLabel: 'Ver analytics',
+              route: '/landlord/analytics',
+            });
+          }
+
+          if (fewPhotosListings.length > 0) {
+            actions.push({
+              key: 'photos',
+              icon: <Camera className="w-5 h-5 text-rose-600" />,
+              iconBg: 'bg-rose-50',
+              title: `${fewPhotosListings.length} anúncio${fewPhotosListings.length > 1 ? 's' : ''} sem candidaturas`,
+              description: 'Anúncios com visitas mas sem candidaturas podem beneficiar de mais fotos ou melhor descrição.',
+              actionLabel: 'Editar anúncios',
+              route: '/landlord/listings',
+            });
+          }
+
+          if (actions.length === 0) return null;
+
+          return (
+            <div className="mb-10">
+              <div className="flex items-center gap-2 mb-4">
+                <AlertCircle className="w-5 h-5 text-amber-500" />
+                <h2 className="text-xl font-bold text-foreground">Ações Importantes</h2>
+                <span className="text-sm text-muted-foreground">· {actions.length} item{actions.length > 1 ? 'ns' : ''} a tratar</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {actions.map(action => (
+                  <Card
+                    key={action.key}
+                    className="p-5 cursor-pointer hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary"
+                    onClick={() => navigate(action.route)}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={`w-10 h-10 ${action.iconBg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+                        {action.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-semibold text-foreground text-sm leading-snug">{action.title}</p>
+                          {action.badge !== undefined && (
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary text-white text-[10px] font-bold flex-shrink-0">
+                              {action.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3">{action.description}</p>
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+                          {action.actionLabel}
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2 p-8">

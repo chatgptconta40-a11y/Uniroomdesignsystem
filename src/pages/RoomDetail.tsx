@@ -18,6 +18,9 @@ import { Accommodation } from '../types/accommodation';
 import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
 import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
+import { ComfortScorePanel } from '../components/ComfortScorePanel';
+import { TrustSignals } from '../components/TrustSignals';
+import { TrustPill } from '../components/TrustPill';
 
 export function RoomDetail() {
   const { id } = useParams<{ id: string }>();
@@ -530,24 +533,36 @@ export function RoomDetail() {
                 </Card>
               )}
 
+              {!isLandlordOwner && (
+                <ComfortScorePanel room={room} property={property} />
+              )}
+
               <Card className="p-6">
                 <h3 className="font-bold mb-4">Responsável pelo anúncio</h3>
                 <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold">
-                    M
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold flex-shrink-0">
+                    {(mockUsers.find(u => u.id === room.landlordId)?.name ?? 'M').charAt(0)}
                   </div>
-                  <div>
-                    <p className="font-semibold text-foreground">Maria Santos</p>
-                    <p className="text-sm text-muted-foreground">Senhoria verificada UniRoom</p>
-                    {property.verified && (
-                      <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        Anúncio verificado
-                      </div>
-                    )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground">
+                      {mockUsers.find(u => u.id === room.landlordId)?.name ?? 'Maria Santos'}
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-2">Senhorio UniRoom</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {property.verified && <TrustPill type="verified-landlord" size="xs" />}
+                      <TrustPill type="trusted-member" size="xs" />
+                    </div>
                   </div>
                 </div>
               </Card>
+
+              {!isLandlordOwner && (
+                <TrustSignals
+                  room={room}
+                  property={property}
+                  onReport={handleReport}
+                />
+              )}
 
               <Card className="p-6">
                 <h3 className="font-bold mb-4">Localização</h3>

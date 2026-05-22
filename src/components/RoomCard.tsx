@@ -16,6 +16,9 @@ import {
   FileText,
   MessageCircle,
   BarChart3,
+  Columns,
+  ShieldCheck,
+  Star,
 } from 'lucide-react';
 import { Room, Property } from '../types/property';
 import { Badge } from './Badge';
@@ -23,6 +26,13 @@ import { Button } from './Button';
 import { Card } from './Card';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
+import { getAverageRatingBreakdown } from '../data/mockTrust';
+
+interface CompareProps {
+  isComparing: boolean;
+  onToggle: (e: MouseEvent) => void;
+  disabled: boolean;
+}
 
 interface RoomCardProps {
   room: Room;
@@ -31,6 +41,7 @@ interface RoomCardProps {
   showFavorite?: boolean;
   availableRooms?: number;
   onFavoriteRequiresAuth?: () => void;
+  compareProps?: CompareProps;
   managementActions?: {
     statusLabel: string;
     statusVariant?: 'default' | 'success' | 'warning' | 'outline';
@@ -54,6 +65,7 @@ export function RoomCard({
   showFavorite = true,
   availableRooms,
   onFavoriteRequiresAuth,
+  compareProps,
   managementActions,
 }: RoomCardProps) {
   const navigate = useNavigate();
@@ -90,6 +102,7 @@ export function RoomCard({
   };
 
   const roomTypeBadge = getRoomTypeBadge();
+  const roomRating = getAverageRatingBreakdown(room.id);
 
   const compatibilityTone =
     (room.compatibilityScore || 0) >= 80
@@ -118,8 +131,8 @@ export function RoomCard({
           </Badge>
 
           {property.verified && (
-            <Badge variant="default" className="bg-white/90 text-primary border-primary/20">
-              <Check className="w-3 h-3 mr-1" />
+            <Badge variant="default" className="bg-white/92 text-blue-700 border-blue-200">
+              <ShieldCheck className="w-3 h-3 mr-1" />
               Verificado
             </Badge>
           )}
@@ -223,10 +236,24 @@ export function RoomCard({
           </div>
         </div>
 
-        <div className="flex items-baseline justify-between pt-3 border-t border-border">
+        <div className="flex items-end justify-between pt-3 border-t border-border">
           <div>
-            <span className="text-2xl font-bold text-primary">€{room.price}</span>
-            <span className="text-sm text-muted-foreground">/mês</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-bold text-primary">€{room.price}</span>
+              <span className="text-sm text-muted-foreground">/mês</span>
+            </div>
+            {roomRating.total > 0 ? (
+              <div className="flex items-center gap-1 mt-1">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                <span className="text-xs font-semibold text-foreground">{roomRating.average.toFixed(1)}</span>
+                <span className="text-xs text-muted-foreground">({roomRating.total})</span>
+              </div>
+            ) : property.verified ? (
+              <div className="flex items-center gap-1 mt-1">
+                <ShieldCheck className="w-3 h-3 text-blue-600" />
+                <span className="text-xs text-blue-600">Anúncio verificado</span>
+              </div>
+            ) : null}
           </div>
 
           {room.compatibilityScore && (
@@ -369,17 +396,38 @@ export function RoomCard({
             )}
           </div>
         ) : (
-          <Button
-            variant={variant === 'public' ? 'primary' : 'outline'}
-            size="sm"
-            className="w-full mt-4"
-            onClick={(event) => {
-              event.stopPropagation();
-              handleClick();
-            }}
-          >
-            Ver detalhes
-          </Button>
+          <>
+            <Button
+              variant={variant === 'public' ? 'primary' : 'outline'}
+              size="sm"
+              className="w-full mt-4"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleClick();
+              }}
+            >
+              Ver detalhes
+            </Button>
+
+            {compareProps && (
+              <button
+                onClick={compareProps.onToggle}
+                disabled={compareProps.disabled}
+                className={`w-full mt-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 border ${
+                  compareProps.isComparing
+                    ? 'bg-primary/10 text-primary border-primary'
+                    : compareProps.disabled
+                    ? 'bg-muted text-muted-foreground border-border cursor-not-allowed opacity-40'
+                    : 'bg-card text-muted-foreground border-border hover:border-primary hover:text-primary'
+                }`}
+              >
+                {compareProps.isComparing
+                  ? <><Check className="w-3.5 h-3.5" /> Na comparação</>
+                  : <><Columns className="w-3.5 h-3.5" /> Comparar</>
+                }
+              </button>
+            )}
+          </>
         )}
       </div>
     </Card>

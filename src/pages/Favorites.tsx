@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Heart, Filter } from 'lucide-react';
 import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
+import { useCompare } from '../context/CompareContext';
 import { RoomCard } from '../components/RoomCard';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -10,6 +11,7 @@ import { Property, Room } from '../types/property';
 export function Favorites() {
   const { favoriteIds } = useFavorites();
   const { rooms, properties } = useProperties();
+  const { isInCompare, toggleCompare, canAdd } = useCompare();
   const [filter, setFilter] = useState<'all' | 'available' | 'unavailable'>('all');
 
   const propertyById = new Map(properties.map(property => [property.id, property]));
@@ -156,6 +158,11 @@ export function Favorites() {
                     room={room}
                     property={property}
                     availableRooms={availableRooms}
+                    compareProps={{
+                      isComparing: isInCompare(room.id),
+                      onToggle: (e) => { e.stopPropagation(); toggleCompare(room, property); },
+                      disabled: !canAdd && !isInCompare(room.id),
+                    }}
                   />
                 ))}
               </div>
