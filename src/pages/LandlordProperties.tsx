@@ -74,7 +74,12 @@ export function LandlordProperties() {
   };
 
   const handleEdit = (id: string) => {
-    navigate(`/landlord/property/${id}/edit`);
+    const rooms = getRoomsByProperty(id);
+    if (rooms.length > 0) {
+      navigate(`/room/${rooms[0].id}`);
+    } else {
+      toast.info('Esta propriedade não tem quartos para visualizar');
+    }
   };
 
   return (
@@ -89,7 +94,7 @@ export function LandlordProperties() {
               Gere as tuas casas e quartos disponíveis
             </p>
           </div>
-          <Button onClick={() => navigate('/landlord/new-property')} size="lg">
+          <Button onClick={() => navigate('/landlord/new-listing')} size="lg">
             <PlusCircle className="w-5 h-5 mr-2" />
             Nova Propriedade
           </Button>
@@ -158,7 +163,7 @@ export function LandlordProperties() {
           <Card className="p-16 text-center">
             <p className="text-muted-foreground mb-4">Nenhuma propriedade encontrada</p>
             {filter === 'all' && (
-              <Button onClick={() => navigate('/landlord/new-property')}>
+              <Button onClick={() => navigate('/landlord/new-listing')}>
                 <PlusCircle className="w-5 h-5 mr-2" />
                 Criar Primeira Propriedade
               </Button>

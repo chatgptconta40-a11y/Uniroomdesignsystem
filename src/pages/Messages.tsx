@@ -40,6 +40,7 @@ export function Messages() {
   const selectedConversation = conversations.find(conversation => conversation.id === selectedConversationId);
   const messages = selectedConversationId ? getMessagesForConversation(selectedConversationId) : [];
   const otherParticipant = selectedConversation?.participants.find(participant => participant.id !== user?.id);
+  const isGroupChat = selectedConversation?.isGroup || false;
 
   const filteredConversations = useMemo(() => {
     let filtered = conversations;
@@ -172,7 +173,7 @@ export function Messages() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
       <div className="bg-card border-b border-border px-4 py-4">
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
           <div className="flex items-center gap-4">
@@ -182,8 +183,8 @@ export function Messages() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 h-full">
+      <div className="flex-1">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 h-[calc(100vh-140px)]">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-full border-x border-border">
             <div className="lg:col-span-1 bg-card border-r border-border flex flex-col h-full">
               <div className="p-4 border-b border-border">
@@ -255,6 +256,7 @@ export function Messages() {
                     {filteredConversations.map(conversation => {
                       const participant = conversation.participants.find(item => item.id !== user?.id);
                       const isSelected = conversation.id === selectedConversationId;
+                      const isGroup = conversation.isGroup || false;
 
                       return (
                         <button
@@ -266,12 +268,20 @@ export function Messages() {
                         >
                           <div className="flex items-start gap-4">
                             <div className="relative flex-shrink-0">
-                              <div className="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-                                {participant?.name.charAt(0)}
-                              </div>
+                              {isGroup ? (
+                                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white font-semibold">
+                                  <Home className="w-6 h-6" />
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                                    {participant?.name.charAt(0)}
+                                  </div>
 
-                              {participant?.online && (
-                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+                                  {participant?.online && (
+                                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+                                  )}
+                                </>
                               )}
                             </div>
 
@@ -279,11 +289,11 @@ export function Messages() {
                               <div className="flex items-start justify-between mb-1">
                                 <div className="flex-1 min-w-0">
                                   <h3 className="font-semibold text-foreground truncate">
-                                    {participant?.name}
+                                    {isGroup ? conversation.groupName : participant?.name}
                                   </h3>
 
                                   <Badge variant="outline" className="text-xs mt-0.5">
-                                    {participant?.type === 'landlord' ? 'Senhorio' : 'Estudante'}
+                                    {isGroup ? `${conversation.participants.length} participantes` : (participant?.type === 'landlord' ? 'Senhorio' : 'Estudante')}
                                   </Badge>
                                 </div>
 
@@ -320,24 +330,34 @@ export function Messages() {
             </div>
 
             <div className="lg:col-span-2 bg-card flex flex-col h-full">
-              {selectedConversation && otherParticipant ? (
+              {selectedConversation && (otherParticipant || isGroupChat) ? (
                 <>
                   <div className="px-6 py-4 border-b border-border flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="relative">
-                        <div className="w-10 h-10 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-                          {otherParticipant.name.charAt(0)}
-                        </div>
+                        {isGroupChat ? (
+                          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white font-semibold">
+                            <Home className="w-5 h-5" />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="w-10 h-10 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                              {otherParticipant?.name.charAt(0)}
+                            </div>
 
-                        {otherParticipant.online && (
-                          <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full" />
+                            {otherParticipant?.online && (
+                              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full" />
+                            )}
+                          </>
                         )}
                       </div>
 
                       <div>
-                        <h2 className="font-semibold text-foreground">{otherParticipant.name}</h2>
+                        <h2 className="font-semibold text-foreground">
+                          {isGroupChat ? selectedConversation.groupName : otherParticipant?.name}
+                        </h2>
                         <p className="text-xs text-muted-foreground">
-                          {otherParticipant.online ? 'Online' : 'Offline'}
+                          {isGroupChat ? `${selectedConversation.participants.length} participantes` : (otherParticipant?.online ? 'Online' : 'Offline')}
                         </p>
                       </div>
                     </div>
@@ -347,11 +367,17 @@ export function Messages() {
                         <User className="w-4 h-4" />
                       </Button>
 
-                      {selectedConversation.accommodationId && (
+                      {!isGroupChat && (selectedConversation.roomId || selectedConversation.accommodationId) && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(`/accommodation/${selectedConversation.accommodationId}`)}
+                          onClick={() => {
+                            if (selectedConversation.roomId) {
+                              navigate(`/room/${selectedConversation.roomId}`);
+                            } else if (selectedConversation.accommodationId) {
+                              navigate(`/accommodation/${selectedConversation.accommodationId}`);
+                            }
+                          }}
                         >
                           <Home className="w-4 h-4" />
                         </Button>
@@ -363,20 +389,23 @@ export function Messages() {
                     </div>
                   </div>
 
-                  {selectedConversation.accommodationId && (
-                    <div className="px-6 py-3 bg-blue-50 border-b border-border">
+                  {!isGroupChat && (selectedConversation.roomId || selectedConversation.accommodationId) && selectedConversation.accommodationTitle && (
+                    <div className="px-6 py-3 bg-gradient-to-br from-blue-50 to-white border-b border-blue-200">
                       <div className="flex items-center gap-4">
                         <img
                           src={selectedConversation.accommodationImage}
                           alt={selectedConversation.accommodationTitle}
-                          className="w-12 h-12 rounded-lg object-cover"
+                          className="w-16 h-16 rounded-xl object-cover border-2 border-white shadow-sm"
                         />
 
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">
+                          <p className="text-xs text-blue-600 font-medium mb-0.5">
+                            {selectedConversation.roomId ? 'Quarto em discussão' : 'Alojamento em discussão'}
+                          </p>
+                          <p className="text-sm font-bold text-[#111827] truncate">
                             {selectedConversation.accommodationTitle}
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm font-semibold text-primary">
                             €{selectedConversation.accommodationPrice}/mês
                           </p>
                         </div>
@@ -384,9 +413,16 @@ export function Messages() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => navigate(`/accommodation/${selectedConversation.accommodationId}`)}
+                          onClick={() => {
+                            if (selectedConversation.roomId) {
+                              navigate(`/room/${selectedConversation.roomId}`);
+                            } else if (selectedConversation.accommodationId) {
+                              navigate(`/accommodation/${selectedConversation.accommodationId}`);
+                            }
+                          }}
+                          className="flex-shrink-0"
                         >
-                          Ver alojamento
+                          Ver anúncio
                         </Button>
                       </div>
                     </div>
@@ -436,6 +472,11 @@ export function Messages() {
                                   className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`}
                                 >
                                   <div className={`max-w-[70%] ${isOwn ? 'order-2' : 'order-1'}`}>
+                                    {isGroupChat && !isOwn && (
+                                      <p className="text-xs font-medium text-muted-foreground mb-1 px-1">
+                                        {message.senderName}
+                                      </p>
+                                    )}
                                     <div
                                       className={`px-4 py-2 rounded-2xl ${
                                         isOwn

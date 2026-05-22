@@ -51,6 +51,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
         return parsed.map((room: any) => ({
           ...room,
           availableFrom: new Date(room.availableFrom),
+          moveInDate: room.moveInDate ? new Date(room.moveInDate) : undefined,
           createdAt: new Date(room.createdAt),
           updatedAt: new Date(room.updatedAt),
         }));

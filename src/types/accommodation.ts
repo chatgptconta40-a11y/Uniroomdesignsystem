@@ -104,3 +104,17 @@ export interface Notification {
   read: boolean;
   createdAt: Date;
 }
+
+export interface ActiveHome {
+  id: string;
+  studentId: string;
+  propertyId: string;
+  roomId: string;
+  applicationId: string;
+  landlordId: string;
+  landlordName: string;
+  moveInDate: Date;
+  contractEndDate: Date;
+  paymentDay: number;
+  createdAt: Date;
+}

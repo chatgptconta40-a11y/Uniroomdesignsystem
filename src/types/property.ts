@@ -77,6 +77,11 @@ export interface Room {
 
   status: 'available' | 'reserved' | 'occupied' | 'paused' | 'draft';
 
+  // Reservation/Occupation info
+  reservedBy?: string; // student ID
+  occupiedBy?: string; // student ID
+  moveInDate?: Date; // Expected or actual move-in date
+
   compatibilityScore?: number;
 
   createdAt: Date;

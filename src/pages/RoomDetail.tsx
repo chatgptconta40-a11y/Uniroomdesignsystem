@@ -10,11 +10,13 @@ import { RoomCard } from '../components/RoomCard';
 import { ApplicationModal } from '../components/ApplicationModal';
 import { ReviewModal } from '../components/ReviewModal';
 import { ReportModal } from '../components/ReportModal';
+import { StartConversationModal } from '../components/StartConversationModal';
 import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
+import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
 
 export function RoomDetail() {
@@ -27,6 +29,7 @@ export function RoomDetail() {
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [, setReviewsVersion] = useState(0);
 
@@ -125,7 +128,8 @@ export function RoomDetail() {
       requestAuthentication();
       return;
     }
-    navigate('/messages');
+
+    setShowContactModal(true);
   };
 
   const handleToggleFavorite = () => {
@@ -698,6 +702,60 @@ export function RoomDetail() {
           onClose={() => setShowReportModal(false)}
         />
       )}
+
+      {showContactModal && (() => {
+        const landlord = mockUsers.find(u => u.id === room.landlordId);
+        const contactAccommodation: Accommodation = {
+          id: room.id,
+          title: room.title,
+          description: room.description,
+          city: property.city,
+          zone: property.zone,
+          address: property.address,
+          price: room.price,
+          images: [...room.images, ...property.images],
+          landlordId: room.landlordId,
+          roomType: room.roomType,
+          currentOccupants: 1,
+          maxOccupants: room.maxOccupants,
+          coordinates: property.coordinates || { lat: 40.6582, lng: -7.9138 },
+          distanceToUniversity: property.distanceToUniversity,
+          universityName: 'Instituto Politécnico de Viseu',
+          amenities: {
+            furnished: true,
+            wifi: property.amenities.wifi,
+            utilitiesIncluded: false,
+            kitchen: property.amenities.kitchen,
+            washingMachine: property.amenities.laundry,
+            balcony: room.balcony,
+            parking: property.amenities.parking,
+            airConditioning: room.airConditioning || property.amenities.airConditioning,
+            heating: property.amenities.heating,
+            elevator: property.amenities.elevator,
+          },
+          utilities: room.utilities,
+          availableFrom: room.availableFrom,
+          minimumStay: room.minimumStay,
+          status: 'active',
+          verified: property.verified,
+          compatibilityScore: room.compatibilityScore,
+          createdAt: room.createdAt,
+          updatedAt: room.updatedAt,
+          views: room.views,
+        };
+
+        return (
+          <StartConversationModal
+            accommodation={contactAccommodation}
+            landlordId={room.landlordId}
+            landlordName={landlord?.name}
+            roomId={room.id}
+            propertyId={property.id}
+            defaultMessage={`Olá, vi este quarto no UniRoom e tenho interesse. Gostava de confirmar se ainda está disponível, quais são as condições de entrada e se seria possível agendar uma visita. Obrigado.`}
+            onClose={() => setShowContactModal(false)}
+          />
+        );
+      })()}
     </div>
   );
 }

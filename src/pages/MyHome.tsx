@@ -23,19 +23,10 @@ import { MaintenanceModal } from '../components/MaintenanceModal';
 import { StartConversationModal } from '../components/StartConversationModal';
 import { getMaintenanceRequests } from '../data/mockMaintenance';
 import { getProperty, getRoom } from '../data/mockProperties';
+import { getHouseGroupConversation, getMessagesForConversation } from '../data/mockMessages';
+import { getActiveHomeForStudent } from '../data/mockApplications';
 import { Accommodation } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
-
-const ACTIVE_HOME_MOCK = {
-  studentId: '1',
-  propertyId: 'prop-1',
-  roomId: 'room-1',
-  landlordName: 'Maria Santos',
-  landlordInitials: 'MS',
-  moveInDate: new Date('2025-09-01'),
-  contractEndDate: new Date('2026-07-31'),
-  paymentDay: 5,
-};
 
 const housemates = [
   {
@@ -62,36 +53,6 @@ const recentPayments = [
   { id: 'pay-3', month: 'Março 2026', date: '05/03/2026', status: 'Pago' },
 ];
 
-const mockHomeMaintenanceRequests: MaintenanceRequest[] = [
-  {
-    id: 'home-maint-1',
-    userId: ACTIVE_HOME_MOCK.studentId,
-    accommodationId: ACTIVE_HOME_MOCK.roomId,
-    landlordId: '2',
-    category: 'heating',
-    title: 'Esquentador com falhas',
-    description: 'A água quente falha ao fim de alguns minutos. O senhorio já foi avisado e está a acompanhar o pedido.',
-    urgency: 'high',
-    status: 'in_progress',
-    createdAt: new Date('2026-05-15T09:00:00'),
-    updatedAt: new Date('2026-05-16T11:30:00'),
-  },
-  {
-    id: 'home-maint-2',
-    userId: ACTIVE_HOME_MOCK.studentId,
-    accommodationId: ACTIVE_HOME_MOCK.roomId,
-    landlordId: '2',
-    category: 'internet',
-    title: 'Internet instável na sala',
-    description: 'O sinal WiFi fica mais fraco na zona da sala comum durante a noite.',
-    urgency: 'medium',
-    status: 'resolved',
-    createdAt: new Date('2026-04-22T14:20:00'),
-    updatedAt: new Date('2026-04-25T17:00:00'),
-    resolvedAt: new Date('2026-04-25T17:00:00'),
-  },
-];
-
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat('pt-PT', {
     day: '2-digit',
@@ -114,12 +75,17 @@ export function MyHome() {
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
 
   const activeHome = useMemo(() => {
-    if (user?.id !== ACTIVE_HOME_MOCK.studentId || user?.type !== 'student') {
+    if (!user || user.type !== 'student') {
       return null;
     }
 
-    const property = getProperty(ACTIVE_HOME_MOCK.propertyId);
-    const room = getRoom(ACTIVE_HOME_MOCK.roomId);
+    const activeHomeData = getActiveHomeForStudent(user.id);
+    if (!activeHomeData) {
+      return null;
+    }
+
+    const property = getProperty(activeHomeData.propertyId);
+    const room = getRoom(activeHomeData.roomId);
 
     if (!property || !room || room.propertyId !== property.id) {
       return null;
@@ -164,7 +130,12 @@ export function MyHome() {
       views: room.views,
     };
 
-    return { property, room, accommodation };
+    return {
+      property,
+      room,
+      accommodation,
+      activeHomeData,
+    };
   }, [user?.id, user?.type]);
 
   const refreshMaintenanceRequests = () => {
@@ -206,14 +177,9 @@ export function MyHome() {
     );
   }
 
-  const { property, room, accommodation } = activeHome;
+  const { property, room, accommodation, activeHomeData } = activeHome;
   const monthlyTotal = room.price + (room.utilities || 0);
-  const visibleMaintenanceRequests = [
-    ...mockHomeMaintenanceRequests,
-    ...maintenanceRequests.filter(
-      request => !mockHomeMaintenanceRequests.some(mockRequest => mockRequest.id === request.id)
-    ),
-  ];
+  const visibleMaintenanceRequests = maintenanceRequests;
 
   const pendingRequests = visibleMaintenanceRequests.filter(request => request.status === 'pending').length;
   const inProgressRequests = visibleMaintenanceRequests.filter(request => request.status === 'in_progress').length;
@@ -320,14 +286,14 @@ export function MyHome() {
                     <Calendar className="w-4 h-4" />
                     Data de entrada
                   </span>
-                  <span className="font-semibold text-foreground">{formatDate(ACTIVE_HOME_MOCK.moveInDate)}</span>
+                  <span className="font-semibold text-foreground">{formatDate(activeHomeData.moveInDate)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground flex items-center gap-2">
                     <Clock className="w-4 h-4" />
                     Contrato até
                   </span>
-                  <span className="font-semibold text-foreground">{formatDate(ACTIVE_HOME_MOCK.contractEndDate)}</span>
+                  <span className="font-semibold text-foreground">{formatDate(activeHomeData.contractEndDate)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground flex items-center gap-2">
@@ -415,6 +381,91 @@ export function MyHome() {
               </div>
             </Card>
 
+            {(() => {
+              const houseChat = getHouseGroupConversation(property.id, user?.id || '');
+              if (!houseChat) return null;
+
+              const lastMessages = getMessagesForConversation(houseChat.id).slice(-3);
+
+              return (
+                <Card className="p-6">
+                  <div className="flex items-center justify-between mb-5">
+                    <div>
+                      <h3 className="text-lg font-bold text-foreground">Chat da casa</h3>
+                      <p className="text-sm text-muted-foreground">Conversa com os teus colegas</p>
+                    </div>
+                    {houseChat.unreadCount > 0 && (
+                      <Badge variant="default" className="bg-primary">
+                        {houseChat.unreadCount} nova{houseChat.unreadCount > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="mb-4 p-4 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white">
+                        <HomeIcon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-foreground">{houseChat.groupName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {houseChat.participants.length} participantes
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {houseChat.participants.map((participant) => (
+                        <div key={participant.id} className="flex items-center gap-2 bg-white/80 px-3 py-1.5 rounded-full border border-purple-200">
+                          <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold">
+                            {participant.name.charAt(0)}
+                          </div>
+                          <span className="text-xs font-medium text-foreground">{participant.name.split(' ')[0]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 mb-4">
+                    {lastMessages.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground text-sm">
+                        Nenhuma mensagem ainda. Começa a conversa!
+                      </div>
+                    ) : (
+                      lastMessages.map((msg) => (
+                        <div key={msg.id} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                          <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
+                            {msg.senderName.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-semibold text-foreground">
+                                {msg.senderName.split(' ')[0]}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {msg.createdAt.toLocaleTimeString('pt-PT', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                            <p className="text-sm text-foreground line-clamp-2">{msg.content}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <Link to={`/messages?conversation=${houseChat.id}`} className="block">
+                    <Button variant="primary" className="w-full">
+                      <MessageCircle className="w-4 h-4 mr-2" />
+                      Abrir chat da casa
+                    </Button>
+                  </Link>
+                </Card>
+              );
+            })()}
+
             <Card className="p-6">
               <h3 className="text-lg font-bold text-foreground mb-5">Regras principais</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -433,14 +484,14 @@ export function MyHome() {
               <h3 className="text-lg font-bold text-foreground mb-4">Senhorio responsável</h3>
               <div className="flex items-center gap-4 mb-5">
                 <div className="w-14 h-14 bg-secondary text-secondary-foreground rounded-full flex items-center justify-center text-lg font-bold">
-                  {ACTIVE_HOME_MOCK.landlordInitials}
+                  {activeHomeData.landlordName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-bold text-foreground">{ACTIVE_HOME_MOCK.landlordName}</h4>
+                    <h4 className="font-bold text-foreground">{activeHomeData.landlordName}</h4>
                     <CheckCircle className="w-4 h-4 text-secondary" />
                   </div>
-                  <p className="text-sm text-muted-foreground">Senhoria verificada</p>
+                  <p className="text-sm text-muted-foreground">Senhorio verificado</p>
                 </div>
               </div>
               <Button variant="primary" className="w-full" onClick={() => setShowContactModal(true)}>
@@ -455,7 +506,7 @@ export function MyHome() {
                 <p className="text-xs text-muted-foreground mb-1">Próximo pagamento</p>
                 <p className="text-3xl font-bold text-foreground">€{monthlyTotal}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Renda + despesas · dia {ACTIVE_HOME_MOCK.paymentDay} de cada mês
+                  Renda + despesas · dia {activeHomeData.paymentDay} de cada mês
                 </p>
               </div>
 
@@ -592,7 +643,10 @@ export function MyHome() {
         <StartConversationModal
           accommodation={accommodation}
           landlordId={property.landlordId}
-          landlordName={ACTIVE_HOME_MOCK.landlordName}
+          landlordName={activeHomeData.landlordName}
+          roomId={room.id}
+          propertyId={property.id}
+          isActiveHome={true}
           onClose={() => setShowContactModal(false)}
         />
       )}

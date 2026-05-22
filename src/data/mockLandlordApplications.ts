@@ -75,9 +75,19 @@ export function getApplicationsForLandlord(landlordId: string, listingId?: strin
 
 export function updateApplicationStatus(
   applicationId: string,
-  status: Application['status']
+  status: Application['status'],
+  landlordId?: string
 ): boolean {
-  return updateStatus(applicationId, status);
+  let landlordName = 'Senhorio';
+
+  if (landlordId) {
+    const landlord = getUserById(landlordId);
+    if (landlord) {
+      landlordName = landlord.name;
+    }
+  }
+
+  return updateStatus(applicationId, status, landlordName);
 }
 
 export function getApplicationStats(landlordId: string) {

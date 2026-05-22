@@ -1,7 +1,8 @@
-import { Application, Notification } from '../types/accommodation';
+import { Application, Notification, ActiveHome } from '../types/accommodation';
 
 const APPLICATIONS_STORAGE_KEY = 'uniroom_applications';
 const NOTIFICATIONS_STORAGE_KEY = 'uniroom_notifications';
+const ACTIVE_HOMES_STORAGE_KEY = 'uniroom_active_homes';
 
 const initialApplications: Application[] = [
   {
@@ -74,12 +75,31 @@ const initialNotifications: Notification[] = [
   },
 ];
 
+const initialActiveHomes: ActiveHome[] = [
+  {
+    id: 'home1',
+    studentId: '1',
+    propertyId: 'prop-1',
+    roomId: 'room-1',
+    applicationId: 'app2',
+    landlordId: '2',
+    landlordName: 'Maria Santos',
+    moveInDate: new Date('2025-09-01'),
+    contractEndDate: new Date('2026-07-31'),
+    paymentDay: 5,
+    createdAt: new Date('2026-04-12'),
+  },
+];
+
 function initializeStorage() {
   if (!localStorage.getItem(APPLICATIONS_STORAGE_KEY)) {
     localStorage.setItem(APPLICATIONS_STORAGE_KEY, JSON.stringify(initialApplications));
   }
   if (!localStorage.getItem(NOTIFICATIONS_STORAGE_KEY)) {
     localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(initialNotifications));
+  }
+  if (!localStorage.getItem(ACTIVE_HOMES_STORAGE_KEY)) {
+    localStorage.setItem(ACTIVE_HOMES_STORAGE_KEY, JSON.stringify(initialActiveHomes));
   }
 }
 
@@ -108,7 +128,11 @@ export function getNotificationsForUser(userId: string): Notification[] {
   const all: Notification[] = stored ? JSON.parse(stored) : [];
   return all
     .filter(notif => notif.userId === userId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .map(notif => ({
+      ...notif,
+      createdAt: new Date(notif.createdAt),
+    }))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 export function getUnreadCount(userId: string): number {
@@ -168,16 +192,30 @@ export function createApplication(
   return newApplication;
 }
 
-export function updateApplicationStatus(applicationId: string, status: string): boolean {
+export function updateApplicationStatus(applicationId: string, status: string, landlordName?: string): boolean {
   const stored = localStorage.getItem(APPLICATIONS_STORAGE_KEY);
   const all: Application[] = stored ? JSON.parse(stored) : [];
 
   const index = all.findIndex(a => a.id === applicationId);
   if (index >= 0) {
+    const application = all[index];
     all[index].status = status as any;
     all[index].updatedAt = new Date();
     all[index].reviewedAt = new Date();
     localStorage.setItem(APPLICATIONS_STORAGE_KEY, JSON.stringify(all));
+
+    // If accepted, create active home
+    if (status === 'accepted' && application.roomId && application.propertyId) {
+      createActiveHome(
+        application.userId,
+        application.propertyId,
+        application.roomId,
+        application.id,
+        application.landlordId,
+        landlordName || 'Senhorio',
+        application.moveInDate || new Date()
+      );
+    }
 
     const notifStored = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
     const allNotifications: Notification[] = notifStored ? JSON.parse(notifStored) : [];
@@ -194,7 +232,7 @@ export function updateApplicationStatus(applicationId: string, status: string): 
       type: 'application_update',
       title: 'Atualização de Candidatura',
       message: statusMessages[status] || 'O estado da tua candidatura foi atualizado.',
-      link: '/applications',
+      link: status === 'accepted' ? '/my-home' : '/applications',
       read: false,
       createdAt: new Date(),
     };
@@ -238,4 +276,81 @@ export function markAllNotificationsAsRead(userId: string): void {
   });
 
   localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(updated));
+}
+
+// Active Homes functions
+function createActiveHome(
+  studentId: string,
+  propertyId: string,
+  roomId: string,
+  applicationId: string,
+  landlordId: string,
+  landlordName: string,
+  moveInDate: Date
+): ActiveHome {
+  const activeHomesStored = localStorage.getItem(ACTIVE_HOMES_STORAGE_KEY);
+  const activeHomes: ActiveHome[] = activeHomesStored ? JSON.parse(activeHomesStored) : [];
+
+  // Check if student already has an active home for this property/room
+  const existingIndex = activeHomes.findIndex(
+    home => home.studentId === studentId && home.propertyId === propertyId && home.roomId === roomId
+  );
+
+  const contractEndDate = new Date(moveInDate);
+  contractEndDate.setMonth(contractEndDate.getMonth() + 10); // 10 month contract
+
+  const activeHome: ActiveHome = {
+    id: `home_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    studentId,
+    propertyId,
+    roomId,
+    applicationId,
+    landlordId,
+    landlordName,
+    moveInDate,
+    contractEndDate,
+    paymentDay: 5,
+    createdAt: new Date(),
+  };
+
+  if (existingIndex >= 0) {
+    activeHomes[existingIndex] = activeHome;
+  } else {
+    activeHomes.push(activeHome);
+  }
+
+  localStorage.setItem(ACTIVE_HOMES_STORAGE_KEY, JSON.stringify(activeHomes));
+  return activeHome;
+}
+
+export function getActiveHomeForStudent(studentId: string): ActiveHome | null {
+  const stored = localStorage.getItem(ACTIVE_HOMES_STORAGE_KEY);
+  const activeHomes: ActiveHome[] = stored ? JSON.parse(stored) : [];
+
+  const home = activeHomes.find(h => h.studentId === studentId);
+  if (!home) return null;
+
+  // Convert date strings back to Date objects
+  return {
+    ...home,
+    moveInDate: new Date(home.moveInDate),
+    contractEndDate: new Date(home.contractEndDate),
+    createdAt: new Date(home.createdAt),
+  };
+}
+
+export function removeActiveHome(studentId: string, propertyId: string, roomId: string): boolean {
+  const stored = localStorage.getItem(ACTIVE_HOMES_STORAGE_KEY);
+  const activeHomes: ActiveHome[] = stored ? JSON.parse(stored) : [];
+
+  const filtered = activeHomes.filter(
+    home => !(home.studentId === studentId && home.propertyId === propertyId && home.roomId === roomId)
+  );
+
+  if (filtered.length < activeHomes.length) {
+    localStorage.setItem(ACTIVE_HOMES_STORAGE_KEY, JSON.stringify(filtered));
+    return true;
+  }
+
+  return false;
 }

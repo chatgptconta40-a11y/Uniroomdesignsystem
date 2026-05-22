@@ -25,6 +25,10 @@ export interface Conversation {
   accommodationTitle?: string;
   accommodationPrice?: number;
   accommodationImage?: string;
+  roomId?: string;
+  propertyId?: string;
+  isGroup?: boolean;
+  groupName?: string;
   createdAt: Date;
   updatedAt: Date;
 }

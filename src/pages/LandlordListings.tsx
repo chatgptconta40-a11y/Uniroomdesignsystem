@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   BedDouble,
+  Calendar,
   CheckCircle,
   Edit,
   Eye,
@@ -14,6 +15,7 @@ import {
   PlusCircle,
   Settings,
   Trash2,
+  User,
   Users,
   X,
 } from 'lucide-react';
@@ -24,6 +26,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { toast } from 'sonner';
+import { mockUsers } from '../data/mockUsers';
 
 interface EditRoomModalProps {
   room: Room;
@@ -165,6 +168,12 @@ function getRoomStatusBadge(room: Room, property: Property) {
   };
 
   return configs[room.status];
+}
+
+function getStudentName(studentId: string | undefined): string | null {
+  if (!studentId) return null;
+  const student = mockUsers.find(u => u.id === studentId);
+  return student?.name || null;
 }
 
 export function LandlordListings() {
@@ -469,6 +478,9 @@ export function LandlordListings() {
                             const canPauseRoom = room.status === 'available' && property.status === 'active';
                             const canReactivateRoom = room.status === 'paused' && property.status === 'active';
 
+                            const studentId = room.status === 'reserved' ? room.reservedBy : room.status === 'occupied' ? room.occupiedBy : undefined;
+                            const studentName = getStudentName(studentId);
+
                             return (
                               <div
                                 key={room.id}
@@ -477,6 +489,28 @@ export function LandlordListings() {
                                 <div className="min-w-0">
                                   <p className="font-semibold text-foreground line-clamp-1">{room.title}</p>
                                   <p className="text-xs text-muted-foreground">{room.roomNumber}</p>
+
+                                  {studentName && (
+                                    <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+                                      <User className="w-3 h-3 text-primary" />
+                                      <span className="text-foreground font-medium">
+                                        {room.status === 'reserved' ? 'Reservado por' : 'Ocupado por'} {studentName}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {room.moveInDate && (
+                                    <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                                      <Calendar className="w-3 h-3" />
+                                      <span>
+                                        Entrada: {new Date(room.moveInDate).toLocaleDateString('pt-PT', {
+                                          day: 'numeric',
+                                          month: 'long',
+                                          year: 'numeric'
+                                        })}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <p className="font-bold text-primary">€{room.price}</p>

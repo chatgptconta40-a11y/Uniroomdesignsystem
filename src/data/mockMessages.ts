@@ -116,6 +116,68 @@ export const mockMessages: Message[] = [
     read: true,
     type: 'text',
   },
+
+  // Conversation 4 - House group chat
+  {
+    id: 'msg12',
+    conversationId: 'conv4',
+    senderId: 'mate-1',
+    senderName: 'Inês Ferreira',
+    content: 'Bom dia pessoal! Vou fazer compras hoje, alguém precisa de alguma coisa?',
+    createdAt: new Date('2026-05-20T10:00:00'),
+    read: true,
+    type: 'text',
+  },
+  {
+    id: 'msg13',
+    conversationId: 'conv4',
+    senderId: 'mate-2',
+    senderName: 'Miguel Costa',
+    content: 'Ei! Se puderes trazer leite e café agradeço 😊',
+    createdAt: new Date('2026-05-20T10:15:00'),
+    read: true,
+    type: 'text',
+  },
+  {
+    id: 'msg14',
+    conversationId: 'conv4',
+    senderId: '1',
+    senderName: 'Estudante UniRoom',
+    content: 'Obrigado Inês! Podes trazer pão e manteiga? Deixo o dinheiro na mesa.',
+    createdAt: new Date('2026-05-20T10:20:00'),
+    read: true,
+    type: 'text',
+  },
+  {
+    id: 'msg15',
+    conversationId: 'conv4',
+    senderId: 'mate-1',
+    senderName: 'Inês Ferreira',
+    content: 'Perfeito! Já anotei tudo. Chego por volta das 15h.',
+    createdAt: new Date('2026-05-20T10:25:00'),
+    read: true,
+    type: 'text',
+  },
+  {
+    id: 'msg16',
+    conversationId: 'conv4',
+    senderId: 'mate-2',
+    senderName: 'Miguel Costa',
+    content: 'Já agora, hoje à noite vou fazer jantar para todos. Quem se junta? 🍝',
+    createdAt: new Date('2026-05-21T16:30:00'),
+    read: true,
+    type: 'text',
+  },
+  {
+    id: 'msg17',
+    conversationId: 'conv4',
+    senderId: 'mate-2',
+    senderName: 'Miguel Costa',
+    content: 'Fica combinado às 20h! 🍽️',
+    createdAt: new Date('2026-05-21T16:45:00'),
+    read: false,
+    type: 'text',
+  },
 ];
 
 export const mockConversations: Conversation[] = [
@@ -189,6 +251,36 @@ export const mockConversations: Conversation[] = [
     unreadCount: 0,
     createdAt: new Date('2026-04-16T16:00:00'),
     updatedAt: new Date('2026-04-16T18:00:00'),
+  },
+  {
+    id: 'conv4',
+    participants: [
+      {
+        id: '1',
+        name: 'Estudante UniRoom',
+        type: 'student',
+        online: true,
+      },
+      {
+        id: 'mate-1',
+        name: 'Inês Ferreira',
+        type: 'student',
+        online: false,
+      },
+      {
+        id: 'mate-2',
+        name: 'Miguel Costa',
+        type: 'student',
+        online: true,
+      },
+    ],
+    lastMessage: mockMessages.find(m => m.id === 'msg17'),
+    unreadCount: 1,
+    propertyId: 'prop-1',
+    isGroup: true,
+    groupName: 'Apartamento T3 Centro de Viseu',
+    createdAt: new Date('2026-05-20T10:00:00'),
+    updatedAt: new Date('2026-05-21T16:45:00'),
   },
 ];
 
@@ -271,7 +363,9 @@ export function createConversation(
   accommodationId?: string,
   accommodationTitle?: string,
   accommodationPrice?: number,
-  accommodationImage?: string
+  accommodationImage?: string,
+  roomId?: string,
+  propertyId?: string
 ): Conversation {
   const newConversation: Conversation = {
     id: `conv${mockConversations.length + 1}`,
@@ -294,6 +388,8 @@ export function createConversation(
     accommodationTitle,
     accommodationPrice,
     accommodationImage,
+    roomId,
+    propertyId,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -305,4 +401,60 @@ export function createConversation(
   newConversation.lastMessage = message;
 
   return newConversation;
+}
+
+export function findOrCreateRoomConversation(
+  currentUserId: string,
+  currentUserName: string,
+  currentUserType: 'student' | 'landlord',
+  landlordId: string,
+  landlordName: string,
+  roomId: string,
+  propertyId: string,
+  roomTitle: string,
+  roomPrice: number,
+  roomImage: string,
+  customMessage?: string
+): Conversation {
+  // Check if conversation already exists for this room
+  const existingConversation = mockConversations.find(conv =>
+    conv.roomId === roomId &&
+    conv.participants.some(p => p.id === currentUserId) &&
+    conv.participants.some(p => p.id === landlordId)
+  );
+
+  if (existingConversation) {
+    // If custom message provided and conversation exists, send it as a new message
+    if (customMessage && customMessage.trim()) {
+      sendMessage(existingConversation.id, currentUserId, currentUserName, customMessage.trim());
+    }
+    return existingConversation;
+  }
+
+  // Create new conversation
+  const initialMessage = customMessage || `Olá, tenho interesse neste quarto. Ainda está disponível?`;
+
+  return createConversation(
+    currentUserId,
+    currentUserName,
+    currentUserType,
+    landlordId,
+    landlordName,
+    'landlord',
+    initialMessage,
+    undefined, // accommodationId (deprecated, using roomId now)
+    roomTitle,
+    roomPrice,
+    roomImage,
+    roomId,
+    propertyId
+  );
+}
+
+export function getHouseGroupConversation(propertyId: string, userId: string): Conversation | undefined {
+  return mockConversations.find(conv =>
+    conv.isGroup &&
+    conv.propertyId === propertyId &&
+    conv.participants.some(p => p.id === userId)
+  );
 }

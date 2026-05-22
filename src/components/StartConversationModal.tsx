@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { X, Send } from 'lucide-react';
 import { Button } from './Button';
 import { useAuth } from '../context/AuthContext';
-import { createConversation } from '../data/mockMessages';
+import { createConversation, findOrCreateRoomConversation } from '../data/mockMessages';
 import { Accommodation } from '../types/accommodation';
 import { toast } from 'sonner';
 
@@ -11,6 +11,10 @@ interface StartConversationModalProps {
   accommodation: Accommodation;
   landlordId: string;
   landlordName?: string;
+  roomId?: string;
+  propertyId?: string;
+  defaultMessage?: string;
+  isActiveHome?: boolean;
   onClose: () => void;
 }
 
@@ -18,17 +22,33 @@ export function StartConversationModal({
   accommodation,
   landlordId,
   landlordName = 'Senhorio',
+  roomId,
+  propertyId,
+  defaultMessage,
+  isActiveHome = false,
   onClose,
 }: StartConversationModalProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [message, setMessage] = useState('');
 
-  const quickMessages = [
-    `Olá! Tenho interesse no quarto "${accommodation.title}". Ainda está disponível?`,
-    `Boa tarde! Vi o anúncio de "${accommodation.title}". Gostaria de saber mais informações.`,
-    `Olá! Interessado/a em "${accommodation.title}". É possível agendar uma visita?`,
-  ];
+  const defaultMessageText = isActiveHome
+    ? `Olá, queria esclarecer uma dúvida sobre a minha estadia.`
+    : `Olá, vi este quarto no UniRoom e tenho interesse. Gostava de confirmar se ainda está disponível, quais são as condições de entrada e se seria possível agendar uma visita. Obrigado.`;
+
+  const [message, setMessage] = useState(defaultMessage || defaultMessageText);
+
+  const quickMessages = isActiveHome
+    ? [
+        `Olá, queria esclarecer uma dúvida sobre a minha estadia.`,
+        `Boa tarde, queria falar consigo sobre uma questão relacionada com a casa.`,
+        `Olá, tenho uma dúvida sobre pagamentos/despesas deste mês.`,
+        `Boa tarde, queria informar uma situação relacionada com o meu quarto/casa.`,
+      ]
+    : [
+        `Olá! Tenho interesse no quarto "${accommodation.title}". Ainda está disponível?`,
+        `Boa tarde! Vi o anúncio de "${accommodation.title}". Gostaria de saber mais informações sobre as condições de arrendamento.`,
+        `Olá! Interessado/a em "${accommodation.title}". É possível agendar uma visita?`,
+      ];
 
   const handleSend = () => {
     if (!message.trim()) {
@@ -36,19 +56,39 @@ export function StartConversationModal({
       return;
     }
 
-    const conversation = createConversation(
-      user?.id || '',
-      user?.name || '',
-      'student',
-      landlordId,
-      landlordName,
-      'landlord',
-      message.trim(),
-      accommodation.id,
-      accommodation.title,
-      accommodation.price,
-      accommodation.images[0],
-    );
+    let conversation;
+
+    // If roomId and propertyId are provided, use room-specific conversation
+    if (roomId && propertyId) {
+      conversation = findOrCreateRoomConversation(
+        user?.id || '',
+        user?.name || '',
+        user?.type as 'student' | 'landlord' || 'student',
+        landlordId,
+        landlordName,
+        roomId,
+        propertyId,
+        accommodation.title,
+        accommodation.price,
+        accommodation.images[0],
+        message.trim()
+      );
+    } else {
+      // Legacy: use accommodation-based conversation
+      conversation = createConversation(
+        user?.id || '',
+        user?.name || '',
+        user?.type as 'student' | 'landlord' || 'student',
+        landlordId,
+        landlordName,
+        'landlord',
+        message.trim(),
+        accommodation.id,
+        accommodation.title,
+        accommodation.price,
+        accommodation.images[0],
+      );
+    }
 
     toast.success('Mensagem enviada!');
     onClose();
@@ -67,7 +107,9 @@ export function StartConversationModal({
       <div className="bg-card rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-border shadow-xl">
         <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-foreground">Contactar senhorio</h2>
+            <h2 className="text-xl font-bold text-foreground">
+              {isActiveHome ? 'Contactar senhorio' : 'Enviar mensagem ao responsável'}
+            </h2>
             <p className="text-sm text-muted-foreground">{accommodation.title}</p>
           </div>
 
@@ -122,22 +164,37 @@ export function StartConversationModal({
 
             <textarea
               value={message}
-              onChange={(event) => setMessage(event.target.value)}
+              onChange={(event) => {
+                const newValue = event.target.value;
+                if (newValue.length <= 500) {
+                  setMessage(newValue);
+                }
+              }}
               onKeyPress={handleKeyPress}
               placeholder="Escreve a tua mensagem aqui..."
               className="w-full px-4 py-3 bg-input-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary resize-none"
               rows={5}
+              maxLength={500}
             />
 
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className={`text-xs mt-1 ${message.length >= 500 ? 'text-destructive' : 'text-muted-foreground'}`}>
               {message.length}/500 caracteres
             </p>
           </div>
 
           <div className="p-6 bg-primary/5 rounded-lg border border-primary/20">
             <p className="text-sm text-foreground">
-              <strong>Dica:</strong> Apresenta-te brevemente e menciona porque tens interesse neste alojamento.
-              Senhorios respondem mais rapidamente a mensagens completas e educadas.
+              {isActiveHome ? (
+                <>
+                  <strong>Dica:</strong> Explica claramente a tua questão ou dúvida.
+                  Senhorios respondem mais rapidamente a mensagens claras e objetivas.
+                </>
+              ) : (
+                <>
+                  <strong>Dica:</strong> Apresenta-te brevemente e menciona porque tens interesse neste alojamento.
+                  Senhorios respondem mais rapidamente a mensagens completas e educadas.
+                </>
+              )}
             </p>
           </div>
         </div>

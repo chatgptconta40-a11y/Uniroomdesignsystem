@@ -29,6 +29,24 @@ export const mockUsers: User[] = [
     verified: true,
     createdAt: new Date('2026-01-01'),
   },
+  {
+    id: '4',
+    name: 'Ana Costa',
+    email: 'ana.costa@student.pt',
+    password: 'password123',
+    type: 'student',
+    verified: true,
+    createdAt: new Date('2026-02-01'),
+  },
+  {
+    id: '5',
+    name: 'Pedro Oliveira',
+    email: 'pedro.oliveira@student.pt',
+    password: 'password123',
+    type: 'student',
+    verified: true,
+    createdAt: new Date('2026-02-15'),
+  },
 ];
 
 export const mockStudentProfiles: StudentProfile[] = [

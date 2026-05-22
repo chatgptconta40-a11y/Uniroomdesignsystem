@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router';
 import {
   TrendingUp,
   TrendingDown,
@@ -19,6 +20,7 @@ import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 
 export function LandlordAnalytics() {
+  const navigate = useNavigate();
   const analytics = getAllAnalytics();
   const insights = getInsights();
   const comparisons = getComparisons();
@@ -146,7 +148,18 @@ export function LandlordAnalytics() {
                     <p className="text-sm text-foreground mb-3">{insight.description}</p>
 
                     {insight.action && (
-                      <button className="text-sm font-medium text-primary hover:underline">
+                      <button
+                        className="text-sm font-medium text-primary hover:underline"
+                        onClick={() => {
+                          if (insight.action?.includes('fotos')) {
+                            navigate('/landlord/listings');
+                          } else if (insight.action?.includes('preços')) {
+                            navigate('/landlord/listings');
+                          } else {
+                            navigate('/landlord/analytics');
+                          }
+                        }}
+                      >
                         {insight.action}
                       </button>
                     )}

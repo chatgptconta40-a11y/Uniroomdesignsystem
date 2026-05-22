@@ -28,12 +28,13 @@ import { LandlordApplications } from '../pages/LandlordApplications';
 import { LandlordAnalytics } from '../pages/LandlordAnalytics';
 import { LandlordMaintenance } from '../pages/LandlordMaintenance';
 import { NewListing } from '../pages/NewListing';
-import { AdminDashboard } from '../pages/AdminDashboard';
-import { AdminUsers } from '../pages/AdminUsers';
-import { AdminListings } from '../pages/AdminListings';
-import { AdminReports } from '../pages/AdminReports';
-import { AdminAnalytics } from '../pages/AdminAnalytics';
-import { AdminSettings } from '../pages/AdminSettings';
+import { AdminLayout } from '../layouts/AdminLayout';
+import { AdminDashboard } from '../pages/admin/AdminDashboard';
+import { AdminUsers } from '../pages/admin/AdminUsers';
+import { AdminProperties } from '../pages/admin/AdminProperties';
+import { AdminReports } from '../pages/admin/AdminReports';
+import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
+import { AdminSettings } from '../pages/admin/AdminSettings';
 
 export default function App() {
   return (
@@ -241,7 +242,9 @@ export default function App() {
                     path="/admin"
                     element={
                       <ProtectedRoute>
-                        <AdminDashboard />
+                        <AdminLayout>
+                          <AdminDashboard />
+                        </AdminLayout>
                       </ProtectedRoute>
                     }
                   />
@@ -250,16 +253,20 @@ export default function App() {
                     path="/admin/users"
                     element={
                       <ProtectedRoute>
-                        <AdminUsers />
+                        <AdminLayout>
+                          <AdminUsers />
+                        </AdminLayout>
                       </ProtectedRoute>
                     }
                   />
 
                   <Route
-                    path="/admin/listings"
+                    path="/admin/properties"
                     element={
                       <ProtectedRoute>
-                        <AdminListings />
+                        <AdminLayout>
+                          <AdminProperties />
+                        </AdminLayout>
                       </ProtectedRoute>
                     }
                   />
@@ -268,7 +275,9 @@ export default function App() {
                     path="/admin/reports"
                     element={
                       <ProtectedRoute>
-                        <AdminReports />
+                        <AdminLayout>
+                          <AdminReports />
+                        </AdminLayout>
                       </ProtectedRoute>
                     }
                   />
@@ -277,7 +286,9 @@ export default function App() {
                     path="/admin/analytics"
                     element={
                       <ProtectedRoute>
-                        <AdminAnalytics />
+                        <AdminLayout>
+                          <AdminAnalytics />
+                        </AdminLayout>
                       </ProtectedRoute>
                     }
                   />
@@ -286,7 +297,9 @@ export default function App() {
                     path="/admin/settings"
                     element={
                       <ProtectedRoute>
-                        <AdminSettings />
+                        <AdminLayout>
+                          <AdminSettings />
+                        </AdminLayout>
                       </ProtectedRoute>
                     }
                   />

@@ -13,12 +13,14 @@ import {
   CheckCircle,
   Clock,
   Search,
-  Sparkles,
   Wrench,
   MapPin,
 } from 'lucide-react';
 import { getMaintenanceRequests } from '../data/mockMaintenance';
-import { useState, useEffect } from 'react';
+import { getApplicationsForUser, getActiveHomeForStudent } from '../data/mockApplications';
+import { getTotalUnreadCount } from '../data/mockMessages';
+import { getProperty, getRoom } from '../data/mockProperties';
+import { useState, useEffect, useMemo } from 'react';
 import { useProperties } from '../context/PropertiesContext';
 import { Property, Room } from '../types/property';
 
@@ -28,13 +30,73 @@ export function Dashboard() {
   const { rooms, properties } = useProperties();
   const [suggestions, setSuggestions] = useState<{ room: Room; property: Property; availableRooms: number }[]>([]);
   const [favoritesCount, setFavoritesCount] = useState(0);
+  const [applicationsCount, setApplicationsCount] = useState(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [maintenanceRequests, setMaintenanceRequests] = useState<any[]>([]);
+
+  const activeHome = useMemo(() => {
+    if (!user || user.type !== 'student') return null;
+
+    const activeHomeData = getActiveHomeForStudent(user.id);
+    if (!activeHomeData) return null;
+
+    const property = getProperty(activeHomeData.propertyId);
+    const room = getRoom(activeHomeData.roomId);
+
+    if (!property || !room) return null;
+
+    return { property, room, activeHomeData };
+  }, [user?.id, user?.type]);
 
   useEffect(() => {
     if (user?.type === 'landlord') {
       navigate('/landlord/dashboard');
+    } else if (user?.type === 'admin') {
+      navigate('/admin');
     }
   }, [user, navigate]);
+
+  // Update counters when data changes
+  useEffect(() => {
+    if (!user) return;
+
+    const updateCounters = () => {
+      // Update favorites count
+      const storedFavorites = JSON.parse(localStorage.getItem('uniroom_favorites') || '[]');
+      setFavoritesCount(storedFavorites.filter((favorite: any) => favorite.userId === user.id).length);
+
+      // Update applications count
+      const applications = getApplicationsForUser(user.id);
+      const activeApplications = applications.filter(
+        app => app.status === 'pending' || app.status === 'under_review' || app.status === 'accepted'
+      );
+      setApplicationsCount(activeApplications.length);
+
+      // Update unread messages count
+      const unreadCount = getTotalUnreadCount(user.id);
+      setUnreadMessagesCount(unreadCount);
+    };
+
+    // Initial update
+    updateCounters();
+
+    // Listen for storage events (when favorites/applications change)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'uniroom_favorites' || e.key === 'uniroom_applications' || e.key === 'uniroom_notifications') {
+        updateCounters();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    // Also update periodically to catch changes from same tab
+    const interval = setInterval(updateCounters, 2000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [user]);
 
   useEffect(() => {
     const activeProperties = properties.filter(property => property.status === 'active');
@@ -64,9 +126,6 @@ export function Dashboard() {
     setSuggestions(topSuggestions);
 
     if (user) {
-      const storedFavorites = JSON.parse(localStorage.getItem('uniroom_favorites') || '[]');
-      setFavoritesCount(storedFavorites.filter((favorite: any) => favorite.userId === user.id).length);
-
       const requests = getMaintenanceRequests(user.id);
       setMaintenanceRequests(requests.slice(0, 3));
     }
@@ -96,9 +155,9 @@ export function Dashboard() {
 
   const statsCards = user?.type === 'student'
     ? [
-        { label: 'Candidaturas', value: '0', icon: Calendar, color: 'primary' },
-        { label: 'Favoritos', value: String(favoritesCount), icon: Heart, color: 'secondary' },
-        { label: 'Mensagens', value: '0', icon: MessageCircle, color: 'accent' },
+        { label: 'Candidaturas', value: String(applicationsCount), icon: Calendar, color: 'primary', link: '/applications' },
+        { label: 'Favoritos', value: String(favoritesCount), icon: Heart, color: 'secondary', link: '/favorites' },
+        { label: 'Mensagens', value: String(unreadMessagesCount), icon: MessageCircle, color: 'accent', link: '/messages' },
       ]
     : [
         { label: 'Propriedades', value: '0', icon: HomeIcon, color: 'primary' },
@@ -136,50 +195,55 @@ export function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          {statsCards.map((stat, index) => (
-            <Card key={index} hover className="p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-3">{stat.label}</p>
-                  <p className="text-4xl font-bold text-foreground">{stat.value}</p>
-                </div>
+          {statsCards.map((stat, index) => {
+            const CardContent = (
+              <Card key={index} hover className="p-6 h-full">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-3">{stat.label}</p>
+                    <p className="text-4xl font-bold text-foreground">{stat.value}</p>
+                  </div>
 
-                <div
-                  className={`p-3 rounded-xl ${
-                    stat.color === 'primary'
-                      ? 'bg-primary/10'
-                      : stat.color === 'secondary'
-                      ? 'bg-secondary/10'
-                      : 'bg-accent/10'
-                  }`}
-                >
-                  <stat.icon
-                    className={`w-7 h-7 ${
+                  <div
+                    className={`p-3 rounded-xl ${
                       stat.color === 'primary'
-                        ? 'text-primary'
+                        ? 'bg-primary/10'
                         : stat.color === 'secondary'
-                        ? 'text-secondary'
-                        : 'text-accent'
+                        ? 'bg-secondary/10'
+                        : 'bg-accent/10'
                     }`}
-                  />
+                  >
+                    <stat.icon
+                      className={`w-7 h-7 ${
+                        stat.color === 'primary'
+                          ? 'text-primary'
+                          : stat.color === 'secondary'
+                          ? 'text-secondary'
+                          : 'text-accent'
+                      }`}
+                    />
+                  </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+
+            return stat.link ? (
+              <Link key={index} to={stat.link} className="block">
+                {CardContent}
+              </Link>
+            ) : (
+              CardContent
+            );
+          })}
         </div>
 
         {user?.type === 'student' && (
           <>
             <div className="mb-10">
               <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-primary/10 rounded-xl">
-                    <Sparkles className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-foreground">Sugestões para ti</h2>
-                    <p className="text-sm text-muted-foreground">Com base no teu perfil de compatibilidade</p>
-                  </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Sugestões para ti</h2>
+                  <p className="text-sm text-muted-foreground">Com base no teu perfil de compatibilidade</p>
                 </div>
 
                 <Link to="/search">
@@ -225,27 +289,29 @@ export function Dashboard() {
                   <h3 className="text-xl font-semibold text-foreground">A Minha Casa</h3>
                 </div>
 
-                {user?.id === 'estudante' ? (
+                {activeHome ? (
                   <div className="bg-card rounded-xl p-6 border border-border">
                     <div className="flex flex-col md:flex-row items-start gap-6">
                       <img
-                        src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400"
-                        alt="Estúdio moderno em Lisboa"
+                        src={activeHome.property.images[0]}
+                        alt={activeHome.property.title}
                         className="w-full md:w-32 h-48 md:h-32 rounded-lg object-cover flex-shrink-0"
                       />
 
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <h4 className="text-lg font-bold text-foreground">Estúdio moderno em Lisboa</h4>
+                          <h4 className="text-lg font-bold text-foreground">{activeHome.room.title}</h4>
                           <Badge variant="success">Alojamento ativo</Badge>
                         </div>
 
                         <div className="space-y-1.5 mb-4">
                           <p className="text-sm text-muted-foreground flex items-center gap-2">
                             <MapPin className="w-4 h-4" />
-                            Rua das Flores, Lisboa
+                            {activeHome.property.address}, {activeHome.property.city}
                           </p>
-                          <p className="text-sm text-muted-foreground">Desde setembro 2025</p>
+                          <p className="text-sm text-muted-foreground">
+                            Desde {activeHome.activeHomeData.moveInDate.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}
+                          </p>
                         </div>
 
                         {maintenanceRequests.length > 0 && (
@@ -314,12 +380,14 @@ export function Dashboard() {
                 </div>
 
                 <p className="text-muted-foreground mb-6">
-                  Ainda não tens candidaturas ativas.
+                  {applicationsCount > 0
+                    ? `Tens ${applicationsCount} ${applicationsCount === 1 ? 'candidatura ativa' : 'candidaturas ativas'}.`
+                    : 'Ainda não tens candidaturas ativas.'}
                 </p>
 
-                <Link to="/search">
+                <Link to={applicationsCount > 0 ? "/applications" : "/search"}>
                   <Button variant="primary">
-                    Procurar alojamento
+                    {applicationsCount > 0 ? 'Ver candidaturas' : 'Procurar alojamento'}
                   </Button>
                 </Link>
               </Card>

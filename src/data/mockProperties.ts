@@ -122,7 +122,9 @@ export const mockRooms: Room[] = [
     utilities: 40,
     availableFrom: new Date("2026-09-01"),
     minimumStay: 10,
-    status: "available",
+    status: "occupied",
+    occupiedBy: "1", // João Silva
+    moveInDate: new Date("2026-04-01"),
     compatibilityScore: 85,
     createdAt: new Date("2026-03-15"),
     updatedAt: new Date("2026-04-20"),
@@ -209,7 +211,9 @@ export const mockRooms: Room[] = [
     utilities: 35,
     availableFrom: new Date("2026-09-01"),
     minimumStay: 10,
-    status: "available",
+    status: "reserved",
+    reservedBy: "4", // Ana Costa
+    moveInDate: new Date("2026-09-01"),
     compatibilityScore: 80,
     createdAt: new Date("2026-02-10"),
     updatedAt: new Date("2026-04-18"),
@@ -266,6 +270,8 @@ export const mockRooms: Room[] = [
     availableFrom: new Date("2026-09-01"),
     minimumStay: 10,
     status: "reserved",
+    reservedBy: "5", // Pedro Oliveira
+    moveInDate: new Date("2026-09-01"),
     compatibilityScore: 70,
     createdAt: new Date("2026-02-10"),
     updatedAt: new Date("2026-04-18"),

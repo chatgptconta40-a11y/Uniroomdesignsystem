@@ -254,6 +254,15 @@ export function LandlordDashboard() {
                   className={`flex items-start gap-4 p-3 rounded-lg transition-colors hover:bg-muted cursor-pointer ${
                     !activity.read ? 'bg-primary/5' : ''
                   }`}
+                  onClick={() => {
+                    if (activity.type === 'application') {
+                      navigate('/landlord/applications');
+                    } else if (activity.type === 'message') {
+                      navigate('/messages');
+                    } else if (activity.type === 'view' || activity.type === 'favorite') {
+                      navigate('/landlord/analytics');
+                    }
+                  }}
                 >
                   <div className="flex-shrink-0 mt-1">
                     {getActivityIcon(activity.type)}
@@ -275,7 +284,7 @@ export function LandlordDashboard() {
               ))}
             </div>
 
-            <Button variant="outline" className="w-full mt-4" size="sm">
+            <Button variant="outline" className="w-full mt-4" size="sm" onClick={() => navigate('/landlord/analytics')}>
               Ver Todas
             </Button>
           </Card>

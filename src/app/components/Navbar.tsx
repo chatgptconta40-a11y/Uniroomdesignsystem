@@ -62,18 +62,19 @@ export function Navbar() {
           <div className="flex items-center gap-3">
             {isAuthenticated ? (
               <>
-                <div className="relative">
-                  <button
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-all"
-                  >
-                    <Bell className="w-5 h-5 text-muted-foreground" />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </button>
+                {user?.type !== 'admin' && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowNotifications(!showNotifications)}
+                      className="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-all"
+                    >
+                      <Bell className="w-5 h-5 text-muted-foreground" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </button>
 
                   {showNotifications && (
                     <>
@@ -138,18 +139,21 @@ export function Navbar() {
                       </div>
                     </>
                   )}
-                </div>
+                  </div>
+                )}
 
-                <Link to="/messages" className="relative">
-                  <button className="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-all">
-                    <MessageCircle className="w-5 h-5 text-muted-foreground" />
-                    {unreadMessagesCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-xs font-semibold rounded-full flex items-center justify-center">
-                        {unreadMessagesCount}
-                      </span>
-                    )}
-                  </button>
-                </Link>
+                {user?.type !== 'admin' && (
+                  <Link to="/messages" className="relative">
+                    <button className="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-all">
+                      <MessageCircle className="w-5 h-5 text-muted-foreground" />
+                      {unreadMessagesCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-xs font-semibold rounded-full flex items-center justify-center">
+                          {unreadMessagesCount}
+                        </span>
+                      )}
+                    </button>
+                  </Link>
+                )}
 
                 <div className="relative">
                   <button

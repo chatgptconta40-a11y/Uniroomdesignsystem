@@ -25,16 +25,16 @@ export function LandlordApplications() {
     : allApplications.filter(app => app.status === filter);
 
   const handleAccept = (applicationId: string, applicantName: string) => {
-    if (updateApplicationStatus(applicationId, 'accepted')) {
+    if (updateApplicationStatus(applicationId, 'accepted', user?.id)) {
       toast.success(`Candidatura de ${applicantName} aceite!`, {
-        description: 'O candidato foi notificado.',
+        description: 'O candidato foi notificado e a casa foi ativada.',
       });
     }
   };
 
   const handleReject = (applicationId: string, applicantName: string) => {
     if (window.confirm(`Tens a certeza que queres rejeitar a candidatura de ${applicantName}?`)) {
-      if (updateApplicationStatus(applicationId, 'rejected')) {
+      if (updateApplicationStatus(applicationId, 'rejected', user?.id)) {
         toast.success('Candidatura rejeitada');
       }
     }
