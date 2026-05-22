@@ -27,6 +27,7 @@ import { LandlordProperties } from '../pages/LandlordProperties';
 import { LandlordApplications } from '../pages/LandlordApplications';
 import { LandlordAnalytics } from '../pages/LandlordAnalytics';
 import { LandlordMaintenance } from '../pages/LandlordMaintenance';
+import { LandlordPropertyDetail } from '../pages/LandlordPropertyDetail';
 import { NewListing } from '../pages/NewListing';
 import { AdminLayout } from '../layouts/AdminLayout';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
@@ -234,6 +235,16 @@ export default function App() {
                       <ProtectedRoute>
                         <Navbar />
                         <LandlordMaintenance />
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  <Route
+                    path="/landlord/property/:id"
+                    element={
+                      <ProtectedRoute>
+                        <Navbar />
+                        <LandlordPropertyDetail />
                       </ProtectedRoute>
                     }
                   />

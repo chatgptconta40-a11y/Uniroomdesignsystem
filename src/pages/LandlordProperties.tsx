@@ -13,6 +13,7 @@ export function LandlordProperties() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { properties, updatePropertyStatus, deleteProperty, getRoomsByProperty } = useProperties();
+
   const [filter, setFilter] = useState<'all' | PropertyStatus>('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pausingId, setPausingId] = useState<string | null>(null);
@@ -70,16 +71,11 @@ export function LandlordProperties() {
   };
 
   const handleView = (id: string) => {
-    navigate(`/property/${id}`);
+    navigate(`/landlord/property/${id}`);
   };
 
-  const handleEdit = (id: string) => {
-    const rooms = getRoomsByProperty(id);
-    if (rooms.length > 0) {
-      navigate(`/room/${rooms[0].id}`);
-    } else {
-      toast.info('Esta propriedade não tem quartos para visualizar');
-    }
+  const handleEdit = (_id: string) => {
+    toast.info('Edição da propriedade em desenvolvimento');
   };
 
   return (
