@@ -29,6 +29,7 @@ import {
   Clock,
   Ban,
   FileEdit,
+  ShieldOff,
   Users,
   Star,
   MessageCircle,
@@ -50,6 +51,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { toast } from 'sonner';
+import { isUserSuspended, isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
 import { Room, RoomStatus, Property } from '../types/property';
 import { normalizeRoomStatus, getRoomStatusLabel, getRoomStatusBadgeClasses } from '../utils/roomStatus';
 import {
@@ -1249,6 +1251,8 @@ export function LandlordPropertyDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { getProperty, getRoomsByProperty, updateRoomStatus, updateRoom, updateProperty, addRoom } = useProperties();
+  const isAccountSuspended = user ? isUserSuspended(user.id) : false;
+  const isBlockedFromPublishing = user ? isUserBlockedFromPublishing(user.id) : false;
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -1330,6 +1334,14 @@ export function LandlordPropertyDetail() {
   };
 
   const handleRoomReactivate = (roomId: string) => {
+    if (property.adminSuspended) {
+      toast.error('Este alojamento foi suspenso pela equipa UniRoom. Não é possível reativar quartos.');
+      return;
+    }
+    if (isAccountSuspended) {
+      toast.error('A tua conta está suspensa. Não é possível reativar quartos.');
+      return;
+    }
     updateRoomStatus(roomId, 'available');
     toast.success('Quarto reativado com sucesso');
   };
@@ -1386,6 +1398,12 @@ export function LandlordPropertyDetail() {
   };
 
   const handleAddRoom = (room: Room) => {
+    if (room.status === 'available' && (property.adminSuspended || isAccountSuspended || isBlockedFromPublishing)) {
+      // Force draft if landlord/property is restricted
+      room = { ...room, status: 'draft' };
+      if (property.adminSuspended) toast.error('Alojamento suspenso pelo admin. Quarto guardado como rascunho.');
+      else toast.error('Conta restringida. Quarto guardado como rascunho.');
+    }
     addRoom(room);
     updateProperty(property.id, {
       totalRooms: property.totalRooms + 1,
@@ -1394,11 +1412,11 @@ export function LandlordPropertyDetail() {
       ...(room.status === 'available' && property.status === 'draft' ? { status: 'active' as const } : {}),
     });
     setShowAddRoomModal(false);
-    toast.success(
-      room.status === 'available'
-        ? `Quarto "${room.title}" publicado com sucesso!`
-        : `Quarto "${room.title}" guardado como rascunho.`,
-    );
+    if (room.status !== 'draft') {
+      toast.success(`Quarto "${room.title}" publicado com sucesso!`);
+    } else {
+      toast.info(`Quarto "${room.title}" guardado como rascunho.`);
+    }
   };
 
   // Set of rooms that already have a reserved/occupied status
@@ -1463,9 +1481,15 @@ export function LandlordPropertyDetail() {
 
           <div className="absolute bottom-4 right-4 md:left-1/2 md:-translate-x-1/2 md:right-auto text-right md:text-center max-w-xl">
             <div className="flex items-center gap-2 justify-end md:justify-center mb-2">
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusCfg.color}`}>
-                {statusCfg.label}
-              </span>
+              {property.adminSuspended ? (
+                <span className="px-3 py-1 rounded-full text-xs font-semibold border bg-red-100 text-red-800 border-red-300">
+                  Suspenso pelo Admin
+                </span>
+              ) : (
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusCfg.color}`}>
+                  {statusCfg.label}
+                </span>
+              )}
               {property.verified && (
                 <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
                   Verificado
@@ -1504,6 +1528,27 @@ export function LandlordPropertyDetail() {
             </Button>
           </div>
         </div>
+
+        {/* Admin suspension banner */}
+        {property.adminSuspended && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-xl flex items-start gap-3">
+            <div className="w-9 h-9 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <ShieldOff className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-red-800 mb-0.5">Suspenso pela equipa UniRoom</p>
+              <p className="text-sm text-red-700">
+                {property.adminSuspensionReason || 'Este anúncio foi suspenso pela equipa UniRoom.'} Não podes reativar ou publicar quartos enquanto esta suspensão estiver ativa. Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span>.
+              </p>
+              {property.adminSuspendedAt && (
+                <p className="text-xs text-red-500 mt-1">
+                  Suspenso em {new Date(property.adminSuspendedAt).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {property.adminSuspendedBy ? ` por ${property.adminSuspendedBy}` : ''}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -1668,12 +1713,11 @@ export function LandlordPropertyDetail() {
                           room={room}
                           reservedByName={room.reservedBy ? (acceptedCandidate?.studentName ?? room.reservedBy) : undefined}
                           onEdit={() => setEditingRoom(room)}
-                          onPause={normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved' ? () => handleRoomPause(room.id) : undefined}
-                          onReactivate={normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
+                          onPause={!property.adminSuspended && (normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved') ? () => handleRoomPause(room.id) : undefined}
+                          onReactivate={!property.adminSuspended && !isAccountSuspended && normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
                         />
                         );
-                      })
-                      ))}
+                      })}
                     </div>
                   )}
                 </>

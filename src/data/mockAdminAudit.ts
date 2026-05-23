@@ -3,10 +3,12 @@
 export type AuditAction =
   | 'property_suspended'
   | 'property_reactivated'
+  | 'property_suspension_lifted'
   | 'ad_reactivated'
   | 'report_resolved'
   | 'report_rejected'
   | 'landlord_suspended'
+  | 'landlord_suspension_lifted'
   | 'landlord_blocked'
   | 'landlord_unblocked'
   | 'verification_requested'
@@ -151,13 +153,15 @@ export function addAuditEntry(entry: Omit<AuditEntry, 'id' | 'date'>): AuditEntr
 }
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
-  property_suspended: 'Anúncio suspenso',
+  property_suspended: 'Anúncio suspenso pelo admin',
   property_reactivated: 'Anúncio reativado',
+  property_suspension_lifted: 'Suspensão de anúncio levantada',
   ad_reactivated: 'Anúncio reativado',
   report_resolved: 'Denúncia resolvida',
   report_rejected: 'Denúncia rejeitada',
   landlord_suspended: 'Senhorio suspenso',
-  landlord_blocked: 'Senhorio bloqueado',
+  landlord_suspension_lifted: 'Suspensão de senhorio levantada',
+  landlord_blocked: 'Senhorio bloqueado de publicar',
   landlord_unblocked: 'Senhorio desbloqueado',
   verification_requested: 'Verificação pedida',
   verification_approved: 'Verificação aprovada',

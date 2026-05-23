@@ -16,12 +16,15 @@ interface PropertiesContextType {
   getProperty: (id: string) => Property | undefined;
   getRoom: (id: string) => Room | undefined;
   getRoomsByProperty: (propertyId: string) => Room[];
+  // Admin-only actions
+  adminSuspendProperty: (id: string, reason: string, adminName: string) => void;
+  liftAdminSuspension: (id: string) => void;
 }
 
 const PropertiesContext = createContext<PropertiesContextType | undefined>(undefined);
 
 // Bump this version when mock data changes to force a reset for existing sessions
-const DATA_VERSION = '2026-05-v4';
+const DATA_VERSION = '2026-05-v5';
 
 export function PropertiesProvider({ children }: { children: ReactNode }) {
   const [properties, setProperties] = useState<Property[]>(() => {
@@ -175,6 +178,41 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     return rooms.filter(room => room.propertyId === propertyId);
   };
 
+  const adminSuspendProperty = (id: string, reason: string, adminName: string) => {
+    setProperties(previous =>
+      previous.map(property =>
+        property.id === id
+          ? {
+              ...property,
+              status: 'paused' as PropertyStatus,
+              adminSuspended: true,
+              adminSuspensionReason: reason,
+              adminSuspendedAt: new Date().toISOString(),
+              adminSuspendedBy: adminName,
+              updatedAt: new Date(),
+            }
+          : property,
+      ),
+    );
+  };
+
+  const liftAdminSuspension = (id: string) => {
+    setProperties(previous =>
+      previous.map(property =>
+        property.id === id
+          ? {
+              ...property,
+              adminSuspended: false,
+              adminSuspensionReason: undefined,
+              adminSuspendedAt: undefined,
+              adminSuspendedBy: undefined,
+              updatedAt: new Date(),
+            }
+          : property,
+      ),
+    );
+  };
+
   return (
     <PropertiesContext.Provider
       value={{
@@ -191,6 +229,8 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
         getProperty,
         getRoom,
         getRoomsByProperty,
+        adminSuspendProperty,
+        liftAdminSuspension,
       }}
     >
       {children}

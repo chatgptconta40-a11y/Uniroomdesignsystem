@@ -3,6 +3,7 @@ import {
   Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle,
   Clock, User, Wrench, AlertCircle, PauseCircle, Camera, BarChart2,
   ChevronRight, BedDouble, Users, RefreshCw, CalendarDays, Bell,
+  Ban, ShieldOff,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -12,6 +13,7 @@ import { getMaintenanceStats } from '../data/mockMaintenance';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
+import { isUserSuspended, isUserBlockedFromPublishing, getUserState } from '../data/mockAdminUsersState';
 
 export function LandlordDashboard() {
   const { user } = useAuth();
@@ -72,6 +74,9 @@ export function LandlordDashboard() {
   const showJulyReminder = now.getMonth() < 6;
 
   const recentActivities = activities.slice(0, 5);
+  const isAccountSuspended = user ? isUserSuspended(user.id) : false;
+  const isBlockedFromPublishing = user ? isUserBlockedFromPublishing(user.id) : false;
+  const suspensionReason = user ? getUserState(user.id)?.reason : undefined;
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -129,6 +134,43 @@ export function LandlordDashboard() {
             Aqui está um resumo da tua atividade como senhorio
           </p>
         </div>
+
+        {/* Account suspension banner */}
+        {isAccountSuspended && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-2xl flex items-start gap-3">
+            <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Ban className="w-5 h-5 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-red-800 mb-1">Conta suspensa temporariamente</p>
+              <p className="text-sm text-red-700">
+                A tua conta foi suspensa pela equipa UniRoom. Não podes publicar, reativar ou criar novos anúncios enquanto esta suspensão estiver ativa.
+                {suspensionReason && <span> Motivo: <span className="font-medium">{suspensionReason}</span>.</span>}
+              </p>
+              <p className="text-xs text-red-600 mt-1">
+                Para resolver, contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span>.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Blocked from publishing banner */}
+        {!isAccountSuspended && isBlockedFromPublishing && (
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-start gap-3">
+            <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <ShieldOff className="w-5 h-5 text-orange-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-orange-800 mb-1">Publicação de novos anúncios bloqueada</p>
+              <p className="text-sm text-orange-700">
+                A tua conta está impedida de publicar novos anúncios pela equipa UniRoom. Podes continuar a gerir os teus anúncios existentes e responder a candidaturas.
+              </p>
+              <p className="text-xs text-orange-600 mt-1">
+                Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span> para mais informações.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* July republication reminder */}
         {showJulyReminder && (

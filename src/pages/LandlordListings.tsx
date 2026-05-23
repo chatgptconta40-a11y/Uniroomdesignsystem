@@ -20,6 +20,8 @@ import {
   X,
   AlertCircle,
   Archive,
+  ShieldOff,
+  Ban,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -30,6 +32,7 @@ import { Badge } from '../components/Badge';
 import { toast } from 'sonner';
 import { mockUsers } from '../data/mockUsers';
 import { getApplicationsByProperty } from '../data/mockLandlordCandidates';
+import { isUserSuspended, isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
 
 interface EditRoomModalProps {
   room: Room;
@@ -142,18 +145,23 @@ function EditRoomModal({ room, onClose, onSave }: EditRoomModalProps) {
   );
 }
 
-function getPropertyStatusBadge(status: PropertyStatus) {
+function getPropertyStatusBadge(property: Property) {
+  if (property.adminSuspended) {
+    return { label: 'Suspenso pelo Admin', variant: 'default' as const, className: 'bg-red-100 text-red-700 border-red-300' };
+  }
   const configs = {
     active: { label: 'Ativo', variant: 'success' as const, className: '' },
-    paused: { label: 'Pausado', variant: 'warning' as const, className: '' },
+    paused: { label: 'Pausado pelo Senhorio', variant: 'warning' as const, className: '' },
     draft: { label: 'Rascunho', variant: 'default' as const, className: 'bg-blue-100 text-blue-700 border-blue-200' },
     archived: { label: 'Arquivado', variant: 'default' as const, className: 'bg-muted text-foreground border-border' },
   };
-
-  return configs[status];
+  return configs[property.status];
 }
 
 function getRoomStatusBadge(room: Room, property: Property) {
+  if (property.adminSuspended) {
+    return { label: 'Suspenso', variant: 'default' as const, className: 'bg-red-100 text-red-700 border-red-200' };
+  }
   if (property.status === 'paused') {
     return { label: 'Pausado', variant: 'warning' as const, className: '' };
   }
@@ -214,6 +222,9 @@ export function LandlordListings() {
     );
   }
 
+  const isAccountSuspended = isUserSuspended(user.id);
+  const isBlockedFromPublishing = isUserBlockedFromPublishing(user.id);
+
   const landlordProperties = properties.filter(property => property.landlordId === user.id);
 
   const groupedProperties = landlordProperties.map(property => ({
@@ -247,15 +258,31 @@ export function LandlordListings() {
     setPausingPropertyId(null);
   };
 
-  const handleReactivateProperty = (propertyId: string) => {
-    updatePropertyStatus(propertyId, 'active');
+  const handleReactivateProperty = (property: Property) => {
+    if (property.adminSuspended) {
+      toast.error('Este alojamento foi suspenso pela equipa UniRoom. Contacta o suporte para resolver.');
+      return;
+    }
+    if (isAccountSuspended) {
+      toast.error('A tua conta está suspensa. Não é possível reativar alojamentos.');
+      return;
+    }
+    updatePropertyStatus(property.id, 'active');
     toast.success('Alojamento reativado com sucesso');
   };
 
-  const handlePublishProperty = (propertyId: string) => {
-    const propertyRooms = rooms.filter(r => r.propertyId === propertyId);
+  const handlePublishProperty = (property: Property) => {
+    if (property.adminSuspended) {
+      toast.error('Este alojamento foi suspenso pela equipa UniRoom. Contacta o suporte para resolver.');
+      return;
+    }
+    if (isAccountSuspended || isBlockedFromPublishing) {
+      toast.error('A tua conta está restringida. Não é possível publicar alojamentos.');
+      return;
+    }
+    const propertyRooms = rooms.filter(r => r.propertyId === property.id);
     const draftCount = propertyRooms.filter(r => r.status === 'draft').length;
-    updatePropertyStatus(propertyId, 'active');
+    updatePropertyStatus(property.id, 'active');
     propertyRooms.forEach(room => {
       if (room.status === 'draft') updateRoomStatus(room.id, 'available');
     });
@@ -266,7 +293,14 @@ export function LandlordListings() {
   };
 
   const handlePublishDraftRoom = (room: Room, property: Property) => {
-    // If the parent property is also draft, activate it together
+    if (property.adminSuspended) {
+      toast.error('Este alojamento foi suspenso pela equipa UniRoom. Contacta o suporte para resolver.');
+      return;
+    }
+    if (isAccountSuspended || isBlockedFromPublishing) {
+      toast.error('A tua conta está restringida. Não é possível publicar quartos.');
+      return;
+    }
     if (property.status === 'draft') {
       updatePropertyStatus(property.id, 'active');
     }
@@ -299,7 +333,11 @@ export function LandlordListings() {
     toast.success('Quarto pausado com sucesso');
   };
 
-  const handleReactivateRoom = (room: Room) => {
+  const handleReactivateRoom = (room: Room, property: Property) => {
+    if (property.adminSuspended) {
+      toast.error('Este alojamento foi suspenso pela equipa UniRoom. Não é possível reativar quartos.');
+      return;
+    }
     updateRoomStatus(room.id, 'available');
     toast.success('Quarto reativado com sucesso');
   };
@@ -317,11 +355,44 @@ export function LandlordListings() {
             </p>
           </div>
 
-          <Button onClick={() => navigate('/landlord/new-listing')} size="lg">
+          <Button
+            onClick={() => navigate('/landlord/new-listing')}
+            size="lg"
+            disabled={isAccountSuspended || isBlockedFromPublishing}
+          >
             <PlusCircle className="w-5 h-5 mr-2" />
             Novo Alojamento
           </Button>
         </div>
+
+        {/* Account suspension / blocking banners */}
+        {isAccountSuspended && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-xl flex items-start gap-3">
+            <div className="w-9 h-9 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Ban className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-red-800 mb-0.5">Conta suspensa temporariamente</p>
+              <p className="text-sm text-red-700">
+                A tua conta foi suspensa pela equipa UniRoom. Não podes publicar, reativar ou criar novos alojamentos. Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span> para mais informações.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!isAccountSuspended && isBlockedFromPublishing && (
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-300 rounded-xl flex items-start gap-3">
+            <div className="w-9 h-9 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <ShieldOff className="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-orange-800 mb-0.5">Publicação de novos anúncios bloqueada</p>
+              <p className="text-sm text-orange-700">
+                A tua conta está impedida de publicar novos anúncios. Podes consultar os teus dados e responder a candidaturas existentes. Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span>.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="mb-6 flex items-center gap-3 overflow-x-auto pb-2">
           <Filter className="w-5 h-5 text-muted-foreground flex-shrink-0" />
@@ -387,7 +458,7 @@ export function LandlordListings() {
         ) : (
           <div className="space-y-6">
             {filteredProperties.map(({ property, propertyRooms }) => {
-              const statusBadge = getPropertyStatusBadge(property.status);
+              const statusBadge = getPropertyStatusBadge(property);
               const availableRooms = propertyRooms.filter(room => room.status === 'available').length;
               const occupiedRooms = propertyRooms.filter(room => room.status === 'occupied' || room.status === 'reserved').length;
               const minPrice = propertyRooms.length > 0
@@ -493,8 +564,23 @@ export function LandlordListings() {
                         </div>
                       </div>
 
+                      {/* Admin suspension banner */}
+                      {property.adminSuspended && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-300 rounded-xl flex items-start gap-3">
+                          <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <ShieldOff className="w-4 h-4 text-red-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-red-800 mb-0.5">Suspenso pela equipa UniRoom</p>
+                            <p className="text-xs text-red-700">
+                              {property.adminSuspensionReason || 'Este anúncio foi suspenso pela equipa UniRoom.'} Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span> para resolver.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Draft property banner */}
-                      {property.status === 'draft' && (
+                      {property.status === 'draft' && !property.adminSuspended && (
                         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
                           <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
                             <FileText className="w-4 h-4 text-blue-700" />
@@ -505,8 +591,8 @@ export function LandlordListings() {
                               Nada é visível para estudantes. Publica tudo de uma vez ou usa "Publicar *" em cada quarto — o alojamento também será ativado automaticamente.
                             </p>
                           </div>
-                          {propertyRooms.length > 0 && (
-                            <Button variant="primary" size="sm" onClick={() => handlePublishProperty(property.id)}>
+                          {propertyRooms.length > 0 && !isAccountSuspended && !isBlockedFromPublishing && (
+                            <Button variant="primary" size="sm" onClick={() => handlePublishProperty(property)}>
                               <Play className="w-4 h-4 mr-1" />
                               Publicar tudo
                             </Button>
@@ -545,15 +631,15 @@ export function LandlordListings() {
                           Gerir quartos
                         </Button>
 
-                        {property.status === 'active' && (
+                        {property.status === 'active' && !property.adminSuspended && (
                           <Button variant="outline" size="sm" onClick={() => setPausingPropertyId(property.id)}>
                             <Pause className="w-4 h-4 mr-1" />
                             Pausar
                           </Button>
                         )}
 
-                        {property.status === 'paused' && (
-                          <Button variant="primary" size="sm" onClick={() => handleReactivateProperty(property.id)}>
+                        {property.status === 'paused' && !property.adminSuspended && !isAccountSuspended && (
+                          <Button variant="primary" size="sm" onClick={() => handleReactivateProperty(property)}>
                             <Play className="w-4 h-4 mr-1" />
                             Reativar
                           </Button>
@@ -597,8 +683,8 @@ export function LandlordListings() {
                         <div className="divide-y divide-border">
                           {propertyRooms.map(room => {
                             const roomBadge = getRoomStatusBadge(room, property);
-                            const canPauseRoom = room.status === 'available' && property.status === 'active';
-                            const canReactivateRoom = room.status === 'paused' && property.status === 'active';
+                            const canPauseRoom = room.status === 'available' && property.status === 'active' && !property.adminSuspended;
+                            const canReactivateRoom = room.status === 'paused' && property.status === 'active' && !property.adminSuspended && !isAccountSuspended;
 
                             const studentId = room.status === 'reserved' ? room.reservedBy : room.status === 'occupied' ? room.occupiedBy : undefined;
                             const studentName = getStudentName(studentId);
@@ -660,7 +746,7 @@ export function LandlordListings() {
                                     <Edit className="w-4 h-4" />
                                   </button>
 
-                                  {room.status === 'draft' && (
+                                  {room.status === 'draft' && !property.adminSuspended && !isAccountSuspended && !isBlockedFromPublishing && (
                                     <button
                                       onClick={() => handlePublishDraftRoom(room, property)}
                                       className="flex items-center gap-1 px-2.5 h-9 rounded-lg bg-green-50 border border-green-300 hover:bg-green-100 text-green-700 transition-colors text-xs font-medium"
@@ -683,7 +769,7 @@ export function LandlordListings() {
 
                                   {canReactivateRoom && (
                                     <button
-                                      onClick={() => handleReactivateRoom(room)}
+                                      onClick={() => handleReactivateRoom(room, property)}
                                       className="w-9 h-9 rounded-lg border border-border hover:border-secondary hover:bg-secondary/10 flex items-center justify-center transition-colors"
                                       title="Reativar quarto"
                                     >

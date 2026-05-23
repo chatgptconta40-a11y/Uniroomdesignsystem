@@ -51,6 +51,12 @@ export interface Property {
   createdAt: Date;
   updatedAt: Date;
   views: number;
+
+  // Admin-enforced suspension (separate from landlord-controlled pause)
+  adminSuspended?: boolean;
+  adminSuspensionReason?: string;
+  adminSuspendedAt?: string; // ISO string
+  adminSuspendedBy?: string; // admin display name
 }
 
 export interface Room {

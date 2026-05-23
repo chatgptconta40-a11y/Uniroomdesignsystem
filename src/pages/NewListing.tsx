@@ -37,7 +37,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
-import { isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
+import { isUserBlockedFromPublishing, isUserSuspended } from '../data/mockAdminUsersState';
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -439,6 +439,7 @@ export function NewListing() {
   const { user } = useAuth();
   const { addProperty, addRoom } = useProperties();
   const isBlocked = user ? isUserBlockedFromPublishing(user.id) : false;
+  const isSuspended = user ? isUserSuspended(user.id) : false;
 
   const [step, setStep] = useState(1);
   const [property, setProperty] = useState<PropertyDraft>(defaultProperty);
@@ -509,10 +510,16 @@ export function NewListing() {
   const buildAndSave = (mode: 'draft' | 'selected' | 'all') => {
     if (!user) return;
 
-    // Block landlords that have been restricted by admin
-    if (mode !== 'draft' && isUserBlockedFromPublishing(user.id)) {
-      toast.error('A tua conta está temporariamente bloqueada para publicar novos anúncios. Contacta o suporte UniRoom.');
-      return;
+    // Block suspended or publishing-blocked landlords from publishing
+    if (mode !== 'draft') {
+      if (isUserSuspended(user.id)) {
+        toast.error('A tua conta está suspensa pela equipa UniRoom. Não é possível publicar novos anúncios. Contacta o suporte.');
+        return;
+      }
+      if (isUserBlockedFromPublishing(user.id)) {
+        toast.error('A tua conta está temporariamente bloqueada para publicar novos anúncios. Contacta o suporte UniRoom.');
+        return;
+      }
     }
 
     const propertyId = `prop-${Date.now()}`;
@@ -1209,13 +1216,24 @@ export function NewListing() {
                 </div>
               )}
 
-              {/* Block banner for restricted landlords */}
-              {isBlocked && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+              {/* Suspension / block banners for restricted landlords */}
+              {isSuspended && (
+                <div className="p-4 bg-red-50 border border-red-300 rounded-xl flex items-start gap-3">
                   <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600">⚠</div>
                   <div>
-                    <p className="text-sm font-semibold text-red-800">Conta bloqueada para publicação</p>
+                    <p className="text-sm font-semibold text-red-800">Conta suspensa</p>
                     <p className="text-xs text-red-700 mt-0.5">
+                      A tua conta está suspensa pela equipa UniRoom. Não podes publicar novos anúncios. Podes guardar rascunhos para quando a suspensão for levantada. Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span>.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {!isSuspended && isBlocked && (
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-start gap-3">
+                  <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-orange-600">⚠</div>
+                  <div>
+                    <p className="text-sm font-semibold text-orange-800">Publicação de anúncios bloqueada</p>
+                    <p className="text-xs text-orange-700 mt-0.5">
                       A tua conta está temporariamente bloqueada para publicar novos anúncios. Podes guardar rascunhos mas não publicar. Contacta o suporte UniRoom para resolver.
                     </p>
                   </div>

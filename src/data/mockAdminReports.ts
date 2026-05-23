@@ -29,10 +29,14 @@ export interface AdminReport {
   internalNote?: string;
   resolvedAt?: string;
   resolvedByAdminId?: string;
-  // actions applied
+  // actions applied (sanctions)
   landlordSuspended?: boolean;
   propertySuspended?: boolean;
   landlordBlocked?: boolean;
+  // lift actions applied
+  propertySuspensionLifted?: boolean;
+  landlordSuspensionLifted?: boolean;
+  landlordUnblocked?: boolean;
 }
 
 const STORAGE_KEY = 'uniroom_admin_reports';
@@ -224,16 +228,38 @@ export function addReport(report: Omit<AdminReport, 'id'>): AdminReport {
   return newReport;
 }
 
-export function applyAdminAction(
-  reportId: string,
-  action: 'suspend_property' | 'suspend_landlord' | 'block_landlord',
-): AdminReport | null {
+export type AdminActionType =
+  | 'suspend_property'
+  | 'suspend_landlord'
+  | 'block_landlord'
+  | 'lift_property_suspension'
+  | 'lift_landlord_suspension'
+  | 'unblock_landlord';
+
+export function applyAdminAction(reportId: string, action: AdminActionType): AdminReport | null {
   const all = initStorage();
   const idx = all.findIndex(r => r.id === reportId);
   if (idx < 0) return null;
-  if (action === 'suspend_property') all[idx] = { ...all[idx], propertySuspended: true, status: 'em_analise' };
-  if (action === 'suspend_landlord') all[idx] = { ...all[idx], landlordSuspended: true, status: 'em_analise' };
-  if (action === 'block_landlord') all[idx] = { ...all[idx], landlordBlocked: true, landlordSuspended: true, status: 'em_analise' };
+  switch (action) {
+    case 'suspend_property':
+      all[idx] = { ...all[idx], propertySuspended: true, propertySuspensionLifted: false, status: 'em_analise' };
+      break;
+    case 'suspend_landlord':
+      all[idx] = { ...all[idx], landlordSuspended: true, landlordSuspensionLifted: false, status: 'em_analise' };
+      break;
+    case 'block_landlord':
+      all[idx] = { ...all[idx], landlordBlocked: true, landlordSuspended: true, landlordUnblocked: false, landlordSuspensionLifted: false, status: 'em_analise' };
+      break;
+    case 'lift_property_suspension':
+      all[idx] = { ...all[idx], propertySuspended: false, propertySuspensionLifted: true };
+      break;
+    case 'lift_landlord_suspension':
+      all[idx] = { ...all[idx], landlordSuspended: false, landlordSuspensionLifted: true };
+      break;
+    case 'unblock_landlord':
+      all[idx] = { ...all[idx], landlordBlocked: false, landlordSuspended: false, landlordUnblocked: true };
+      break;
+  }
   saveAll(all);
   return all[idx];
 }
