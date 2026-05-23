@@ -170,13 +170,15 @@ export function TrustSignals({ room, property, onReport }: TrustSignalsProps) {
       )}
 
       {/* Report button */}
-      <button
-        onClick={onReport}
-        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-destructive transition-colors w-full pt-1 border-t border-border"
-      >
-        <Flag className="w-3.5 h-3.5" />
-        <span>Denunciar este anúncio</span>
-      </button>
+      <div className="border-t border-border pt-3">
+        <button
+          onClick={onReport}
+          className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all duration-200 group"
+        >
+          <Flag className="w-4 h-4 flex-shrink-0" />
+          <span className="text-sm font-medium">Denunciar este anúncio</span>
+        </button>
+      </div>
 
       {/* Footer explanation */}
       <p className="text-[11px] text-muted-foreground leading-relaxed border-t border-border pt-3">
