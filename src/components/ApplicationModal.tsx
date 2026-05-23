@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { X, Check, Send, AlertCircle } from 'lucide-react';
+import { X, Check, Send, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 import { Card } from './Card';
 import { Badge } from './Badge';
 import { Input } from './Input';
 import { useAuth } from '../context/AuthContext';
 import { Accommodation } from '../types/accommodation';
-import { createApplication } from '../data/mockApplications';
+import { createUnifiedApplication, getExistingApplicationForRoom } from '../data/unifiedApplications';
+import { mockStudentProfiles } from '../data/mockUsers';
 import { toast } from 'sonner';
 
 interface ApplicationModalProps {
@@ -24,48 +25,45 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
   const [message, setMessage] = useState('');
   const [moveInDate, setMoveInDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const studentProfile = user
-    ? {
-        personal: {
-          course: 'Não especificado',
-          university: 'Não especificada',
-          year: undefined as number | undefined,
-          verified: user.verified,
-        },
-        lifestyle: {
-          schedule: 'flexible' as string,
-          cleanliness: 4,
-          smoking: false,
-          personality: 'equilibrado',
-        },
-        preferences: true,
-      }
-    : null;
 
-  const profileCompleteness = studentProfile
+  const studentProfile = mockStudentProfiles.find(p => p.userId === user?.id);
+
+  const profileCompleteness = user
     ? Math.round(
-        ((studentProfile.personal ? 33 : 0) +
-          (studentProfile.lifestyle ? 33 : 0) +
-          (studentProfile.preferences ? 34 : 0))
+        ((user.name ? 33 : 0) +
+          (studentProfile?.university ? 33 : 0) +
+          (studentProfile?.course ? 34 : 0))
       )
     : 0;
 
+  // Duplicate check
+  const existingApplication = roomId ? getExistingApplicationForRoom(user?.id || '', roomId) : null;
+  const hasPendingApplication = existingApplication && (existingApplication.status === 'pending' || existingApplication.status === 'under_review');
+  const hasRejectedApplication = existingApplication && (existingApplication.status === 'rejected' || existingApplication.status === 'withdrawn');
+
   const handleSubmit = async () => {
+    if (hasPendingApplication) {
+      toast.error('Já tens uma candidatura ativa para este quarto.');
+      return;
+    }
+
     setIsSubmitting(true);
+    await new Promise(resolve => setTimeout(resolve, 1200));
 
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    createApplication(
-      user?.id || '',
-      accommodation.id,
-      accommodation.landlordId,
+    createUnifiedApplication({
+      studentId: user?.id || '',
+      studentName: user?.name || 'Estudante',
+      studentUniversity: studentProfile?.university,
+      studentCourse: studentProfile?.course,
+      studentYear: studentProfile?.year,
+      roomId: roomId || accommodation.id,
+      propertyId: propertyId || '',
+      landlordId: accommodation.landlordId,
+      landlordName: 'Senhorio',
       message,
-      moveInDate ? new Date(moveInDate) : undefined,
-      {
-        roomId,
-        propertyId,
-      }
-    );
+      moveInDate: moveInDate ? new Date(moveInDate) : undefined,
+      accommodationId: accommodation.id,
+    });
 
     setIsSubmitting(false);
     toast.success('Candidatura enviada com sucesso!');
@@ -80,7 +78,7 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
     'Indica se tens alguma dúvida',
   ];
 
-  const exampleMessage = `Olá! Sou estudante de ${studentProfile?.personal?.course || '[Curso]'} na ${studentProfile?.personal?.university || '[Universidade]'}. Procuro alojamento a partir de ${moveInDate ? new Date(moveInDate).toLocaleDateString('pt-PT', { month: 'long' }) : '[mês]'}. Estou muito interessado/a neste espaço pela localização e ambiente descrito.`;
+  const exampleMessage = `Olá! Sou estudante de ${studentProfile?.course || '[Curso]'} na ${studentProfile?.university || '[Universidade]'}. Procuro alojamento a partir de ${moveInDate ? new Date(moveInDate).toLocaleDateString('pt-PT', { month: 'long' }) : '[mês]'}. Estou muito interessado/a neste espaço pela localização e ambiente descrito.`;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -97,6 +95,29 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Duplicate warning banner */}
+        {hasPendingApplication && (
+          <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-900">Já tens uma candidatura ativa para este quarto</p>
+              <p className="text-sm text-amber-700 mt-0.5">
+                Estado atual: <strong>{existingApplication?.status === 'pending' ? 'Pendente' : 'Em análise'}</strong>.
+                Podes acompanhar em "As Minhas Candidaturas".
+              </p>
+            </div>
+          </div>
+        )}
+
+        {hasRejectedApplication && !hasPendingApplication && (
+          <div className="mx-6 mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-blue-700">
+              A tua candidatura anterior para este quarto foi {existingApplication?.status === 'rejected' ? 'recusada' : 'cancelada'}. Podes candidatar-te novamente.
+            </p>
+          </div>
+        )}
 
         <div className="px-6 py-4 border-b border-border bg-muted/30">
           <div className="flex items-center justify-between mb-2">
@@ -152,7 +173,7 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
                       <Badge variant={profileCompleteness === 100 ? 'success' : 'warning'}>
                         Perfil {profileCompleteness}% completo
                       </Badge>
-                      {studentProfile?.personal?.verified && (
+                      {user?.verified && (
                         <Badge variant="outline">
                           <Check className="w-3 h-3 mr-1" />
                           Verificado
@@ -162,36 +183,32 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
                   </div>
                 </div>
 
-                {studentProfile?.personal && (
-                  <div className="space-y-3 text-sm">
-                    <div className="flex items-center justify-between py-2 border-t">
-                      <span className="text-muted-foreground">Curso</span>
-                      <span className="font-medium text-foreground">
-                        {studentProfile.personal.course || 'Não especificado'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between py-2 border-t">
-                      <span className="text-muted-foreground">Universidade</span>
-                      <span className="font-medium text-foreground">
-                        {studentProfile.personal.university || 'Não especificado'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between py-2 border-t">
-                      <span className="text-muted-foreground">Ano</span>
-                      <span className="font-medium text-foreground">
-                        {studentProfile.personal.year ? `${studentProfile.personal.year}º ano` : 'Não especificado'}
-                      </span>
-                    </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between py-2 border-t">
+                    <span className="text-muted-foreground">Curso</span>
+                    <span className="font-medium text-foreground">
+                      {studentProfile?.course || 'Não especificado'}
+                    </span>
                   </div>
-                )}
+                  <div className="flex items-center justify-between py-2 border-t">
+                    <span className="text-muted-foreground">Universidade</span>
+                    <span className="font-medium text-foreground">
+                      {studentProfile?.university || 'Não especificada'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-t">
+                    <span className="text-muted-foreground">Ano</span>
+                    <span className="font-medium text-foreground">
+                      {studentProfile?.year ? `${studentProfile.year}º ano` : 'Não especificado'}
+                    </span>
+                  </div>
+                </div>
 
                 {profileCompleteness < 100 && (
                   <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
                     <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm">
-                      <p className="font-medium text-yellow-900 mb-1">
-                        Perfil incompleto
-                      </p>
+                      <p className="font-medium text-yellow-900 mb-1">Perfil incompleto</p>
                       <p className="text-yellow-700">
                         Completa o teu perfil para aumentar as hipóteses de aceitação.
                       </p>
@@ -199,35 +216,6 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
                   </div>
                 )}
               </Card>
-
-              {studentProfile?.lifestyle && (
-                <div>
-                  <h4 className="font-medium text-foreground mb-3">Perfil de convivência</h4>
-                  <Card className="p-6">
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Horário:</span>
-                        <span className="ml-2 font-medium">
-                          {studentProfile.lifestyle.schedule === 'day' ? 'Diurno' :
-                           studentProfile.lifestyle.schedule === 'night' ? 'Noturno' : 'Flexível'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Limpeza:</span>
-                        <span className="ml-2 font-medium">{studentProfile.lifestyle.cleanliness}/5</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Fumar:</span>
-                        <span className="ml-2 font-medium">{studentProfile.lifestyle.smoking ? 'Sim' : 'Não'}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Personalidade:</span>
-                        <span className="ml-2 font-medium capitalize">{studentProfile.lifestyle.personality}</span>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-              )}
             </div>
           )}
 
@@ -342,8 +330,8 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
                     <p className="font-medium mb-1">O que acontece a seguir?</p>
                     <ul className="space-y-1 text-xs">
                       <li>• O senhorio será notificado da tua candidatura</li>
-                      <li>• Receberás atualizações sobre o estado</li>
-                      <li>• Podes gerir candidaturas na página "As Minhas Candidaturas"</li>
+                      <li>• Receberás atualizações sobre o estado em tempo real</li>
+                      <li>• Quando aceite, confirmas a estadia em "As Minhas Candidaturas"</li>
                     </ul>
                   </div>
                 </div>
@@ -361,14 +349,14 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
           </Button>
           <Button
             onClick={step === 3 ? handleSubmit : () => setStep(step + 1)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || (step === 3 && hasPendingApplication)}
           >
             {isSubmitting ? (
               'A enviar...'
             ) : step === 3 ? (
               <>
                 <Send className="w-4 h-4 mr-2" />
-                Enviar Candidatura
+                {hasPendingApplication ? 'Candidatura já enviada' : 'Enviar Candidatura'}
               </>
             ) : (
               'Continuar'

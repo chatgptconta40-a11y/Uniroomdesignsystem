@@ -77,7 +77,7 @@ export interface FavoriteAccommodation {
   savedAt: Date;
 }
 
-export type ApplicationStatus = 'pending' | 'under_review' | 'accepted' | 'rejected' | 'withdrawn';
+export type ApplicationStatus = 'pending' | 'under_review' | 'accepted' | 'rejected' | 'withdrawn' | 'confirmed';
 
 export interface Application {
   id: string;
@@ -86,12 +86,20 @@ export interface Application {
   roomId?: string;
   propertyId?: string;
   landlordId: string;
+  landlordName?: string;
   status: ApplicationStatus;
   message: string;
   moveInDate?: Date;
   createdAt: Date;
   updatedAt: Date;
   reviewedAt?: Date;
+  confirmedAt?: Date;
+  // Cross-reference to landlord-side candidate entry
+  linkedCandidateId?: string;
+  // Visit info synced from landlord side
+  visitDate?: string;
+  visitFormat?: 'presencial' | 'videochamada';
+  visitNote?: string;
 }
 
 export interface Notification {
@@ -117,4 +125,9 @@ export interface ActiveHome {
   contractEndDate: Date;
   paymentDay: number;
   createdAt: Date;
+  // Rich fields populated at confirmation time
+  propertyTitle?: string;
+  roomTitle?: string;
+  monthlyRent?: number;
+  utilities?: number;
 }

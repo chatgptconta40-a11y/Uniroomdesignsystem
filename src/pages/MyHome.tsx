@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import {
   Bath,
   Calendar,
@@ -14,6 +14,7 @@ import {
   Users,
   Wifi,
   Wrench,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Card } from '../components/Card';
@@ -24,7 +25,7 @@ import { StartConversationModal } from '../components/StartConversationModal';
 import { getMaintenanceRequests } from '../data/mockMaintenance';
 import { getProperty, getRoom } from '../data/mockProperties';
 import { getHouseGroupConversation, getMessagesForConversation } from '../data/mockMessages';
-import { getActiveHomeForStudent } from '../data/mockApplications';
+import { getActiveHomeForStudent, getApplicationsForUser, confirmStay } from '../data/mockApplications';
 import { Accommodation } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
 
@@ -70,9 +71,11 @@ function getDaysSince(date: Date | string) {
 
 export function MyHome() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
+  const [homeRefreshKey, setHomeRefreshKey] = useState(0);
 
   const activeHome = useMemo(() => {
     if (!user || user.type !== 'student') {
@@ -136,7 +139,7 @@ export function MyHome() {
       accommodation,
       activeHomeData,
     };
-  }, [user?.id, user?.type]);
+  }, [user?.id, user?.type, homeRefreshKey]);
 
   const refreshMaintenanceRequests = () => {
     if (!user) {
@@ -152,26 +155,86 @@ export function MyHome() {
   }, [user?.id]);
 
   if (!activeHome) {
+    // Check if there's an accepted application awaiting confirmation
+    const acceptedApp = user
+      ? getApplicationsForUser(user.id).find(a => a.status === 'accepted')
+      : null;
+
+    const acceptedRoom = acceptedApp?.roomId ? getRoom(acceptedApp.roomId) : null;
+    const acceptedProperty = acceptedApp?.propertyId ? getProperty(acceptedApp.propertyId) : null;
+
     return (
       <div className="min-h-screen bg-background">
-        <div className="max-w-5xl mx-auto px-6 py-16">
-          <Card className="p-12 text-center">
-            <div className="w-20 h-20 bg-accent/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <HomeIcon className="w-10 h-10 text-accent" />
-            </div>
-            <h2 className="text-2xl font-bold mb-3">Ainda não tens uma casa ativa</h2>
-            <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-              Quando uma candidatura for aceite e confirmares a estadia, esta página passa a mostrar todas as informações do teu alojamento.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center gap-3 justify-center">
-              <Link to="/search">
-                <Button variant="primary">Procurar alojamento</Button>
-              </Link>
-              <Link to="/applications">
-                <Button variant="outline">Ver candidaturas</Button>
-              </Link>
-            </div>
-          </Card>
+        <div className="max-w-2xl mx-auto px-6 py-16">
+          {acceptedApp ? (
+            <Card className="overflow-hidden">
+              {acceptedRoom && acceptedProperty && (
+                <div className="relative h-48 bg-muted">
+                  <img
+                    src={acceptedRoom.images[0] || acceptedProperty.images[0]}
+                    alt={acceptedRoom.title}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <div className="absolute bottom-4 left-4 text-white">
+                    <p className="font-semibold">{acceptedRoom.title}</p>
+                    <p className="text-sm text-white/80">{acceptedProperty.address}, {acceptedProperty.city}</p>
+                  </div>
+                </div>
+              )}
+              <div className="p-8 text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Candidatura aceite!</h2>
+                <p className="text-muted-foreground mb-2 max-w-sm mx-auto">
+                  O senhorio aceitou a tua candidatura para{acceptedRoom ? ` ${acceptedRoom.title}` : ' este quarto'}.
+                  Confirma a estadia para garantir o teu lugar.
+                </p>
+                {acceptedApp.moveInDate && (
+                  <p className="text-sm text-primary font-medium mb-6">
+                    Entrada prevista: {new Date(acceptedApp.moveInDate).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                )}
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button
+                    onClick={() => {
+                      const home = confirmStay(acceptedApp.id);
+                      if (home) {
+                        setHomeRefreshKey(k => k + 1);
+                      }
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <HomeIcon className="w-4 h-4 mr-2" />
+                    Confirmar estadia
+                  </Button>
+                  <Button variant="outline" onClick={() => navigate('/applications')}>
+                    <ArrowRight className="w-4 h-4 mr-2" />
+                    Ver candidaturas
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <Card className="p-12 text-center">
+              <div className="w-20 h-20 bg-accent/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <HomeIcon className="w-10 h-10 text-accent" />
+              </div>
+              <h2 className="text-2xl font-bold mb-3">Ainda não tens uma casa ativa</h2>
+              <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+                Quando uma candidatura for aceite e confirmares a estadia, esta página passa a mostrar todas as informações do teu alojamento.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center gap-3 justify-center">
+                <Link to="/search">
+                  <Button variant="primary">Procurar alojamento</Button>
+                </Link>
+                <Link to="/applications">
+                  <Button variant="outline">Ver candidaturas</Button>
+                </Link>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
     );

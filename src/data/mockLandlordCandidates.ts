@@ -1,5 +1,8 @@
 // Landlord-side application data, persisted in localStorage.
 // Structured to support future Supabase migration.
+// Bidirectional sync with mockApplications via linkedStudentAppId / linkedCandidateId.
+
+import { updateApplicationStatus, syncVisitData } from './mockApplications';
 
 export type CandidateStatus = 'pending' | 'under_review' | 'accepted' | 'rejected';
 
@@ -19,17 +22,77 @@ export interface LandlordApplication {
   message: string;
   status: CandidateStatus;
   appliedAt: string; // ISO date string
-  visitDate?: string; // ISO date string, optional
+  visitDate?: string;
   visitFormat?: 'presencial' | 'videochamada';
   visitNote?: string;
+  // Cross-reference to student-side Application
+  linkedStudentAppId?: string;
 }
 
 const STORAGE_KEY = 'uniroom_landlord_applications';
 const DATA_VERSION_KEY = 'uniroom_landlord_applications_version';
-const CURRENT_VERSION = '2026-05-v1';
+const CURRENT_VERSION = '2026-05-v2';
 
-// Initial mock data — linked to the ESTGV test property
 const INITIAL_APPLICATIONS: LandlordApplication[] = [
+  // ── Demo entries linked to the logged-in student (id: '1', João Silva) ────
+  {
+    id: 'lapp-demo-a',
+    propertyId: 'prop-estgv',
+    roomId: 'room-estgv-2',
+    studentId: '1',
+    studentName: 'João Silva',
+    initials: 'JS',
+    avatarColor: 'from-blue-500 to-indigo-500',
+    university: 'Universidade de Lisboa',
+    course: 'Engenharia Informática',
+    year: 2,
+    isStudent: true,
+    compatibilityScore: 88,
+    message: 'Olá! Sou estudante de Engenharia Informática no 2º ano na Universidade de Lisboa. Procuro um quarto tranquilo perto da faculdade. Sou organizado, respeitador e gosto de manter a casa limpa.',
+    status: 'under_review',
+    appliedAt: '2026-05-18',
+    visitDate: '2026-05-28T15:00:00',
+    visitFormat: 'presencial',
+    visitNote: 'Encontremo-nos na entrada do edifício.',
+    linkedStudentAppId: 'app1',
+  },
+  {
+    id: 'lapp-demo-b',
+    propertyId: 'prop-estgv',
+    roomId: 'room-estgv-1',
+    studentId: '1',
+    studentName: 'João Silva',
+    initials: 'JS',
+    avatarColor: 'from-blue-500 to-indigo-500',
+    university: 'Universidade de Lisboa',
+    course: 'Engenharia Informática',
+    year: 2,
+    isStudent: true,
+    compatibilityScore: 92,
+    message: 'Boa tarde! Sou estudante de Informática e procuro alojamento a partir de setembro. Tenho horários flexíveis e gosto de um ambiente calmo para estudar.',
+    status: 'accepted',
+    appliedAt: '2026-04-10',
+    linkedStudentAppId: 'app2',
+  },
+  {
+    id: 'lapp-demo-c',
+    propertyId: 'prop-1',
+    roomId: 'room-1',
+    studentId: '1',
+    studentName: 'João Silva',
+    initials: 'JS',
+    avatarColor: 'from-blue-500 to-indigo-500',
+    university: 'Universidade de Lisboa',
+    course: 'Engenharia Informática',
+    year: 2,
+    isStudent: true,
+    compatibilityScore: 74,
+    message: 'Olá! Interessado no quarto. Sou estudante responsável e procuro alojamento de longa duração.',
+    status: 'rejected',
+    appliedAt: '2026-04-08',
+    linkedStudentAppId: 'app3',
+  },
+  // ── Other students (no linkedStudentAppId — not linked to the demo account) ─
   {
     id: 'lapp-1',
     propertyId: 'prop-estgv',
@@ -60,7 +123,7 @@ const INITIAL_APPLICATIONS: LandlordApplication[] = [
     year: 3,
     isStudent: true,
     compatibilityScore: 85,
-    message: 'Bom dia! Sou estudante de Gestão, 3º ano. Procuro alojamento a partir de setembro. Sou calmo, responsável e não fumo. Tenho referências de senhorios anteriores.',
+    message: 'Bom dia! Sou estudante de Gestão, 3º ano. Procuro alojamento a partir de setembro. Sou calmo, responsável e não fumo.',
     status: 'under_review',
     appliedAt: '2026-05-18',
   },
@@ -94,11 +157,10 @@ const INITIAL_APPLICATIONS: LandlordApplication[] = [
     year: 2,
     isStudent: true,
     compatibilityScore: 71,
-    message: 'Estudante de Marketing, 2º ano. Procuro quarto económico com boa ligação à faculdade. Sou sociável mas respeito os espaços comuns.',
+    message: 'Estudante de Marketing, 2º ano. Procuro quarto económico com boa ligação à faculdade.',
     status: 'rejected',
     appliedAt: '2026-05-15',
   },
-  // prop-1 applications
   {
     id: 'lapp-5',
     propertyId: 'prop-1',
@@ -118,28 +180,32 @@ const INITIAL_APPLICATIONS: LandlordApplication[] = [
   },
 ];
 
+// ─── Storage helpers ──────────────────────────────────────────────────────────
+
 function initStorage(): LandlordApplication[] {
   const version = localStorage.getItem(DATA_VERSION_KEY);
   if (version !== CURRENT_VERSION) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_APPLICATIONS));
     localStorage.setItem(DATA_VERSION_KEY, CURRENT_VERSION);
-    return INITIAL_APPLICATIONS;
+    return [...INITIAL_APPLICATIONS];
   }
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_APPLICATIONS));
-    return INITIAL_APPLICATIONS;
+    return [...INITIAL_APPLICATIONS];
   }
   try {
     return JSON.parse(stored) as LandlordApplication[];
   } catch {
-    return INITIAL_APPLICATIONS;
+    return [...INITIAL_APPLICATIONS];
   }
 }
 
-function saveAll(applications: LandlordApplication[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(applications));
+function saveAll(apps: LandlordApplication[]): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(apps));
 }
+
+// ─── Queries ──────────────────────────────────────────────────────────────────
 
 export function getAllApplications(): LandlordApplication[] {
   return initStorage();
@@ -154,11 +220,12 @@ export function getApplicationsByRoom(propertyId: string, roomId: string): Landl
 }
 
 export function getPendingCountForLandlord(landlordId: string, propertyIds: string[]): number {
-  const all = initStorage();
-  return all.filter(
+  return initStorage().filter(
     a => propertyIds.includes(a.propertyId) && (a.status === 'pending' || a.status === 'under_review'),
   ).length;
 }
+
+// ─── Mutations (with bidirectional sync) ──────────────────────────────────────
 
 export function updateCandidateStatus(
   applicationId: string,
@@ -169,6 +236,13 @@ export function updateCandidateStatus(
   if (idx < 0) return null;
   all[idx] = { ...all[idx], status };
   saveAll(all);
+
+  // Sync to student-side
+  const linked = all[idx].linkedStudentAppId;
+  if (linked) {
+    updateApplicationStatus(linked, status);
+  }
+
   return all[idx];
 }
 
@@ -195,5 +269,12 @@ export function scheduleVisit(
     status: all[idx].status === 'pending' ? 'under_review' : all[idx].status,
   };
   saveAll(all);
+
+  // Sync visit data to student-side
+  const linked = all[idx].linkedStudentAppId;
+  if (linked) {
+    syncVisitData(linked, visitDate, visitFormat, visitNote);
+  }
+
   return all[idx];
 }
