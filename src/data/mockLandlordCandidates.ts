@@ -139,6 +139,10 @@ function saveAll(applications: LandlordApplication[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(applications));
 }
 
+export function getAllApplications(): LandlordApplication[] {
+  return initStorage();
+}
+
 export function getApplicationsByProperty(propertyId: string): LandlordApplication[] {
   return initStorage().filter(a => a.propertyId === propertyId);
 }
@@ -170,4 +174,16 @@ export function addApplication(app: LandlordApplication): void {
   const all = initStorage();
   all.push(app);
   saveAll(all);
+}
+
+export function scheduleVisit(
+  applicationId: string,
+  visitDate: string,
+): LandlordApplication | null {
+  const all = initStorage();
+  const idx = all.findIndex(a => a.id === applicationId);
+  if (idx < 0) return null;
+  all[idx] = { ...all[idx], visitDate, status: all[idx].status === 'pending' ? 'under_review' : all[idx].status };
+  saveAll(all);
+  return all[idx];
 }

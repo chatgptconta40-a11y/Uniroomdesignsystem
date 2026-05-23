@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  ScrollText,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/Button';
@@ -29,7 +30,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true },
     { path: '/admin/users', icon: Users, label: 'Utilizadores' },
     { path: '/admin/properties', icon: Home, label: 'Casas e Quartos' },
-    { path: '/admin/reports', icon: Flag, label: 'Denúncias' },
+    { path: '/admin/reports', icon: Flag, label: 'Moderação' },
+    { path: '/admin/audit', icon: ScrollText, label: 'Auditoria' },
     { path: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
     { path: '/admin/settings', icon: Settings, label: 'Configurações' },
   ];

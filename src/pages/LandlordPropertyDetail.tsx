@@ -33,6 +33,7 @@ import {
   Star,
   MessageCircle,
   Phone,
+  Video,
   GraduationCap,
   ThumbsUp,
   ThumbsDown,
@@ -41,6 +42,7 @@ import {
   AlertCircle,
   ClipboardList,
   UserCheck,
+  Calendar,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -55,6 +57,7 @@ import {
   CandidateStatus,
   getApplicationsByProperty,
   updateCandidateStatus,
+  scheduleVisit,
 } from '../data/mockLandlordCandidates';
 
 // Re-export the type alias used internally
@@ -68,12 +71,14 @@ function CandidateCard({
   onAccept,
   onReject,
   onContact,
+  onScheduleVisit,
 }: {
   candidate: Candidate;
-  roomAlreadyReserved: boolean; // room reserved by someone else
+  roomAlreadyReserved: boolean;
   onAccept: () => void;
   onReject: () => void;
   onContact: () => void;
+  onScheduleVisit: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const statusConfig: Record<CandidateStatus, { label: string; cls: string }> = {
@@ -121,6 +126,12 @@ function CandidateCard({
           <p className="text-xs text-muted-foreground mt-0.5">
             Candidatura a {new Date(candidate.appliedAt).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
           </p>
+          {candidate.visitDate && (
+            <p className="text-xs text-blue-600 font-medium mt-0.5 flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              Visita: {new Date(candidate.visitDate).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })} às {new Date(candidate.visitDate).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
         </div>
         <div className="flex-shrink-0 text-right">
           <div className={`text-lg font-bold ${scoreColor}`}>{candidate.compatibilityScore}%</div>
@@ -160,11 +171,15 @@ function CandidateCard({
             Mensagem
           </button>
           <button
-            onClick={onContact}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-xs font-medium transition-colors"
+            onClick={onScheduleVisit}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+              candidate.visitDate
+                ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-border hover:bg-muted'
+            }`}
           >
-            <Phone className="w-3.5 h-3.5" />
-            Agendar visita
+            <Calendar className="w-3.5 h-3.5" />
+            {candidate.visitDate ? 'Reagendar' : 'Agendar visita'}
           </button>
           <div className="flex-1" />
           <button
@@ -563,6 +578,365 @@ function AddRoomModal({
   );
 }
 
+// ─── EditRoomDetailModal ──────────────────────────────────────────────────────
+
+function EditRoomDetailModal({
+  room,
+  onClose,
+  onSave,
+}: {
+  room: Room;
+  onClose: () => void;
+  onSave: (id: string, updates: Partial<Room>) => void;
+}) {
+  const [form, setForm] = useState({
+    title: room.title,
+    price: String(room.price),
+    utilities: room.utilities !== undefined ? String(room.utilities) : '',
+    utilitiesIncluded: room.utilities !== undefined,
+    roomType: room.roomType,
+    availableFrom: room.availableFrom
+      ? new Date(room.availableFrom).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0],
+    minimumStay: String(room.minimumStay || 6),
+    description: room.description || '',
+    status: room.status as RoomStatus,
+  });
+
+  const set = (field: string, value: string | boolean) =>
+    setForm(prev => ({ ...prev, [field]: value }));
+
+  const handleSave = () => {
+    if (!form.title.trim()) { toast.error('O nome do quarto é obrigatório'); return; }
+    const price = Number(form.price);
+    if (isNaN(price) || price <= 0) { toast.error('Preço inválido'); return; }
+
+    onSave(room.id, {
+      title: form.title.trim(),
+      price,
+      utilities: form.utilitiesIncluded && form.utilities ? Number(form.utilities) : undefined,
+      roomType: form.roomType,
+      availableFrom: new Date(form.availableFrom),
+      minimumStay: Number(form.minimumStay) || 6,
+      description: form.description.trim(),
+      status: form.status,
+      updatedAt: new Date(),
+    });
+  };
+
+  const statusOptions: { value: RoomStatus; label: string }[] = [
+    { value: 'draft', label: 'Rascunho' },
+    { value: 'available', label: 'Disponível' },
+    { value: 'reserved', label: 'Reservado' },
+    { value: 'occupied', label: 'Ocupado' },
+    { value: 'paused', label: 'Pausado' },
+  ];
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-background rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between p-5 border-b border-border sticky top-0 bg-background rounded-t-2xl z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                <Pencil className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">Editar Quarto</h3>
+                <p className="text-xs text-muted-foreground">{room.roomNumber}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-5 flex flex-col gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Nome do quarto *</label>
+              <input
+                value={form.title}
+                onChange={e => set('title', e.target.value)}
+                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Renda (€/mês) *</label>
+                <input
+                  type="number"
+                  value={form.price}
+                  onChange={e => set('price', e.target.value)}
+                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Tipo</label>
+                <select
+                  value={form.roomType}
+                  onChange={e => set('roomType', e.target.value)}
+                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                >
+                  <option value="private">Quarto Privado</option>
+                  <option value="shared">Quarto Partilhado</option>
+                  <option value="studio">Estúdio</option>
+                  <option value="apartment">Apartamento</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={form.utilitiesIncluded}
+                  onChange={e => set('utilitiesIncluded', e.target.checked)}
+                  className="w-4 h-4 accent-primary"
+                />
+                <span className="text-sm font-medium">Despesas incluídas</span>
+              </label>
+              {form.utilitiesIncluded && (
+                <input
+                  type="number"
+                  value={form.utilities}
+                  onChange={e => set('utilities', e.target.value)}
+                  placeholder="Valor das despesas (€/mês)"
+                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  min="0"
+                />
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Disponível a partir de</label>
+                <input
+                  type="date"
+                  value={form.availableFrom}
+                  onChange={e => set('availableFrom', e.target.value)}
+                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Estadia mínima (meses)</label>
+                <input
+                  type="number"
+                  value={form.minimumStay}
+                  onChange={e => set('minimumStay', e.target.value)}
+                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  min="1"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Estado</label>
+              <div className="grid grid-cols-3 gap-2">
+                {statusOptions.map(opt => {
+                  const colors: Record<RoomStatus, string> = {
+                    available: 'border-green-300 bg-green-50 text-green-700',
+                    reserved: 'border-blue-300 bg-blue-50 text-blue-700',
+                    occupied: 'border-purple-300 bg-purple-50 text-purple-700',
+                    paused: 'border-amber-300 bg-amber-50 text-amber-700',
+                    draft: 'border-gray-300 bg-gray-50 text-gray-700',
+                  };
+                  const isActive = form.status === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => set('status', opt.value)}
+                      className={`px-2 py-2 rounded-lg text-xs font-medium border transition-all ${
+                        isActive
+                          ? colors[opt.value] + ' ring-2 ring-offset-1 ring-current/30'
+                          : 'border-border hover:bg-muted'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Descrição</label>
+              <textarea
+                value={form.description}
+                onChange={e => set('description', e.target.value)}
+                rows={3}
+                placeholder="Descreve o quarto..."
+                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-1 border-t border-border">
+              <button
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                Guardar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── ScheduleVisitModal ───────────────────────────────────────────────────────
+
+function ScheduleVisitModal({
+  candidate,
+  roomTitle,
+  onClose,
+  onSchedule,
+}: {
+  candidate: LandlordApplication;
+  roomTitle: string;
+  onClose: () => void;
+  onSchedule: (applicationId: string, visitDate: string, details: { format: string; note: string }) => void;
+}) {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [form, setForm] = useState({
+    date: tomorrow.toISOString().split('T')[0],
+    time: '10:00',
+    format: 'presencial' as 'presencial' | 'videochamada',
+    note: '',
+  });
+
+  const set = (field: string, value: string) =>
+    setForm(prev => ({ ...prev, [field]: value }));
+
+  const handleConfirm = () => {
+    if (!form.date) { toast.error('Escolhe uma data'); return; }
+    if (!form.time) { toast.error('Escolhe uma hora'); return; }
+    const visitDateTime = `${form.date}T${form.time}`;
+    onSchedule(candidate.id, visitDateTime, { format: form.format, note: form.note });
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-background rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="flex items-center justify-between p-5 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">Agendar Visita</h3>
+                <p className="text-xs text-muted-foreground">{candidate.studentName} · {roomTitle}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-5 flex flex-col gap-4">
+            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
+              <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${candidate.avatarColor} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
+                {candidate.initials}
+              </div>
+              <div>
+                <p className="text-sm font-semibold">{candidate.studentName}</p>
+                <p className="text-xs text-muted-foreground">{candidate.course} · {candidate.university}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Data</label>
+                <input
+                  type="date"
+                  value={form.date}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={e => set('date', e.target.value)}
+                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Hora</label>
+                <input
+                  type="time"
+                  value={form.time}
+                  onChange={e => set('time', e.target.value)}
+                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Formato da visita</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['presencial', 'videochamada'] as const).map(fmt => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, format: fmt }))}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      form.format === fmt
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-border hover:bg-muted'
+                    }`}
+                  >
+                    {fmt === 'presencial' ? (
+                      <><Phone className="w-4 h-4" /> Presencial</>
+                    ) : (
+                      <><Video className="w-4 h-4" /> Videochamada</>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Nota para o candidato (opcional)</label>
+              <textarea
+                value={form.note}
+                onChange={e => set('note', e.target.value)}
+                rows={2}
+                placeholder="ex: Toca à campainha do 2º andar..."
+                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-1 border-t border-border">
+              <button
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <Calendar className="w-4 h-4" />
+                Confirmar Visita
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── EditPropertyModal ────────────────────────────────────────────────────────
 
 function EditPropertyModal({
@@ -859,11 +1233,13 @@ export function LandlordPropertyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { getProperty, getRoomsByProperty, updateRoomStatus, updateProperty, addRoom } = useProperties();
+  const { getProperty, getRoomsByProperty, updateRoomStatus, updateRoom, updateProperty, addRoom } = useProperties();
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddRoomModal, setShowAddRoomModal] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [visitCandidate, setVisitCandidate] = useState<Candidate | null>(null);
   const [activeTab, setActiveTab] = useState<'rooms' | 'candidates'>('rooms');
   const [candidates, setCandidates] = useState<Candidate[]>(() =>
     id ? getApplicationsByProperty(id) : [],
@@ -975,6 +1351,21 @@ export function LandlordPropertyDetail() {
     updateProperty(property.id, updates);
     setShowEditModal(false);
     toast.success('Alojamento atualizado com sucesso');
+  };
+
+  const handleSaveRoomEdit = (roomId: string, updates: Partial<Room>) => {
+    updateRoom(roomId, updates);
+    setEditingRoom(null);
+    toast.success('Quarto atualizado com sucesso');
+  };
+
+  const handleScheduleVisit = (applicationId: string, visitDate: string, details: { format: string; note: string }) => {
+    scheduleVisit(applicationId, visitDate);
+    setCandidates(prev =>
+      prev.map(c => c.id === applicationId ? { ...c, visitDate, status: c.status === 'pending' ? 'under_review' : c.status } : c),
+    );
+    setVisitCandidate(null);
+    toast.success(`Visita agendada com sucesso${details.format === 'videochamada' ? ' (videochamada)' : ''}`);
   };
 
   const handleAddRoom = (room: Room) => {
@@ -1256,7 +1647,7 @@ export function LandlordPropertyDetail() {
                         <RoomCard
                           key={room.id}
                           room={room}
-                          onEdit={() => toast.info('Edição detalhada de quarto em breve')}
+                          onEdit={() => setEditingRoom(room)}
                           onPause={normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved' ? () => handleRoomPause(room.id) : undefined}
                           onReactivate={normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
                         />
@@ -1373,6 +1764,7 @@ export function LandlordPropertyDetail() {
                               navigate('/messages');
                               toast.info(`A abrir conversa com ${candidate.studentName}`);
                             }}
+                            onScheduleVisit={() => setVisitCandidate(candidate)}
                           />
                         );
                       })}
@@ -1487,6 +1879,25 @@ export function LandlordPropertyDetail() {
           existingRoomsCount={rooms.length}
           onClose={() => setShowAddRoomModal(false)}
           onAdd={handleAddRoom}
+        />
+      )}
+
+      {/* Edit room detail modal */}
+      {editingRoom && (
+        <EditRoomDetailModal
+          room={editingRoom}
+          onClose={() => setEditingRoom(null)}
+          onSave={handleSaveRoomEdit}
+        />
+      )}
+
+      {/* Schedule visit modal */}
+      {visitCandidate && (
+        <ScheduleVisitModal
+          candidate={visitCandidate}
+          roomTitle={rooms.find(r => r.id === visitCandidate.roomId)?.title ?? 'Quarto'}
+          onClose={() => setVisitCandidate(null)}
+          onSchedule={handleScheduleVisit}
         />
       )}
     </div>

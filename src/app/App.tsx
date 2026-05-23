@@ -38,6 +38,7 @@ import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminUsers } from '../pages/admin/AdminUsers';
 import { AdminProperties } from '../pages/admin/AdminProperties';
 import { AdminReports } from '../pages/admin/AdminReports';
+import { AdminAudit } from '../pages/admin/AdminAudit';
 import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
 import { AdminSettings } from '../pages/admin/AdminSettings';
 
@@ -291,6 +292,17 @@ function AppShell() {
                       <ProtectedRoute>
                         <AdminLayout>
                           <AdminReports />
+                        </AdminLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  <Route
+                    path="/admin/audit"
+                    element={
+                      <ProtectedRoute>
+                        <AdminLayout>
+                          <AdminAudit />
                         </AdminLayout>
                       </ProtectedRoute>
                     }

@@ -29,6 +29,7 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { toast } from 'sonner';
 import { mockUsers } from '../data/mockUsers';
+import { getApplicationsByProperty } from '../data/mockLandlordCandidates';
 
 interface EditRoomModalProps {
   room: Room;
@@ -389,11 +390,14 @@ export function LandlordListings() {
               const statusBadge = getPropertyStatusBadge(property.status);
               const availableRooms = propertyRooms.filter(room => room.status === 'available').length;
               const occupiedRooms = propertyRooms.filter(room => room.status === 'occupied' || room.status === 'reserved').length;
-              const minPrice = Math.min(...propertyRooms.map(room => room.price));
-              const pendingApplications = propertyRooms.reduce(
-                (total, room) => total + (room.status === 'available' ? 1 : 0),
-                0,
-              );
+              const minPrice = propertyRooms.length > 0
+                ? Math.min(...propertyRooms.map(room => room.price))
+                : null;
+              const propertyApps = getApplicationsByProperty(property.id);
+              const pendingCount = propertyApps.filter(a => a.status === 'pending').length;
+              const underReviewCount = propertyApps.filter(a => a.status === 'under_review').length;
+              const acceptedCount = propertyApps.filter(a => a.status === 'accepted').length;
+              const rejectedCount = propertyApps.filter(a => a.status === 'rejected').length;
 
               return (
                 <Card key={property.id} className="overflow-hidden border-border">
@@ -413,11 +417,20 @@ export function LandlordListings() {
 
                       <div className="absolute bottom-4 left-4 right-4">
                         <div className="rounded-xl bg-white/95 backdrop-blur-sm p-3 shadow-lg">
-                          <p className="text-xs text-muted-foreground">Preço desde</p>
-                          <p className="text-2xl font-bold text-primary">
-                            €{minPrice}
-                            <span className="text-sm font-normal text-muted-foreground">/mês</span>
-                          </p>
+                          {minPrice !== null ? (
+                            <>
+                              <p className="text-xs text-muted-foreground">Preço desde</p>
+                              <p className="text-2xl font-bold text-primary">
+                                €{minPrice}
+                                <span className="text-sm font-normal text-muted-foreground">/mês</span>
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-xs text-muted-foreground">Preço</p>
+                              <p className="text-sm font-semibold text-muted-foreground">Sem quartos adicionados</p>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -459,8 +472,23 @@ export function LandlordListings() {
 
                           <div className="rounded-xl bg-primary/10 p-3">
                             <FileText className="w-4 h-4 text-primary mb-2" />
-                            <p className="text-xl font-bold text-foreground">{pendingApplications}</p>
-                            <p className="text-xs text-muted-foreground">pendentes</p>
+                            <div className="flex items-baseline gap-1">
+                              <p className="text-xl font-bold text-foreground">{pendingCount + underReviewCount}</p>
+                              {acceptedCount > 0 && (
+                                <span className="text-xs text-green-600 font-medium">{acceptedCount}✓</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {pendingCount > 0 && underReviewCount > 0
+                                ? `${pendingCount} pend. · ${underReviewCount} anál.`
+                                : pendingCount > 0
+                                ? `${pendingCount} pendente${pendingCount > 1 ? 's' : ''}`
+                                : underReviewCount > 0
+                                ? `${underReviewCount} em análise`
+                                : rejectedCount > 0
+                                ? `${rejectedCount} rejeitada${rejectedCount > 1 ? 's' : ''}`
+                                : 'candidaturas'}
+                            </p>
                           </div>
                         </div>
                       </div>
