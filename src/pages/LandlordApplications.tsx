@@ -152,6 +152,7 @@ export function LandlordApplications() {
     accepted: 'Aceite',
     rejected: 'Rejeitada',
     withdrawn: 'Retirada',
+    confirmed: 'Confirmada',
   };
 
   const statusBadgeClass: Record<ApplicationStatus, string> = {
@@ -160,6 +161,7 @@ export function LandlordApplications() {
     accepted: 'bg-green-100 text-green-800',
     rejected: 'bg-red-100 text-red-800',
     withdrawn: 'bg-gray-100 text-gray-600',
+    confirmed: 'bg-emerald-100 text-emerald-700',
   };
 
   return (
