@@ -19,6 +19,9 @@ import {
   Columns,
   ShieldCheck,
   Star,
+  Navigation,
+  CalendarDays,
+  Wifi,
 } from 'lucide-react';
 import { Room, Property } from '../types/property';
 import { Badge } from './Badge';
@@ -26,7 +29,29 @@ import { Button } from './Button';
 import { Card } from './Card';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
-import { getAverageRatingBreakdown } from '../data/mockTrust';
+import { getAverageRatingBreakdown, getVerificationStatus } from '../data/mockTrust';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function getAvailabilityLabel(date: Date): { text: string; cls: string } {
+  const now = new Date();
+  const d = new Date(date);
+  const diffDays = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return { text: 'Disponível agora', cls: 'text-green-600' };
+  if (diffDays <= 14) return { text: 'Disponível em breve', cls: 'text-green-600' };
+
+  const month = d.toLocaleDateString('pt-PT', { month: 'long' });
+  const year = d.getFullYear();
+  const sameYear = year === now.getFullYear();
+
+  if (diffDays <= 90) return { text: `A partir de ${month}${sameYear ? '' : ` de ${year}`}`, cls: 'text-amber-600' };
+  return { text: `A partir de ${month} de ${year}`, cls: 'text-muted-foreground' };
+}
+
+const walkMinutes = (km: number) => Math.round(km * 13);
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CompareProps {
   isComparing: boolean;
@@ -38,6 +63,7 @@ interface RoomCardProps {
   room: Room;
   property: Property;
   variant?: 'default' | 'public' | 'management' | 'compact';
+  displayMode?: 'grid' | 'list';
   showFavorite?: boolean;
   availableRooms?: number;
   onFavoriteRequiresAuth?: () => void;
@@ -58,10 +84,13 @@ interface RoomCardProps {
   };
 }
 
+// ─── RoomCard ────────────────────────────────────────────────────────────────
+
 export function RoomCard({
   room,
   property,
   variant = 'default',
+  displayMode = 'grid',
   showFavorite = true,
   availableRooms,
   onFavoriteRequiresAuth,
@@ -75,18 +104,11 @@ export function RoomCard({
   const isFav = isFavorite(room.id);
   const isManagement = variant === 'management';
 
-  const handleClick = () => {
-    navigate(`/room/${room.id}`);
-  };
+  const handleClick = () => navigate(`/room/${room.id}`);
 
   const handleFavoriteClick = (event: MouseEvent) => {
     event.stopPropagation();
-
-    if (!user) {
-      onFavoriteRequiresAuth?.();
-      return;
-    }
-
+    if (!user) { onFavoriteRequiresAuth?.(); return; }
     toggleFavorite(room.id);
   };
 
@@ -97,27 +119,196 @@ export function RoomCard({
       studio: { label: 'Estúdio', color: 'bg-green-100 text-green-700' },
       apartment: { label: 'Apartamento', color: 'bg-orange-100 text-orange-700' },
     };
-
     return types[room.roomType];
   };
 
   const roomTypeBadge = getRoomTypeBadge();
   const roomRating = getAverageRatingBreakdown(room.id);
+  const availability = getAvailabilityLabel(room.availableFrom);
+  const walk = walkMinutes(property.distanceToUniversity);
+  const isVerifiedLandlord = (() => {
+    const v = getVerificationStatus(property.landlordId);
+    return v?.level === 'gold' || v?.level === 'silver';
+  })();
 
   const compatibilityTone =
-    (room.compatibilityScore || 0) >= 80
-      ? 'text-secondary'
-      : (room.compatibilityScore || 0) >= 60
-      ? 'text-accent'
-      : 'text-muted-foreground';
+    (room.compatibilityScore || 0) >= 80 ? 'text-secondary'
+    : (room.compatibilityScore || 0) >= 60 ? 'text-accent'
+    : 'text-muted-foreground';
 
-  const imageHeight = variant === 'compact' ? 'h-36' : isManagement ? 'h-48' : 'h-56';
+  const totalPrice = room.price + (room.utilities || 0);
+
+  // ── List view ─────────────────────────────────────────────────────────────
+
+  if (displayMode === 'list' && !isManagement) {
+    return (
+      <Card
+        className="overflow-hidden hover:shadow-md transition-all duration-200 cursor-pointer group"
+        onClick={handleClick}
+      >
+        <div className="flex">
+          {/* Image */}
+          <div className="relative w-36 sm:w-44 flex-shrink-0 overflow-hidden bg-muted">
+            <img
+              src={room.images[0] || property.images[0]}
+              alt={room.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              style={{ minHeight: '120px' }}
+            />
+            <div className="absolute top-2 left-2">
+              <Badge variant="default" className={`${roomTypeBadge.color} text-[10px] px-1.5 py-0.5`}>
+                {roomTypeBadge.label}
+              </Badge>
+            </div>
+            {showFavorite && (
+              <button
+                onClick={handleFavoriteClick}
+                className="absolute top-2 right-2 w-7 h-7 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm hover:bg-white transition-all"
+                aria-label={isFav ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
+              >
+                <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
+              </button>
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 p-4 flex gap-3 min-w-0">
+            <div className="flex-1 min-w-0">
+              {/* Title row */}
+              <div className="flex items-start gap-1.5 mb-1">
+                <h3 className="font-bold text-foreground line-clamp-1 group-hover:text-primary transition-colors flex-1 text-sm">
+                  {room.title}
+                </h3>
+                {property.verified && (
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
+                )}
+              </div>
+
+              {/* Location + walk */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mb-2">
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3 h-3 flex-shrink-0" />
+                  {property.zone}, {property.city}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Navigation className="w-3 h-3 flex-shrink-0" />
+                  ~{walk}min a pé · {property.distanceToUniversity}km
+                </span>
+                {room.size && (
+                  <span className="flex items-center gap-1">
+                    <Maximize className="w-3 h-3" />
+                    {room.size}m²
+                  </span>
+                )}
+              </div>
+
+              {/* Amenity pills */}
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {property.amenities.wifi && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-full flex items-center gap-0.5">
+                    <Wifi className="w-2.5 h-2.5" /> Wi-Fi
+                  </span>
+                )}
+                {property.amenities.laundry && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded-full">Lavar roupa</span>
+                )}
+                {property.amenities.kitchen && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded-full">Cozinha</span>
+                )}
+                {property.houseRules?.parties === false && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded-full">Sem festas</span>
+                )}
+                {property.houseRules?.quietHours && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded-full">
+                    Silêncio {property.houseRules.quietHours}
+                  </span>
+                )}
+              </div>
+
+              {/* Availability + trust signals */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+                <span className={`flex items-center gap-1 font-medium ${availability.cls}`}>
+                  <CalendarDays className="w-3 h-3" />
+                  {availability.text}
+                </span>
+                {roomRating.total > 0 && (
+                  <span className="flex items-center gap-1 text-amber-600">
+                    <Star className="w-3 h-3 fill-amber-400" />
+                    {roomRating.average.toFixed(1)} ({roomRating.total})
+                  </span>
+                )}
+                {room.compatibilityScore && (
+                  <span className={`font-medium ${compatibilityTone}`}>
+                    {room.compatibilityScore}% compat.
+                  </span>
+                )}
+                {isVerifiedLandlord && (
+                  <span className="flex items-center gap-1 text-blue-600">
+                    <ShieldCheck className="w-3 h-3" /> Senhorio verificado
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Price + actions */}
+            <div className="flex flex-col items-end gap-2 flex-shrink-0 pl-3 border-l border-border">
+              <div className="text-right">
+                <div className="flex items-baseline gap-0.5">
+                  <span className="text-xl font-bold text-primary">€{room.price}</span>
+                  <span className="text-xs text-muted-foreground">/mês</span>
+                </div>
+                {room.utilities && room.utilities > 0 ? (
+                  <p className="text-[10px] text-muted-foreground whitespace-nowrap">
+                    +€{room.utilities} desp. · €{totalPrice} total
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-green-600">Despesas incluídas</p>
+                )}
+              </div>
+
+              <Button
+                variant={variant === 'public' ? 'primary' : 'outline'}
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); handleClick(); }}
+              >
+                Ver detalhes
+              </Button>
+
+              {compareProps && (
+                <button
+                  onClick={compareProps.onToggle}
+                  disabled={compareProps.disabled}
+                  className={`text-[11px] px-2 py-1 rounded-lg border transition-colors flex items-center gap-1 whitespace-nowrap ${
+                    compareProps.isComparing
+                      ? 'bg-primary/10 text-primary border-primary'
+                      : compareProps.disabled
+                      ? 'bg-muted text-muted-foreground border-border opacity-40 cursor-not-allowed'
+                      : 'bg-card text-muted-foreground border-border hover:border-primary hover:text-primary'
+                  }`}
+                >
+                  {compareProps.isComparing
+                    ? <><Check className="w-3 h-3" /> Comparar</>
+                    : <><Columns className="w-3 h-3" /> Comparar</>
+                  }
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  // ── Grid view ─────────────────────────────────────────────────────────────
+
+  const imageHeight = variant === 'compact' ? 'h-36' : isManagement ? 'h-48' : 'h-52';
 
   return (
     <Card
       className="overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group"
       onClick={handleClick}
     >
+      {/* Image */}
       <div className={`relative ${imageHeight} overflow-hidden bg-muted`}>
         <img
           src={room.images[0] || property.images[0]}
@@ -125,7 +316,7 @@ export function RoomCard({
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
 
-        <div className="absolute top-3 left-3 flex flex-wrap gap-2">
+        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
           <Badge variant="default" className={roomTypeBadge.color}>
             {roomTypeBadge.label}
           </Badge>
@@ -160,11 +351,7 @@ export function RoomCard({
             className="absolute top-3 right-3 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-all shadow-sm"
             aria-label={isFav ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
           >
-            <Heart
-              className={`w-4 h-4 ${
-                isFav ? 'fill-red-500 text-red-500' : 'text-muted-foreground'
-              }`}
-            />
+            <Heart className={`w-4 h-4 ${isFav ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
           </button>
         )}
 
@@ -172,76 +359,85 @@ export function RoomCard({
           <Badge variant="default" className="bg-white/95 text-foreground">
             <Home className="w-3 h-3 mr-1" />
             Casa com {property.totalRooms} quartos
+            {availableRooms !== undefined && (
+              <span className="ml-1 text-green-700 font-semibold">· {availableRooms} livre{availableRooms !== 1 ? 's' : ''}</span>
+            )}
           </Badge>
         </div>
       </div>
 
+      {/* Body */}
       <div className="p-5">
         <h3 className="font-bold text-lg text-foreground mb-1 line-clamp-1 group-hover:text-primary transition-colors">
           {room.title}
         </h3>
 
-        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
           <Home className="w-3.5 h-3.5 text-primary flex-shrink-0" />
           <span className="line-clamp-1">Parte de {property.title}</span>
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-          <MapPin className="w-4 h-4 flex-shrink-0" />
-          <span className="line-clamp-1">
+        {/* Location + walk time */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted-foreground mb-3">
+          <span className="flex items-center gap-1.5">
+            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
             {property.zone}, {property.city}
           </span>
-        </div>
-
-        <p className="text-xs text-muted-foreground mb-3 line-clamp-1">
-          {property.title}
-        </p>
-
-        <div className="flex items-center gap-3 mb-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <Navigation className="w-3.5 h-3.5 flex-shrink-0" />
+            ~{walk}min a pé · {property.distanceToUniversity}km
+          </span>
           {room.size && (
-            <div className="flex items-center gap-1">
+            <span className="flex items-center gap-1">
               <Maximize className="w-3.5 h-3.5" />
-              <span>{room.size}m²</span>
-            </div>
+              {room.size}m²
+            </span>
           )}
-
-          {room.balcony && (
-            <div className="flex items-center gap-1">
-              <Check className="w-3.5 h-3.5 text-green-600" />
-              <span>Varanda</span>
-            </div>
-          )}
-
-          <div className="flex items-center gap-1">
-            <Users className="w-3.5 h-3.5" />
-            <span>{property.distanceToUniversity}km da uni</span>
-          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <div className="rounded-lg bg-muted/60 px-3 py-2">
-            <p className="text-[11px] text-muted-foreground">Casa</p>
-            <p className="text-sm font-semibold text-foreground">
-              {property.totalRooms} quartos
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-muted/60 px-3 py-2">
-            <p className="text-[11px] text-muted-foreground">Disponibilidade</p>
-            <p className="text-sm font-semibold text-foreground">
-              {availableRooms !== undefined
-                ? `${availableRooms} livres`
-                : `Até ${room.maxOccupants} estudante${room.maxOccupants > 1 ? 's' : ''}`}
-            </p>
-          </div>
+        {/* Amenity + rules pills */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {property.amenities.wifi && (
+            <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+              <Wifi className="w-3 h-3" /> Wi-Fi
+            </span>
+          )}
+          {property.amenities.laundry && (
+            <span className="text-[11px] px-2 py-0.5 bg-muted text-muted-foreground rounded-full">Lavar roupa</span>
+          )}
+          {property.amenities.kitchen && (
+            <span className="text-[11px] px-2 py-0.5 bg-muted text-muted-foreground rounded-full">Cozinha</span>
+          )}
+          {property.houseRules?.parties === false && (
+            <span className="text-[11px] px-2 py-0.5 bg-muted text-muted-foreground rounded-full">Sem festas</span>
+          )}
+          {property.houseRules?.quietHours && (
+            <span className="text-[11px] px-2 py-0.5 bg-muted text-muted-foreground rounded-full">
+              Silêncio {property.houseRules.quietHours}
+            </span>
+          )}
         </div>
 
+        {/* Availability */}
+        <div className={`flex items-center gap-1.5 text-sm font-medium mb-4 ${availability.cls}`}>
+          <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />
+          {availability.text}
+        </div>
+
+        {/* Price row */}
         <div className="flex items-end justify-between pt-3 border-t border-border">
           <div>
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-bold text-primary">€{room.price}</span>
               <span className="text-sm text-muted-foreground">/mês</span>
             </div>
+            {room.utilities && room.utilities > 0 ? (
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                +€{room.utilities} desp. · total €{totalPrice}/mês
+              </p>
+            ) : (
+              <p className="text-[11px] text-green-600 mt-0.5">Despesas incluídas</p>
+            )}
             {roomRating.total > 0 ? (
               <div className="flex items-center gap-1 mt-1">
                 <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
@@ -266,132 +462,56 @@ export function RoomCard({
           )}
         </div>
 
+        {/* Management actions */}
         {isManagement && managementActions ? (
           <div className="grid grid-cols-2 gap-2 pt-4 mt-4 border-t border-border">
             {managementActions.onView && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onView?.();
-                }}
-              >
-                <Eye className="w-4 h-4 mr-1" />
-                Ver anúncio
+              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); managementActions.onView?.(); }}>
+                <Eye className="w-4 h-4 mr-1" /> Ver anúncio
               </Button>
             )}
-
             {managementActions.onEdit && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onEdit?.();
-                }}
-              >
-                <Edit className="w-4 h-4 mr-1" />
-                Editar
+              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); managementActions.onEdit?.(); }}>
+                <Edit className="w-4 h-4 mr-1" /> Editar
               </Button>
             )}
-
             {managementActions.onPause && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onPause?.();
-                }}
-              >
-                <Pause className="w-4 h-4 mr-1" />
-                Pausar
+              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); managementActions.onPause?.(); }}>
+                <Pause className="w-4 h-4 mr-1" /> Pausar
               </Button>
             )}
-
             {managementActions.onReactivate && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onReactivate?.();
-                }}
-              >
-                <Play className="w-4 h-4 mr-1" />
-                Reativar
+              <Button variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); managementActions.onReactivate?.(); }}>
+                <Play className="w-4 h-4 mr-1" /> Reativar
               </Button>
             )}
-
             {managementActions.onPublish && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onPublish?.();
-                }}
-              >
-                <Play className="w-4 h-4 mr-1" />
-                Publicar
+              <Button variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); managementActions.onPublish?.(); }}>
+                <Play className="w-4 h-4 mr-1" /> Publicar
               </Button>
             )}
-
             {managementActions.onApplications && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onApplications?.();
-                }}
-              >
-                <FileText className="w-4 h-4 mr-1" />
-                Candidaturas
+              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); managementActions.onApplications?.(); }}>
+                <FileText className="w-4 h-4 mr-1" /> Candidaturas
               </Button>
             )}
-
             {managementActions.onMessages && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onMessages?.();
-                }}
-              >
-                <MessageCircle className="w-4 h-4 mr-1" />
-                Mensagens
+              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); managementActions.onMessages?.(); }}>
+                <MessageCircle className="w-4 h-4 mr-1" /> Mensagens
               </Button>
             )}
-
             {managementActions.onAnalytics && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onAnalytics?.();
-                }}
-              >
-                <BarChart3 className="w-4 h-4 mr-1" />
-                Analytics
+              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); managementActions.onAnalytics?.(); }}>
+                <BarChart3 className="w-4 h-4 mr-1" /> Analytics
               </Button>
             )}
-
             {managementActions.onDelete && (
               <Button
-                variant="outline"
-                size="sm"
+                variant="outline" size="sm"
                 className="text-destructive hover:bg-destructive/10 border-destructive/30"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  managementActions.onDelete?.();
-                }}
+                onClick={(e) => { e.stopPropagation(); managementActions.onDelete?.(); }}
               >
-                <Trash2 className="w-4 h-4 mr-1" />
-                Arquivar
+                <Trash2 className="w-4 h-4 mr-1" /> Arquivar
               </Button>
             )}
           </div>
@@ -401,10 +521,7 @@ export function RoomCard({
               variant={variant === 'public' ? 'primary' : 'outline'}
               size="sm"
               className="w-full mt-4"
-              onClick={(event) => {
-                event.stopPropagation();
-                handleClick();
-              }}
+              onClick={(e) => { e.stopPropagation(); handleClick(); }}
             >
               Ver detalhes
             </Button>
