@@ -418,9 +418,16 @@ export function LandlordListings() {
                 <Home className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-foreground mb-2">Ainda não tens alojamentos</h3>
                 <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
-                  Cria o primeiro alojamento para começares a receber candidaturas de estudantes.
+                  {isAccountSuspended
+                    ? 'A tua conta está suspensa. Não é possível criar alojamentos enquanto a suspensão estiver ativa.'
+                    : isBlockedFromPublishing
+                    ? 'A tua conta está bloqueada de publicar. Não é possível criar novos alojamentos.'
+                    : 'Cria o primeiro alojamento para começares a receber candidaturas de estudantes.'}
                 </p>
-                <Button onClick={() => navigate('/landlord/new-listing')}>
+                <Button
+                  onClick={() => navigate('/landlord/new-listing')}
+                  disabled={isAccountSuspended || isBlockedFromPublishing}
+                >
                   <PlusCircle className="w-5 h-5 mr-2" />
                   Criar primeiro alojamento
                 </Button>

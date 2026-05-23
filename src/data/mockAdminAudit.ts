@@ -13,6 +13,7 @@ export type AuditAction =
   | 'landlord_unblocked'
   | 'verification_requested'
   | 'verification_approved'
+  | 'verification_cleared'
   | 'note_added';
 
 export type AuditEntityType = 'property' | 'landlord' | 'report' | 'room' | 'user';
@@ -163,7 +164,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   landlord_suspension_lifted: 'Suspensão de senhorio levantada',
   landlord_blocked: 'Senhorio bloqueado de publicar',
   landlord_unblocked: 'Senhorio desbloqueado',
-  verification_requested: 'Verificação pedida',
+  verification_requested: 'Verificação obrigatória pedida',
   verification_approved: 'Verificação aprovada',
+  verification_cleared: 'Pedido de verificação removido',
   note_added: 'Nota adicionada',
 };

@@ -30,6 +30,7 @@ const ACTION_ICON: Record<AuditAction, React.ElementType> = {
   landlord_unblocked: UserCheck,
   verification_requested: FilePen,
   verification_approved: UserCheck,
+  verification_cleared: UserCheck,
   note_added: MessageSquare,
 };
 
@@ -46,6 +47,7 @@ const ACTION_COLOR: Record<AuditAction, string> = {
   landlord_unblocked: 'bg-blue-100 text-blue-600',
   verification_requested: 'bg-amber-100 text-amber-600',
   verification_approved: 'bg-green-100 text-green-600',
+  verification_cleared: 'bg-gray-100 text-gray-500',
   note_added: 'bg-blue-100 text-blue-600',
 };
 

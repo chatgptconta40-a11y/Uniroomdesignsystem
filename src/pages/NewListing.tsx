@@ -466,6 +466,10 @@ export function NewListing() {
   };
 
   const handleNext = () => {
+    if (isSuspended) {
+      toast.error('A tua conta está suspensa. Não é possível continuar.');
+      return;
+    }
     if (step === 1 && !validateStep1()) {
       toast.error('Preenche os campos obrigatórios');
       return;
@@ -510,16 +514,15 @@ export function NewListing() {
   const buildAndSave = (mode: 'draft' | 'selected' | 'all') => {
     if (!user) return;
 
-    // Block suspended or publishing-blocked landlords from publishing
-    if (mode !== 'draft') {
-      if (isUserSuspended(user.id)) {
-        toast.error('A tua conta está suspensa pela equipa UniRoom. Não é possível publicar novos anúncios. Contacta o suporte.');
-        return;
-      }
-      if (isUserBlockedFromPublishing(user.id)) {
-        toast.error('A tua conta está temporariamente bloqueada para publicar novos anúncios. Contacta o suporte UniRoom.');
-        return;
-      }
+    // Suspended accounts cannot do anything — not even draft
+    if (isUserSuspended(user.id)) {
+      toast.error('A tua conta está suspensa. Não é possível criar ou guardar anúncios.');
+      return;
+    }
+    // Blocked accounts can only draft
+    if (mode !== 'draft' && isUserBlockedFromPublishing(user.id)) {
+      toast.error('A tua conta está bloqueada de publicar. Guarda como rascunho.');
+      return;
     }
 
     const propertyId = `prop-${Date.now()}`;
@@ -674,8 +677,24 @@ export function NewListing() {
           <p className="text-muted-foreground text-sm mt-1">Define a propriedade, os quartos e as regras antes de publicar.</p>
         </div>
 
+        {/* Suspended — full page block */}
+        {isSuspended && (
+          <div className="mb-6 p-5 bg-red-50 border border-red-300 rounded-2xl flex items-start gap-4">
+            <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-red-800 mb-1">Conta suspensa — criação de anúncios bloqueada</p>
+              <p className="text-sm text-red-700">
+                A tua conta está suspensa pela equipa UniRoom. Não podes criar, guardar ou publicar novos anúncios enquanto a suspensão estiver ativa.
+                Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span> para resolver.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Step indicator */}
-        <div className="flex items-center gap-0 mb-8">
+        <div className={`flex items-center gap-0 mb-8 ${isSuspended ? 'opacity-40 pointer-events-none' : ''}`}>
           {STEPS.map((s, i) => {
             const Icon = s.icon;
             const isDone = step > s.number;
@@ -708,7 +727,7 @@ export function NewListing() {
           })}
         </div>
 
-        <Card className="p-6 md:p-8">
+        <Card className={`p-6 md:p-8 ${isSuspended ? 'opacity-40 pointer-events-none select-none' : ''}`}>
 
           {/* ─── STEP 1: Property info ─────────────────────────────── */}
           {step === 1 && (
@@ -1245,7 +1264,8 @@ export function NewListing() {
                 {/* Option 1: Save as draft */}
                 <button
                   onClick={() => buildAndSave('draft')}
-                  className="w-full p-4 border-2 border-border rounded-2xl text-left hover:border-primary/40 hover:bg-muted/30 transition-all group flex items-start gap-4"
+                  disabled={isSuspended}
+                  className={`w-full p-4 border-2 border-border rounded-2xl text-left transition-all group flex items-start gap-4 ${isSuspended ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary/40 hover:bg-muted/30'}`}
                 >
                   <Save className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0 group-hover:text-primary transition-colors" />
                   <div>
@@ -1259,10 +1279,10 @@ export function NewListing() {
                 {/* Option 2: Publish selected (only shown if some rooms have publishNow=true) */}
                 {rooms.length > 1 && (
                   <button
-                    disabled={missingFields.length > 0 || selectedCount === 0}
+                    disabled={isSuspended || isBlocked || missingFields.length > 0 || selectedCount === 0}
                     onClick={() => buildAndSave('selected')}
                     className={`w-full p-4 border-2 rounded-2xl text-left transition-all flex items-start gap-4 ${
-                      missingFields.length > 0 || selectedCount === 0
+                      isSuspended || isBlocked || missingFields.length > 0 || selectedCount === 0
                         ? 'border-border bg-muted/10 opacity-50 cursor-not-allowed'
                         : 'border-amber-300 bg-amber-50/60 hover:bg-amber-50 cursor-pointer'
                     }`}
@@ -1281,10 +1301,10 @@ export function NewListing() {
 
                 {/* Option 3: Publish all */}
                 <button
-                  disabled={missingFields.length > 0}
+                  disabled={isSuspended || isBlocked || missingFields.length > 0}
                   onClick={() => buildAndSave('all')}
                   className={`w-full p-4 border-2 rounded-2xl text-left transition-all flex items-start gap-4 ${
-                    missingFields.length > 0
+                    isSuspended || isBlocked || missingFields.length > 0
                       ? 'border-border bg-muted/20 opacity-60 cursor-not-allowed'
                       : 'border-primary bg-primary/5 hover:bg-primary/10 cursor-pointer'
                   }`}
@@ -1315,7 +1335,12 @@ export function NewListing() {
             )}
 
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={() => buildAndSave('draft')} className="hidden sm:flex">
+              <Button
+                variant="outline"
+                onClick={() => buildAndSave('draft')}
+                disabled={isSuspended}
+                className="hidden sm:flex"
+              >
                 <Save className="w-4 h-4 mr-1.5" />
                 Guardar rascunho
               </Button>

@@ -38,7 +38,8 @@ import { addAuditEntry } from '../../data/mockAdminAudit';
 import {
   setUserSuspended,
   setUserBlockedFromPublishing,
-  clearUserRestrictions,
+  liftUserSuspension,
+  unblockUserPublishing,
 } from '../../data/mockAdminUsersState';
 import { useProperties } from '../../context/PropertiesContext';
 
@@ -502,13 +503,13 @@ export function AdminReports() {
   };
 
   const handleLiftLandlordSuspension = (landlordId: string, _landlordName: string) => {
-    setUserSuspended(landlordId, false);
-    // Also lift blockedFromPublishing (suspension implies blocking)
-    setUserBlockedFromPublishing(landlordId, false);
+    // Only lift suspension — blockedFromPublishing stays as-is
+    liftUserSuspension(landlordId);
   };
 
   const handleUnblockLandlord = (landlordId: string, _landlordName: string) => {
-    clearUserRestrictions(landlordId);
+    // Only remove publishing block — suspended stays as-is
+    unblockUserPublishing(landlordId);
   };
 
   const stats = {

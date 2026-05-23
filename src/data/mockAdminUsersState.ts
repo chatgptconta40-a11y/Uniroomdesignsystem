@@ -1,5 +1,6 @@
 // Admin-controlled user state — suspension, blocking, verification flags.
 // Persisted in localStorage, structured for future Supabase migration.
+// Each flag is independent: suspension ≠ blocking ≠ verification requirement.
 
 export interface AdminUserState {
   userId: string;
@@ -12,7 +13,7 @@ export interface AdminUserState {
 
 const STORAGE_KEY = 'uniroom_admin_users_state';
 const DATA_VERSION_KEY = 'uniroom_admin_users_state_version';
-const CURRENT_VERSION = '2026-05-v1';
+const CURRENT_VERSION = '2026-05-v2';
 
 const INITIAL_STATE: AdminUserState[] = [];
 
@@ -54,9 +55,15 @@ function getOrCreate(userId: string): { all: AdminUserState[]; state: AdminUserS
   return { all, state: newState, idx: all.length - 1 };
 }
 
+// ─── Read helpers ─────────────────────────────────────────────────────────────
+
 export function getUserState(userId: string): AdminUserState | null {
   const all = initStorage();
   return all.find(s => s.userId === userId) ?? null;
+}
+
+export function getAllUserStates(): AdminUserState[] {
+  return initStorage();
 }
 
 export function isUserSuspended(userId: string): boolean {
@@ -71,20 +78,35 @@ export function isVerificationRequired(userId: string): boolean {
   return getUserState(userId)?.verificationRequired ?? false;
 }
 
+// ─── Write helpers (each touches only its own flag) ───────────────────────────
+
+/** Suspends or unsuspends the account. Does NOT affect blockedFromPublishing. */
 export function setUserSuspended(userId: string, suspended: boolean, reason?: string): AdminUserState {
   const { all, state, idx } = getOrCreate(userId);
-  all[idx] = { ...state, suspended, reason: reason ?? state.reason, updatedAt: new Date().toISOString() };
+  all[idx] = {
+    ...state,
+    suspended,
+    reason: reason ?? state.reason,
+    updatedAt: new Date().toISOString(),
+  };
   saveAll(all);
   return all[idx];
 }
 
+/** Blocks or unblocks publishing. Does NOT affect suspended. */
 export function setUserBlockedFromPublishing(userId: string, blocked: boolean, reason?: string): AdminUserState {
   const { all, state, idx } = getOrCreate(userId);
-  all[idx] = { ...state, blockedFromPublishing: blocked, suspended: blocked ? true : state.suspended, reason: reason ?? state.reason, updatedAt: new Date().toISOString() };
+  all[idx] = {
+    ...state,
+    blockedFromPublishing: blocked,
+    reason: reason ?? state.reason,
+    updatedAt: new Date().toISOString(),
+  };
   saveAll(all);
   return all[idx];
 }
 
+/** Sets or clears the verification requirement flag only. */
 export function setVerificationRequired(userId: string, required: boolean): AdminUserState {
   const { all, state, idx } = getOrCreate(userId);
   all[idx] = { ...state, verificationRequired: required, updatedAt: new Date().toISOString() };
@@ -92,9 +114,34 @@ export function setVerificationRequired(userId: string, required: boolean): Admi
   return all[idx];
 }
 
+// ─── Granular lift functions ──────────────────────────────────────────────────
+
+/** Lifts account suspension only. blockedFromPublishing remains unchanged. */
+export function liftUserSuspension(userId: string): AdminUserState {
+  return setUserSuspended(userId, false);
+}
+
+/** Removes publishing block only. suspended remains unchanged. */
+export function unblockUserPublishing(userId: string): AdminUserState {
+  return setUserBlockedFromPublishing(userId, false);
+}
+
+/** Clears verification requirement only. Suspension and block remain unchanged. */
+export function clearVerificationRequirement(userId: string): AdminUserState {
+  return setVerificationRequired(userId, false);
+}
+
+// ─── Full reset (wipes all restrictions at once) ──────────────────────────────
+
 export function clearUserRestrictions(userId: string): AdminUserState {
   const { all, idx } = getOrCreate(userId);
-  all[idx] = { userId, suspended: false, blockedFromPublishing: false, verificationRequired: false, updatedAt: new Date().toISOString() };
+  all[idx] = {
+    userId,
+    suspended: false,
+    blockedFromPublishing: false,
+    verificationRequired: false,
+    updatedAt: new Date().toISOString(),
+  };
   saveAll(all);
   return all[idx];
 }
