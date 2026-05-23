@@ -1,5 +1,6 @@
-// Unified application layer — creates and cancels applications atomically in both systems.
-// Use this instead of calling mockApplications and mockLandlordCandidates separately.
+// Unified application layer.
+// This is the only place that should create/cancel an application across
+// the student-side application list and the landlord-side candidate queue.
 
 import {
   createApplication,
@@ -8,10 +9,13 @@ import {
   getApplicationById,
   getExistingApplicationForRoom,
 } from './mockApplications';
-import { addApplication, updateCandidateStatus, LandlordApplication } from './mockLandlordCandidates';
+import { addApplication, LandlordApplication } from './mockLandlordCandidates';
+import { getProperty, getRoom } from './mockProperties';
 import { Application } from '../types/accommodation';
 
 export { getExistingApplicationForRoom };
+
+const USERS_STORAGE_KEY = 'uniroom_all_users';
 
 const AVATAR_COLORS = [
   'from-blue-500 to-indigo-500',
@@ -24,7 +28,11 @@ const AVATAR_COLORS = [
 
 function pickAvatarColor(userId: string): string {
   let hash = 0;
-  for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) & 0xffffffff;
+
+  for (let i = 0; i < userId.length; i += 1) {
+    hash = (hash * 31 + userId.charCodeAt(i)) & 0xffffffff;
+  }
+
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
@@ -33,8 +41,34 @@ function initials(name: string): string {
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
-    .map(w => w[0].toUpperCase())
+    .map(word => word[0].toUpperCase())
     .join('');
+}
+
+function getUserName(userId: string): string | undefined {
+  const stored = localStorage.getItem(USERS_STORAGE_KEY);
+
+  if (!stored) return undefined;
+
+  try {
+    const users = JSON.parse(stored);
+    const user = users.find((item: any) => item.id === userId);
+    return user?.name;
+  } catch {
+    return undefined;
+  }
+}
+
+function getLandlordDisplayName(landlordId: string, fallback?: string): string {
+  return getUserName(landlordId) || fallback || 'Senhorio';
+}
+
+function isRoomAvailable(roomId: string): boolean {
+  const room = getRoom(roomId);
+
+  if (!room) return true;
+
+  return room.status === 'available';
 }
 
 export interface UnifiedApplicationParams {
@@ -46,10 +80,9 @@ export interface UnifiedApplicationParams {
   roomId: string;
   propertyId: string;
   landlordId: string;
-  landlordName: string;
+  landlordName?: string;
   message: string;
   moveInDate?: Date;
-  // For ApplicationModal: the accommodation ID (room ID or legacy accommodation ID)
   accommodationId?: string;
 }
 
@@ -69,30 +102,48 @@ export function createUnifiedApplication(params: UnifiedApplicationParams): Appl
     accommodationId,
   } = params;
 
-  // 1. Create student-side Application (without linkedCandidateId yet)
+  const existing = getExistingApplicationForRoom(studentId, roomId);
+
+  if (existing) {
+    return existing;
+  }
+
+  if (!isRoomAvailable(roomId)) {
+    throw new Error('Este quarto já não está disponível para candidatura.');
+  }
+
+  const room = getRoom(roomId);
+  const property = getProperty(propertyId || room?.propertyId || '');
+  const resolvedPropertyId = propertyId || property?.id || room?.propertyId || '';
+  const resolvedLandlordId = landlordId || property?.landlordId || '';
+  const resolvedLandlordName = getLandlordDisplayName(resolvedLandlordId, landlordName);
+
   const application = createApplication(
     studentId,
     accommodationId || roomId,
-    landlordId,
+    resolvedLandlordId,
     message,
     moveInDate,
-    { roomId, propertyId, landlordName },
+    {
+      roomId,
+      propertyId: resolvedPropertyId,
+      landlordName: resolvedLandlordName,
+    },
   );
 
-  // 2. Create landlord-side LandlordApplication
   const candidate: LandlordApplication = {
-    id: `lapp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    propertyId,
+    id: `lapp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    propertyId: resolvedPropertyId,
     roomId,
     studentId,
     studentName,
-    initials: initials(studentName),
+    initials: initials(studentName || 'Estudante'),
     avatarColor: pickAvatarColor(studentId),
     university: studentUniversity,
     course: studentCourse,
     year: studentYear,
     isStudent: true,
-    compatibilityScore: 70 + Math.floor(Math.random() * 25), // 70-94
+    compatibilityScore: 70 + Math.floor(Math.random() * 25),
     message: message || 'Sem mensagem.',
     status: 'pending',
     appliedAt: new Date().toISOString().slice(0, 10),
@@ -100,36 +151,40 @@ export function createUnifiedApplication(params: UnifiedApplicationParams): Appl
   };
 
   addApplication(candidate);
-
-  // 3. Back-link: update Application with the candidate's ID
   updateApplicationLinkCandidateId(application.id, candidate.id);
 
-  return application;
+  return {
+    ...application,
+    linkedCandidateId: candidate.id,
+  };
 }
 
 export function cancelUnifiedApplication(applicationId: string): void {
   const app = getApplicationById(applicationId);
+
   if (!app) return;
 
-  // Cancel student side
   withdrawApplication(applicationId);
 
-  // Cancel landlord side (mark as rejected so it disappears from active queue)
-  if (app.linkedCandidateId) {
-    // Use updateCandidateStatus without triggering sync back (avoid loop)
-    // Direct localStorage write to avoid re-triggering syncStatusFromCandidate
-    const stored = localStorage.getItem('uniroom_landlord_applications');
-    if (stored) {
-      try {
-        const all: LandlordApplication[] = JSON.parse(stored);
-        const idx = all.findIndex(a => a.id === app.linkedCandidateId);
-        if (idx >= 0) {
-          all[idx] = { ...all[idx], status: 'rejected' };
-          localStorage.setItem('uniroom_landlord_applications', JSON.stringify(all));
-        }
-      } catch {
-        // silently ignore
-      }
-    }
+  if (!app.linkedCandidateId) return;
+
+  const stored = localStorage.getItem('uniroom_landlord_applications');
+
+  if (!stored) return;
+
+  try {
+    const all: LandlordApplication[] = JSON.parse(stored);
+    const idx = all.findIndex(candidate => candidate.id === app.linkedCandidateId);
+
+    if (idx < 0) return;
+
+    all[idx] = {
+      ...all[idx],
+      status: 'rejected',
+    };
+
+    localStorage.setItem('uniroom_landlord_applications', JSON.stringify(all));
+  } catch {
+    // Ignore invalid persisted mock data.
   }
 }
