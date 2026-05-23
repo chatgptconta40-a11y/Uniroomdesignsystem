@@ -16,73 +16,109 @@ interface PropertiesContextType {
   getProperty: (id: string) => Property | undefined;
   getRoom: (id: string) => Room | undefined;
   getRoomsByProperty: (propertyId: string) => Room[];
-  // Admin-only actions
+  refreshProperties: () => void;
   adminSuspendProperty: (id: string, reason: string, adminName: string) => void;
   liftAdminSuspension: (id: string) => void;
 }
 
 const PropertiesContext = createContext<PropertiesContextType | undefined>(undefined);
 
-// Bump this version when mock data changes to force a reset for existing sessions
-const DATA_VERSION = '2026-05-v5';
+const DATA_VERSION = '2026-05-v6';
+const DATA_VERSION_KEY = 'uniroom_data_version';
+const PROPERTIES_KEY = 'uniroom_properties';
+const ROOMS_KEY = 'uniroom_rooms';
+const REFRESH_EVENT = 'uniroom:properties-updated';
+
+function reviveProperties(items: any[]): Property[] {
+  return items.map(property => ({
+    ...property,
+    createdAt: new Date(property.createdAt),
+    updatedAt: new Date(property.updatedAt),
+  }));
+}
+
+function reviveRooms(items: any[]): Room[] {
+  return items.map(room => ({
+    ...room,
+    availableFrom: new Date(room.availableFrom),
+    moveInDate: room.moveInDate ? new Date(room.moveInDate) : undefined,
+    createdAt: new Date(room.createdAt),
+    updatedAt: new Date(room.updatedAt),
+  }));
+}
+
+function readStoredProperties(): Property[] {
+  const stored = localStorage.getItem(PROPERTIES_KEY);
+  if (!stored) {
+    localStorage.setItem(PROPERTIES_KEY, JSON.stringify(mockProperties));
+    return mockProperties;
+  }
+
+  try {
+    return reviveProperties(JSON.parse(stored));
+  } catch {
+    localStorage.setItem(PROPERTIES_KEY, JSON.stringify(mockProperties));
+    return mockProperties;
+  }
+}
+
+function readStoredRooms(): Room[] {
+  const stored = localStorage.getItem(ROOMS_KEY);
+  if (!stored) {
+    localStorage.setItem(ROOMS_KEY, JSON.stringify(mockRooms));
+    return mockRooms;
+  }
+
+  try {
+    return reviveRooms(JSON.parse(stored));
+  } catch {
+    localStorage.setItem(ROOMS_KEY, JSON.stringify(mockRooms));
+    return mockRooms;
+  }
+}
+
+function ensureFreshMockData() {
+  const version = localStorage.getItem(DATA_VERSION_KEY);
+
+  if (version !== DATA_VERSION) {
+    localStorage.removeItem(PROPERTIES_KEY);
+    localStorage.removeItem(ROOMS_KEY);
+    localStorage.setItem(DATA_VERSION_KEY, DATA_VERSION);
+  }
+}
+
+function notifyPropertiesUpdated() {
+  window.dispatchEvent(new CustomEvent(REFRESH_EVENT));
+}
 
 export function PropertiesProvider({ children }: { children: ReactNode }) {
-  const [properties, setProperties] = useState<Property[]>(() => {
-    const version = localStorage.getItem('uniroom_data_version');
-    if (version !== DATA_VERSION) {
-      localStorage.removeItem('uniroom_properties');
-      localStorage.removeItem('uniroom_rooms');
-      localStorage.setItem('uniroom_data_version', DATA_VERSION);
-    }
+  ensureFreshMockData();
 
-    const stored = localStorage.getItem('uniroom_properties');
+  const [properties, setProperties] = useState<Property[]>(() => readStoredProperties());
+  const [rooms, setRooms] = useState<Room[]>(() => readStoredRooms());
 
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
+  const refreshProperties = () => {
+    setProperties(readStoredProperties());
+    setRooms(readStoredRooms());
+  };
 
-        return parsed.map((property: any) => ({
-          ...property,
-          createdAt: new Date(property.createdAt),
-          updatedAt: new Date(property.updatedAt),
-        }));
-      } catch {
-        localStorage.setItem('uniroom_properties', JSON.stringify(mockProperties));
-        return mockProperties;
-      }
-    }
+  useEffect(() => {
+    const handleRefresh = () => refreshProperties();
 
-    localStorage.setItem('uniroom_properties', JSON.stringify(mockProperties));
-    return mockProperties;
-  });
+    window.addEventListener(REFRESH_EVENT, handleRefresh);
+    window.addEventListener('storage', handleRefresh);
+    window.addEventListener('focus', handleRefresh);
 
-  const [rooms, setRooms] = useState<Room[]>(() => {
-    const stored = localStorage.getItem('uniroom_rooms');
-
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-
-        return parsed.map((room: any) => ({
-          ...room,
-          availableFrom: new Date(room.availableFrom),
-          moveInDate: room.moveInDate ? new Date(room.moveInDate) : undefined,
-          createdAt: new Date(room.createdAt),
-          updatedAt: new Date(room.updatedAt),
-        }));
-      } catch {
-        localStorage.setItem('uniroom_rooms', JSON.stringify(mockRooms));
-        return mockRooms;
-      }
-    }
-
-    localStorage.setItem('uniroom_rooms', JSON.stringify(mockRooms));
-    return mockRooms;
-  });
+    return () => {
+      window.removeEventListener(REFRESH_EVENT, handleRefresh);
+      window.removeEventListener('storage', handleRefresh);
+      window.removeEventListener('focus', handleRefresh);
+    };
+  }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem('uniroom_properties', JSON.stringify(properties));
+      localStorage.setItem(PROPERTIES_KEY, JSON.stringify(properties));
     } catch {
       // LocalStorage can fail in restricted environments.
     }
@@ -90,7 +126,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem('uniroom_rooms', JSON.stringify(rooms));
+      localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
     } catch {
       // LocalStorage can fail in restricted environments.
     }
@@ -98,10 +134,12 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
 
   const addProperty = (property: Property) => {
     setProperties(previous => [...previous, property]);
+    notifyPropertiesUpdated();
   };
 
   const addRoom = (room: Room) => {
     setRooms(previous => [...previous, room]);
+    notifyPropertiesUpdated();
   };
 
   const updatePropertyStatus = (id: string, status: PropertyStatus) => {
@@ -112,6 +150,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
+    notifyPropertiesUpdated();
   };
 
   const updateProperty = (id: string, updates: Partial<Property>) => {
@@ -122,6 +161,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
+    notifyPropertiesUpdated();
   };
 
   const deleteProperty = (id: string) => {
@@ -132,8 +172,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
-    // Rooms keep their original state; they are hidden from public search
-    // because the parent property is archived (SearchRooms filters by active properties).
+    notifyPropertiesUpdated();
   };
 
   const updateRoom = (id: string, updates: Partial<Room>) => {
@@ -144,6 +183,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : room,
       ),
     );
+    notifyPropertiesUpdated();
   };
 
   const updateRoomStatus = (id: string, status: RoomStatus) => {
@@ -154,6 +194,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : room,
       ),
     );
+    notifyPropertiesUpdated();
   };
 
   const deleteRoom = (id: string) => {
@@ -164,6 +205,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : room,
       ),
     );
+    notifyPropertiesUpdated();
   };
 
   const getProperty = (id: string) => {
@@ -194,6 +236,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
+    notifyPropertiesUpdated();
   };
 
   const liftAdminSuspension = (id: string) => {
@@ -211,6 +254,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
+    notifyPropertiesUpdated();
   };
 
   return (
@@ -229,6 +273,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
         getProperty,
         getRoom,
         getRoomsByProperty,
+        refreshProperties,
         adminSuspendProperty,
         liftAdminSuspension,
       }}

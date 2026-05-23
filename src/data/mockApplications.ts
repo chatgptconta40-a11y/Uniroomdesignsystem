@@ -5,10 +5,11 @@ const APPLICATIONS_KEY = 'uniroom_applications';
 const NOTIFICATIONS_KEY = 'uniroom_notifications';
 const ACTIVE_HOMES_KEY = 'uniroom_active_homes';
 const DATA_VERSION_KEY = 'uniroom_applications_version';
-const CURRENT_VERSION = '2026-05-v4';
+const CURRENT_VERSION = '2026-05-v5';
 
 const LANDLORD_APPLICATIONS_KEY = 'uniroom_landlord_applications';
 const ROOMS_KEY = 'uniroom_rooms';
+const PROPERTIES_REFRESH_EVENT = 'uniroom:properties-updated';
 
 const INITIAL_APPLICATIONS: Application[] = [
   {
@@ -111,6 +112,10 @@ function initStorage() {
 
 initStorage();
 
+function notifyPropertiesUpdated(): void {
+  window.dispatchEvent(new CustomEvent(PROPERTIES_REFRESH_EVENT));
+}
+
 function readApplications(): Application[] {
   const stored = localStorage.getItem(APPLICATIONS_KEY);
 
@@ -204,6 +209,7 @@ function updateRoomStatusInStorage(
     };
 
     localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
+    notifyPropertiesUpdated();
   } catch {
     // Ignore invalid persisted mock data.
   }
@@ -238,7 +244,12 @@ function syncLandlordCandidatesFromApplication(
           return { ...candidate, status: 'accepted' };
         }
 
-        if (status === 'pending' || status === 'under_review' || status === 'accepted' || status === 'rejected') {
+        if (
+          status === 'pending' ||
+          status === 'under_review' ||
+          status === 'accepted' ||
+          status === 'rejected'
+        ) {
           return { ...candidate, status };
         }
       }
@@ -398,7 +409,10 @@ export function updateApplicationStatus(
   if (idx < 0) return false;
 
   const previousStatus = all[idx].status;
-  const shouldReview = status === 'accepted' || status === 'rejected' || status === 'under_review';
+  const shouldReview =
+    status === 'accepted' ||
+    status === 'rejected' ||
+    status === 'under_review';
 
   all[idx] = {
     ...all[idx],
