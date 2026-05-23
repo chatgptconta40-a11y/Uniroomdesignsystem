@@ -50,108 +50,33 @@ import { Input } from '../components/Input';
 import { toast } from 'sonner';
 import { Room, RoomStatus, Property } from '../types/property';
 import { normalizeRoomStatus, getRoomStatusLabel, getRoomStatusBadgeClasses } from '../utils/roomStatus';
+import {
+  LandlordApplication,
+  CandidateStatus,
+  getApplicationsByProperty,
+  updateCandidateStatus,
+} from '../data/mockLandlordCandidates';
 
-// ─── Mock candidates ─────────────────────────────────────────────────────────
-
-interface Candidate {
-  id: string;
-  name: string;
-  initials: string;
-  color: string;
-  university: string;
-  course: string;
-  year: number;
-  isStudent: boolean;
-  compatibilityScore: number;
-  message: string;
-  status: 'pending' | 'under_review' | 'accepted' | 'rejected';
-  appliedAt: string;
-  wantedRoomTitle: string;
-  roomId: string;
-}
-
-const MOCK_CANDIDATES: Candidate[] = [
-  {
-    id: 'cand-1',
-    name: 'Ana Rodrigues',
-    initials: 'AR',
-    color: 'from-purple-500 to-pink-500',
-    university: 'ESTGV',
-    course: 'Engenharia Informática',
-    year: 2,
-    isStudent: true,
-    compatibilityScore: 92,
-    message: 'Olá! Sou estudante de Informática no 2º ano na ESTGV. Procuro um quarto tranquilo e organizado. Tenho horários de estudo regulares e gosto de manter a casa limpa.',
-    status: 'pending',
-    appliedAt: '2026-05-20',
-    wantedRoomTitle: 'Suite com WC Privativo',
-    roomId: 'room-estgv-1',
-  },
-  {
-    id: 'cand-2',
-    name: 'Miguel Santos',
-    initials: 'MS',
-    color: 'from-blue-500 to-cyan-500',
-    university: 'ESTGV',
-    course: 'Gestão',
-    year: 3,
-    isStudent: true,
-    compatibilityScore: 85,
-    message: 'Bom dia! Sou estudante de Gestão, 3º ano. Procuro alojamento a partir de setembro. Sou calmo, responsável e não fumo. Tenho referências de senhorios anteriores.',
-    status: 'under_review',
-    appliedAt: '2026-05-18',
-    wantedRoomTitle: 'Quarto Standard',
-    roomId: 'room-estgv-2',
-  },
-  {
-    id: 'cand-3',
-    name: 'Sofia Costa',
-    initials: 'SC',
-    color: 'from-green-500 to-teal-500',
-    university: 'ESTGV',
-    course: 'Design de Comunicação',
-    year: 1,
-    isStudent: true,
-    compatibilityScore: 78,
-    message: 'Olá! Sou estudante do 1º ano, transferi-me do Porto. Procuro quarto perto da ESTGV. Gosto de ambientes calmos e respeito as regras da casa.',
-    status: 'pending',
-    appliedAt: '2026-05-22',
-    wantedRoomTitle: 'Quarto Standard',
-    roomId: 'room-estgv-3',
-  },
-  {
-    id: 'cand-4',
-    name: 'João Ferreira',
-    initials: 'JF',
-    color: 'from-orange-500 to-red-500',
-    university: 'ESTGV',
-    course: 'Marketing',
-    year: 2,
-    isStudent: true,
-    compatibilityScore: 71,
-    message: 'Estudante de Marketing, 2º ano. Procuro quarto económico com boa ligação à faculdade. Sou sociável mas respeito os espaços comuns.',
-    status: 'rejected',
-    appliedAt: '2026-05-15',
-    wantedRoomTitle: 'Quarto Standard',
-    roomId: 'room-estgv-2',
-  },
-];
+// Re-export the type alias used internally
+type Candidate = LandlordApplication;
 
 // ─── CandidateCard ─────────────────────────────────────────────────────────────
 
 function CandidateCard({
   candidate,
+  roomAlreadyReserved,
   onAccept,
   onReject,
   onContact,
 }: {
   candidate: Candidate;
+  roomAlreadyReserved: boolean; // room reserved by someone else
   onAccept: () => void;
   onReject: () => void;
   onContact: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const statusConfig = {
+  const statusConfig: Record<CandidateStatus, { label: string; cls: string }> = {
     pending: { label: 'Pendente', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
     under_review: { label: 'Em análise', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
     accepted: { label: 'Aceite', cls: 'bg-green-50 text-green-700 border-green-200' },
@@ -161,17 +86,19 @@ function CandidateCard({
   const scoreColor = candidate.compatibilityScore >= 85 ? 'text-green-600' :
     candidate.compatibilityScore >= 70 ? 'text-amber-600' : 'text-muted-foreground';
 
+  const isActionable = candidate.status !== 'rejected' && candidate.status !== 'accepted';
+
   return (
     <div className={`border rounded-xl p-4 transition-all ${
       candidate.status === 'rejected' ? 'border-border opacity-60' : 'border-border hover:border-primary/30'
     }`}>
       <div className="flex items-start gap-3">
-        <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${candidate.color} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
+        <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${candidate.avatarColor} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
           {candidate.initials}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-foreground">{candidate.name}</p>
+            <p className="font-semibold text-foreground">{candidate.studentName}</p>
             <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${cfg.cls}`}>
               {cfg.label}
             </span>
@@ -181,13 +108,18 @@ function CandidateCard({
                 Estudante
               </span>
             )}
+            {roomAlreadyReserved && isActionable && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Quarto já reservado
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             {candidate.course} · {candidate.year}º ano · {candidate.university}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Quarto pretendido: <span className="font-medium text-foreground">{candidate.wantedRoomTitle}</span>
-            {' · '}Candidatura a {new Date(candidate.appliedAt).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
+            Candidatura a {new Date(candidate.appliedAt).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
           </p>
         </div>
         <div className="flex-shrink-0 text-right">
@@ -218,7 +150,7 @@ function CandidateCard({
         )}
       </div>
 
-      {candidate.status !== 'rejected' && candidate.status !== 'accepted' && (
+      {isActionable && (
         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/60">
           <button
             onClick={onContact}
@@ -243,15 +175,21 @@ function CandidateCard({
             Recusar
           </button>
           <button
+            disabled={roomAlreadyReserved}
             onClick={onAccept}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors"
+            title={roomAlreadyReserved ? 'Este quarto já está reservado. Liberta-o antes de aceitar outro candidato.' : undefined}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              roomAlreadyReserved
+                ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
           >
             <ThumbsUp className="w-3.5 h-3.5" />
             Aceitar
           </button>
         </div>
       )}
-      {(candidate.status === 'accepted' || candidate.status === 'rejected') && (
+      {!isActionable && (
         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/60">
           <button
             onClick={onContact}
@@ -927,8 +865,11 @@ export function LandlordPropertyDetail() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddRoomModal, setShowAddRoomModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'rooms' | 'candidates'>('rooms');
-  const [candidates, setCandidates] = useState<Candidate[]>(MOCK_CANDIDATES);
-  const [candidateFilter, setCandidateFilter] = useState<'all' | 'pending' | 'under_review' | 'accepted' | 'rejected'>('all');
+  const [candidates, setCandidates] = useState<Candidate[]>(() =>
+    id ? getApplicationsByProperty(id) : [],
+  );
+  const [candidateFilter, setCandidateFilter] = useState<'all' | CandidateStatus>('all');
+  const [roomFilter, setRoomFilter] = useState<'all' | string>('all');
 
   const property = getProperty(id || '');
   const rooms = property ? getRoomsByProperty(property.id) : [];
@@ -1010,20 +951,24 @@ export function LandlordPropertyDetail() {
     if (targetRoom) {
       const roomStatus = normalizeRoomStatus(targetRoom);
       if (roomStatus === 'reserved' || roomStatus === 'occupied') {
-        toast.error(`O quarto "${targetRoom.title}" já está ${roomStatus === 'reserved' ? 'reservado' : 'ocupado'}. Rejeita o candidato ou liberta o quarto primeiro.`);
+        toast.error(
+          `O quarto "${targetRoom.title}" já está ${roomStatus === 'reserved' ? 'reservado' : 'ocupado'}. Liberta o quarto antes de aceitar outro candidato.`,
+        );
         return;
       }
       updateRoomStatus(candidate.roomId, 'reserved');
     }
 
-    setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: 'accepted' as const } : c));
-    toast.success(`${candidate.name} aceite! O quarto foi marcado como reservado.`);
+    updateCandidateStatus(candidateId, 'accepted');
+    setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: 'accepted' } : c));
+    toast.success(`${candidate.studentName} aceite! O quarto foi marcado como reservado.`);
   };
 
   const handleRejectCandidate = (candidateId: string) => {
     const candidate = candidates.find(c => c.id === candidateId);
-    setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: 'rejected' as const } : c));
-    toast.info(`Candidatura de ${candidate?.name ?? 'candidato'} recusada.`);
+    updateCandidateStatus(candidateId, 'rejected');
+    setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: 'rejected' } : c));
+    toast.info(`Candidatura de ${candidate?.studentName ?? 'candidato'} recusada.`);
   };
 
   const handleSaveProperty = (updates: Partial<Property>) => {
@@ -1048,9 +993,16 @@ export function LandlordPropertyDetail() {
     );
   };
 
-  const filteredCandidates = candidateFilter === 'all'
-    ? candidates
-    : candidates.filter(c => c.status === candidateFilter);
+  // Set of rooms that already have a reserved/occupied status
+  const reservedRoomIds = new Set(
+    rooms.filter(r => normalizeRoomStatus(r) === 'reserved' || normalizeRoomStatus(r) === 'occupied').map(r => r.id),
+  );
+
+  const filteredCandidates = candidates.filter(c => {
+    const statusMatch = candidateFilter === 'all' || c.status === candidateFilter;
+    const roomMatch = roomFilter === 'all' || c.roomId === roomFilter;
+    return statusMatch && roomMatch;
+  });
 
   const pendingCount = candidates.filter(c => c.status === 'pending' || c.status === 'under_review').length;
   const heroImage = property.images[selectedImage] || property.images[0];
@@ -1332,7 +1284,7 @@ export function LandlordPropertyDetail() {
                     ))}
                   </div>
 
-                  {/* Filter buttons */}
+                  {/* Status filter */}
                   <div className="flex gap-2 flex-wrap">
                     {(['all', 'pending', 'under_review', 'accepted', 'rejected'] as const).map(f => {
                       const labels: Record<string, string> = { all: 'Todos', pending: 'Pendentes', under_review: 'Em análise', accepted: 'Aceites', rejected: 'Rejeitados' };
@@ -1354,37 +1306,76 @@ export function LandlordPropertyDetail() {
                     })}
                   </div>
 
+                  {/* Room filter */}
+                  {rooms.length > 1 && (
+                    <div className="flex gap-2 flex-wrap items-center">
+                      <span className="text-xs text-muted-foreground font-medium">Quarto:</span>
+                      <button
+                        onClick={() => setRoomFilter('all')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          roomFilter === 'all' ? 'bg-foreground text-background border-foreground' : 'border-border hover:bg-muted'
+                        }`}
+                      >
+                        Todos os quartos ({candidates.length})
+                      </button>
+                      {rooms.map(room => {
+                        const count = candidates.filter(c => c.roomId === room.id).length;
+                        const isReserved = reservedRoomIds.has(room.id);
+                        return (
+                          <button
+                            key={room.id}
+                            onClick={() => setRoomFilter(room.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                              roomFilter === room.id ? 'bg-foreground text-background border-foreground' : 'border-border hover:bg-muted'
+                            }`}
+                          >
+                            {room.title} ({count})
+                            {isReserved && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" title="Reservado" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Candidate list */}
                   {filteredCandidates.length === 0 ? (
                     <Card className="p-10 text-center">
                       <Users className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
                       <p className="font-medium text-foreground mb-1">
-                        {candidateFilter === 'all' ? 'Sem candidaturas' : `Nenhum candidato ${
-                          candidateFilter === 'pending' ? 'pendente' :
-                          candidateFilter === 'under_review' ? 'em análise' :
-                          candidateFilter === 'accepted' ? 'aceite' : 'rejeitado'
-                        }`}
+                        {candidates.length === 0
+                          ? 'Sem candidaturas ainda'
+                          : candidateFilter !== 'all' || roomFilter !== 'all'
+                          ? 'Sem candidatos neste filtro'
+                          : 'Sem candidaturas'}
                       </p>
                       <p className="text-muted-foreground text-sm">
-                        {candidateFilter === 'all'
+                        {candidates.length === 0
                           ? 'Ainda não há candidaturas para este alojamento.'
-                          : 'Altera o filtro para ver outros candidatos.'}
+                          : 'Altera o filtro de estado ou de quarto para ver outros candidatos.'}
                       </p>
                     </Card>
                   ) : (
                     <div className="space-y-3">
-                      {filteredCandidates.map(candidate => (
-                        <CandidateCard
-                          key={candidate.id}
-                          candidate={candidate}
-                          onAccept={() => handleAcceptCandidate(candidate.id)}
-                          onReject={() => handleRejectCandidate(candidate.id)}
-                          onContact={() => {
-                            navigate('/messages');
-                            toast.info(`A abrir conversa com ${candidate.name}`);
-                          }}
-                        />
-                      ))}
+                      {filteredCandidates.map(candidate => {
+                        // Room is reserved by someone else (another accepted candidate)
+                        const roomReservedByOther =
+                          reservedRoomIds.has(candidate.roomId) && candidate.status !== 'accepted';
+                        return (
+                          <CandidateCard
+                            key={candidate.id}
+                            candidate={candidate}
+                            roomAlreadyReserved={roomReservedByOther}
+                            onAccept={() => handleAcceptCandidate(candidate.id)}
+                            onReject={() => handleRejectCandidate(candidate.id)}
+                            onContact={() => {
+                              navigate('/messages');
+                              toast.info(`A abrir conversa com ${candidate.studentName}`);
+                            }}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </div>

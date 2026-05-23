@@ -500,23 +500,31 @@ export function NewListing() {
     ));
   };
 
-  // ── Submission ──
-  const buildAndSave = (publishAll: boolean) => {
+  // ── Submission — three distinct modes ──────────────────────────────────────
+  // mode='draft'    → property=draft,  ALL rooms=draft  (publishNow ignored)
+  // mode='selected' → property=active, selected rooms=available, rest=draft
+  // mode='all'      → property=active, ALL rooms=available
+  const buildAndSave = (mode: 'draft' | 'selected' | 'all') => {
     if (!user) return;
 
     const propertyId = `prop-${Date.now()}`;
     const now = new Date();
+
+    const ROOM_PHOTOS_LIST = [
+      'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400&q=80',
+      'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400&q=80',
+      'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=400&q=80',
+    ];
 
     const roomIds: string[] = [];
     const roomsToCreate = rooms.map((r, i) => {
       const roomId = `room-${Date.now()}-${i}`;
       roomIds.push(roomId);
 
-      const ROOM_PHOTOS_LIST = [
-        'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400&q=80',
-        'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400&q=80',
-        'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=400&q=80',
-      ];
+      const roomStatus =
+        mode === 'draft' ? 'draft' as const :
+        mode === 'all'   ? 'available' as const :
+        r.publishNow     ? 'available' as const : 'draft' as const;
 
       return {
         id: roomId,
@@ -538,12 +546,14 @@ export function NewListing() {
         utilities: r.utilities > 0 ? r.utilities : undefined,
         availableFrom: new Date(r.availableFrom),
         minimumStay: 6,
-        status: (publishAll || r.publishNow) ? 'available' as const : 'draft' as const,
+        status: roomStatus,
         createdAt: now,
         updatedAt: now,
         views: 0,
       };
     });
+
+    const propertyStatus = mode === 'draft' ? 'draft' as const : 'active' as const;
 
     const newProperty = {
       id: propertyId,
@@ -582,8 +592,7 @@ export function NewListing() {
       totalRooms: rooms.length,
       roomIds,
       wholePropertyAvailable: false,
-      // Property is active if any rooms are being published, otherwise draft
-      status: (publishAll || rooms.some(r => r.publishNow)) ? 'active' as const : 'draft' as const,
+      status: propertyStatus,
       verified: false,
       createdAt: now,
       updatedAt: now,
@@ -595,22 +604,24 @@ export function NewListing() {
 
     const publishedCount = roomsToCreate.filter(r => r.status === 'available').length;
 
-    if (publishAll) {
+    if (mode === 'draft') {
+      toast.success('Rascunho guardado!', {
+        description: 'Nada ficou visível para estudantes. Podes publicar quando estiveres pronto.',
+      });
+    } else if (mode === 'all') {
       toast.success('Alojamento publicado!', {
         description: `${rooms.length} quarto${rooms.length > 1 ? 's' : ''} visível${rooms.length > 1 ? 'is' : ''} para estudantes.`,
       });
-    } else if (publishedCount > 0) {
-      toast.success('Alojamento ativo com quartos selecionados!', {
-        description: `${publishedCount} quarto${publishedCount > 1 ? 's' : ''} publicado${publishedCount > 1 ? 's' : ''}, ${rooms.length - publishedCount} em rascunho.`,
-      });
     } else {
-      toast.success('Rascunho guardado!', {
-        description: 'Todos os quartos ficaram em rascunho. Podes publicá-los em "Os meus alojamentos".',
+      toast.success('Alojamento ativo com quartos selecionados!', {
+        description: `${publishedCount} publicado${publishedCount > 1 ? 's' : ''}, ${rooms.length - publishedCount} em rascunho.`,
       });
     }
 
     setTimeout(() => navigate('/landlord/listings'), 1200);
   };
+
+  const selectedCount = rooms.filter(r => r.publishNow).length;
 
   // ── Missing fields for preview ──
   const missingFields: string[] = [];
@@ -1190,37 +1201,64 @@ export function NewListing() {
                 </div>
               )}
 
-              {/* Action cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              {/* Action cards — 3 explicit options */}
+              <div className="space-y-3 pt-2">
+                {/* Option 1: Save as draft */}
                 <button
-                  onClick={() => buildAndSave(false)}
-                  className="p-5 border-2 border-border rounded-2xl text-left hover:border-primary/40 hover:bg-muted/30 transition-all group"
+                  onClick={() => buildAndSave('draft')}
+                  className="w-full p-4 border-2 border-border rounded-2xl text-left hover:border-primary/40 hover:bg-muted/30 transition-all group flex items-start gap-4"
                 >
-                  <Save className="w-6 h-6 text-muted-foreground mb-3 group-hover:text-primary transition-colors" />
-                  <p className="font-semibold text-foreground mb-1">Guardar rascunho</p>
-                  <p className="text-xs text-muted-foreground">
-                    {rooms.filter(r => r.publishNow).length > 0
-                      ? `${rooms.filter(r => r.publishNow).length} quarto${rooms.filter(r => r.publishNow).length > 1 ? 's' : ''} marcado${rooms.filter(r => r.publishNow).length > 1 ? 's' : ''} para publicar, restantes em rascunho`
-                      : 'Propriedade e quartos ficam em rascunho'}
-                  </p>
+                  <Save className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0 group-hover:text-primary transition-colors" />
+                  <div>
+                    <p className="font-semibold text-foreground mb-0.5">Guardar rascunho</p>
+                    <p className="text-xs text-muted-foreground">
+                      Guarda tudo como rascunho. Nada fica visível para estudantes — podes publicar mais tarde.
+                    </p>
+                  </div>
                 </button>
 
+                {/* Option 2: Publish selected (only shown if some rooms have publishNow=true) */}
+                {rooms.length > 1 && (
+                  <button
+                    disabled={missingFields.length > 0 || selectedCount === 0}
+                    onClick={() => buildAndSave('selected')}
+                    className={`w-full p-4 border-2 rounded-2xl text-left transition-all flex items-start gap-4 ${
+                      missingFields.length > 0 || selectedCount === 0
+                        ? 'border-border bg-muted/10 opacity-50 cursor-not-allowed'
+                        : 'border-amber-300 bg-amber-50/60 hover:bg-amber-50 cursor-pointer'
+                    }`}
+                  >
+                    <Eye className={`w-5 h-5 mt-0.5 flex-shrink-0 ${missingFields.length > 0 || selectedCount === 0 ? 'text-muted-foreground' : 'text-amber-600'}`} />
+                    <div>
+                      <p className="font-semibold text-foreground mb-0.5">Publicar apenas selecionados</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedCount === 0
+                          ? 'Seleciona pelo menos um quarto na lista acima'
+                          : `${selectedCount} quarto${selectedCount > 1 ? 's' : ''} publicado${selectedCount > 1 ? 's' : ''}, ${rooms.length - selectedCount} ficam em rascunho.`}
+                      </p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Option 3: Publish all */}
                 <button
                   disabled={missingFields.length > 0}
-                  onClick={() => buildAndSave(true)}
-                  className={`p-5 border-2 rounded-2xl text-left transition-all ${
+                  onClick={() => buildAndSave('all')}
+                  className={`w-full p-4 border-2 rounded-2xl text-left transition-all flex items-start gap-4 ${
                     missingFields.length > 0
                       ? 'border-border bg-muted/20 opacity-60 cursor-not-allowed'
                       : 'border-primary bg-primary/5 hover:bg-primary/10 cursor-pointer'
                   }`}
                 >
-                  <CheckCircle className={`w-6 h-6 mb-3 transition-colors ${missingFields.length > 0 ? 'text-muted-foreground' : 'text-primary'}`} />
-                  <p className="font-semibold text-foreground mb-1">Publicar tudo agora</p>
-                  <p className="text-xs text-muted-foreground">
-                    {missingFields.length > 0
-                      ? 'Preenche os campos obrigatórios primeiro'
-                      : `${rooms.length} quarto${rooms.length !== 1 ? 's' : ''} ficarão visíveis para estudantes`}
-                  </p>
+                  <CheckCircle className={`w-5 h-5 mt-0.5 flex-shrink-0 ${missingFields.length > 0 ? 'text-muted-foreground' : 'text-primary'}`} />
+                  <div>
+                    <p className="font-semibold text-foreground mb-0.5">Publicar tudo agora</p>
+                    <p className="text-xs text-muted-foreground">
+                      {missingFields.length > 0
+                        ? 'Preenche os campos obrigatórios antes de publicar'
+                        : `Todos os ${rooms.length} quarto${rooms.length !== 1 ? 's' : ''} ficam visíveis para estudantes imediatamente.`}
+                    </p>
+                  </div>
                 </button>
               </div>
             </div>
@@ -1238,7 +1276,7 @@ export function NewListing() {
             )}
 
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={() => buildAndSave(false)} className="hidden sm:flex">
+              <Button variant="outline" onClick={() => buildAndSave('draft')} className="hidden sm:flex">
                 <Save className="w-4 h-4 mr-1.5" />
                 Guardar rascunho
               </Button>

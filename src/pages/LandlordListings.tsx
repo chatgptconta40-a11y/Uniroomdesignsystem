@@ -252,16 +252,28 @@ export function LandlordListings() {
   };
 
   const handlePublishProperty = (propertyId: string) => {
-    // Activate property and publish all draft rooms at once
-    updatePropertyStatus(propertyId, 'active');
     const propertyRooms = rooms.filter(r => r.propertyId === propertyId);
+    const draftCount = propertyRooms.filter(r => r.status === 'draft').length;
+    updatePropertyStatus(propertyId, 'active');
     propertyRooms.forEach(room => {
       if (room.status === 'draft') updateRoomStatus(room.id, 'available');
     });
-    const published = propertyRooms.filter(r => r.status === 'draft').length;
-    toast.success(published > 0
-      ? `Alojamento publicado com ${published} quarto${published > 1 ? 's' : ''} disponíve${published > 1 ? 'is' : 'l'}`
-      : 'Alojamento publicado com sucesso',
+    toast.success(draftCount > 0
+      ? `Alojamento publicado com ${draftCount} quarto${draftCount > 1 ? 's' : ''} disponíve${draftCount > 1 ? 'is' : 'l'}`
+      : 'Alojamento reativado com sucesso',
+    );
+  };
+
+  const handlePublishDraftRoom = (room: Room, property: Property) => {
+    // If the parent property is also draft, activate it together
+    if (property.status === 'draft') {
+      updatePropertyStatus(property.id, 'active');
+    }
+    updateRoomStatus(room.id, 'available');
+    toast.success(
+      property.status === 'draft'
+        ? `Quarto publicado. O alojamento "${property.title}" também foi ativado.`
+        : `Quarto "${room.title}" publicado com sucesso.`,
     );
   };
 
@@ -462,13 +474,28 @@ export function LandlordListings() {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-blue-800 mb-0.5">Alojamento em rascunho</p>
                             <p className="text-xs text-blue-700">
-                              Publica o alojamento para que os estudantes o possam ver. Podes publicar quartos individualmente.
+                              Nada é visível para estudantes. Publica tudo de uma vez ou usa "Publicar *" em cada quarto — o alojamento também será ativado automaticamente.
                             </p>
                           </div>
-                          <Button variant="primary" size="sm" onClick={() => handlePublishProperty(property.id)}>
-                            <Play className="w-4 h-4 mr-1" />
-                            Publicar tudo
-                          </Button>
+                          {propertyRooms.length > 0 && (
+                            <Button variant="primary" size="sm" onClick={() => handlePublishProperty(property.id)}>
+                              <Play className="w-4 h-4 mr-1" />
+                              Publicar tudo
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* No visible rooms warning — active property with no available rooms */}
+                      {property.status === 'active' && propertyRooms.length > 0 && availableRooms === 0 && (
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-semibold text-amber-800">Sem quartos visíveis</p>
+                            <p className="text-xs text-amber-700">
+                              Este alojamento está ativo mas não tem quartos disponíveis para estudantes. Publica ou reativa um quarto.
+                            </p>
+                          </div>
                         </div>
                       )}
 
@@ -607,15 +634,12 @@ export function LandlordListings() {
 
                                   {room.status === 'draft' && (
                                     <button
-                                      onClick={() => {
-                                        handleReactivateRoom(room);
-                                        if (property.status === 'draft') handlePublishProperty(property.id);
-                                      }}
+                                      onClick={() => handlePublishDraftRoom(room, property)}
                                       className="flex items-center gap-1 px-2.5 h-9 rounded-lg bg-green-50 border border-green-300 hover:bg-green-100 text-green-700 transition-colors text-xs font-medium"
-                                      title="Publicar quarto"
+                                      title={property.status === 'draft' ? 'Publicar quarto (ativa o alojamento)' : 'Publicar quarto'}
                                     >
                                       <Play className="w-3.5 h-3.5" />
-                                      Publicar
+                                      Publicar{property.status === 'draft' ? ' *' : ''}
                                     </button>
                                   )}
 

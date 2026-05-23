@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { getLandlordMetrics, getDashboardActivity, getPerformanceData } from '../data/mockLandlord';
+import { getPendingCountForLandlord } from '../data/mockLandlordCandidates';
 import { getMaintenanceStats } from '../data/mockMaintenance';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -56,6 +57,11 @@ export function LandlordDashboard() {
   });
 
   const draftRooms = myRooms.filter(r => r.status === 'draft');
+
+  const pendingApplicationsCount = getPendingCountForLandlord(
+    user?.id || '',
+    myProperties.map(p => p.id),
+  );
 
   const lateRentRooms = myRooms.filter(r => {
     if (r.status !== 'occupied' || !r.moveInDate) return false;
@@ -162,11 +168,11 @@ export function LandlordDashboard() {
               <div className="w-14 h-14 bg-secondary/10 rounded-xl flex items-center justify-center">
                 <FileText className="w-7 h-7 text-secondary" />
               </div>
-              {(mockMetrics?.pendingApplications ?? 0) > 0 && (
-                <Badge variant="success">{mockMetrics!.pendingApplications}</Badge>
+              {pendingApplicationsCount > 0 && (
+                <Badge variant="success">{pendingApplicationsCount}</Badge>
               )}
             </div>
-            <h3 className="text-4xl font-bold text-foreground mb-3">{mockMetrics?.pendingApplications ?? 0}</h3>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{pendingApplicationsCount}</h3>
             <p className="text-sm font-medium text-muted-foreground">Candidaturas Pendentes</p>
           </Card>
 
@@ -347,7 +353,7 @@ export function LandlordDashboard() {
 
         {/* Ações Importantes — all derived from PropertiesContext + mock for messages/applications */}
         {(() => {
-          const pending = mockMetrics?.pendingApplications ?? 0;
+          const pending = pendingApplicationsCount;
           const unread = mockMetrics?.unreadMessages ?? 0;
 
           const actions: {
