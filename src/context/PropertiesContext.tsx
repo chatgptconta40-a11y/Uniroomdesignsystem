@@ -23,7 +23,7 @@ interface PropertiesContextType {
 
 const PropertiesContext = createContext<PropertiesContextType | undefined>(undefined);
 
-const DATA_VERSION = '2026-05-v6';
+const DATA_VERSION = '2026-05-v7';
 const DATA_VERSION_KEY = 'uniroom_data_version';
 const PROPERTIES_KEY = 'uniroom_properties';
 const ROOMS_KEY = 'uniroom_rooms';
@@ -49,6 +49,7 @@ function reviveRooms(items: any[]): Room[] {
 
 function readStoredProperties(): Property[] {
   const stored = localStorage.getItem(PROPERTIES_KEY);
+
   if (!stored) {
     localStorage.setItem(PROPERTIES_KEY, JSON.stringify(mockProperties));
     return mockProperties;
@@ -64,6 +65,7 @@ function readStoredProperties(): Property[] {
 
 function readStoredRooms(): Room[] {
   const stored = localStorage.getItem(ROOMS_KEY);
+
   if (!stored) {
     localStorage.setItem(ROOMS_KEY, JSON.stringify(mockRooms));
     return mockRooms;
@@ -85,10 +87,6 @@ function ensureFreshMockData() {
     localStorage.removeItem(ROOMS_KEY);
     localStorage.setItem(DATA_VERSION_KEY, DATA_VERSION);
   }
-}
-
-function notifyPropertiesUpdated() {
-  window.dispatchEvent(new CustomEvent(REFRESH_EVENT));
 }
 
 export function PropertiesProvider({ children }: { children: ReactNode }) {
@@ -134,12 +132,10 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
 
   const addProperty = (property: Property) => {
     setProperties(previous => [...previous, property]);
-    notifyPropertiesUpdated();
   };
 
   const addRoom = (room: Room) => {
     setRooms(previous => [...previous, room]);
-    notifyPropertiesUpdated();
   };
 
   const updatePropertyStatus = (id: string, status: PropertyStatus) => {
@@ -150,7 +146,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
-    notifyPropertiesUpdated();
   };
 
   const updateProperty = (id: string, updates: Partial<Property>) => {
@@ -161,7 +156,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
-    notifyPropertiesUpdated();
   };
 
   const deleteProperty = (id: string) => {
@@ -172,7 +166,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
-    notifyPropertiesUpdated();
   };
 
   const updateRoom = (id: string, updates: Partial<Room>) => {
@@ -183,7 +176,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : room,
       ),
     );
-    notifyPropertiesUpdated();
   };
 
   const updateRoomStatus = (id: string, status: RoomStatus) => {
@@ -194,7 +186,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : room,
       ),
     );
-    notifyPropertiesUpdated();
   };
 
   const deleteRoom = (id: string) => {
@@ -205,7 +196,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : room,
       ),
     );
-    notifyPropertiesUpdated();
   };
 
   const getProperty = (id: string) => {
@@ -236,7 +226,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
-    notifyPropertiesUpdated();
   };
 
   const liftAdminSuspension = (id: string) => {
@@ -254,7 +243,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
           : property,
       ),
     );
-    notifyPropertiesUpdated();
   };
 
   return (
