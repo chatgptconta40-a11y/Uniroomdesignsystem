@@ -15,63 +15,140 @@ import {
   Wifi,
   Wrench,
   ArrowRight,
+  Receipt,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useProperties } from '../context/PropertiesContext';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { MaintenanceModal } from '../components/MaintenanceModal';
 import { StartConversationModal } from '../components/StartConversationModal';
 import { getMaintenanceRequests } from '../data/mockMaintenance';
-import { getProperty, getRoom } from '../data/mockProperties';
 import { getHouseGroupConversation, getMessagesForConversation } from '../data/mockMessages';
 import { getActiveHomeForStudent, getApplicationsForUser, confirmStay } from '../data/mockApplications';
-import { Accommodation } from '../types/accommodation';
+import { Accommodation, ActiveHome } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
 
-const housemates = [
-  {
-    id: 'mate-1',
-    name: 'Inês Ferreira',
-    course: 'Enfermagem',
-    room: 'Quarto 2',
-    initials: 'IF',
-    status: 'Em casa desde Setembro 2025',
-  },
-  {
-    id: 'mate-2',
-    name: 'Miguel Costa',
-    course: 'Engenharia Informática',
-    room: 'Quarto 3',
-    initials: 'MC',
-    status: 'Em casa desde Outubro 2025',
-  },
-];
+const PAYMENTS_KEY = 'uniroom_active_home_payments';
+const HOUSEMATES_KEY = 'uniroom_active_home_housemates';
 
-const recentPayments = [
-  { id: 'pay-1', month: 'Maio 2026', date: '05/05/2026', status: 'Pago' },
-  { id: 'pay-2', month: 'Abril 2026', date: '05/04/2026', status: 'Pago' },
-  { id: 'pay-3', month: 'Março 2026', date: '05/03/2026', status: 'Pago' },
-];
+interface MockPayment {
+  id: string;
+  activeHomeId: string;
+  month: string;
+  dueDate: string;
+  paidAt?: string;
+  amount: number;
+  status: 'paid' | 'pending' | 'late';
+  receiptUrl?: string;
+}
 
-function formatDate(date: Date) {
+interface MockHousemate {
+  id: string;
+  propertyId: string;
+  name: string;
+  course: string;
+  room: string;
+  initials: string;
+  since: string;
+}
+
+function formatDate(date: Date | string) {
   return new Intl.DateTimeFormat('pt-PT', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
-  }).format(date);
+  }).format(new Date(date));
 }
 
 function getDaysSince(date: Date | string) {
   return Math.max(
     0,
-    Math.floor((new Date().getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24))
+    Math.floor((new Date().getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24)),
   );
+}
+
+function getMonthsLabel(date: Date | string) {
+  return new Intl.DateTimeFormat('pt-PT', {
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(date));
+}
+
+function readPayments(activeHome: ActiveHome, monthlyTotal: number): MockPayment[] {
+  const stored = localStorage.getItem(PAYMENTS_KEY);
+  const all: MockPayment[] = stored ? JSON.parse(stored) : [];
+  const existing = all.filter(payment => payment.activeHomeId === activeHome.id);
+
+  if (existing.length > 0) {
+    return existing;
+  }
+
+  const base = new Date(activeHome.moveInDate);
+  const generated: MockPayment[] = [0, 1, 2].map(offset => {
+    const dueDate = new Date(base);
+    dueDate.setMonth(base.getMonth() + offset);
+    dueDate.setDate(activeHome.paymentDay);
+
+    const isFirst = offset === 0;
+
+    return {
+      id: `pay_${activeHome.id}_${offset}`,
+      activeHomeId: activeHome.id,
+      month: getMonthsLabel(dueDate),
+      dueDate: dueDate.toISOString(),
+      paidAt: isFirst ? new Date(dueDate).toISOString() : undefined,
+      amount: monthlyTotal,
+      status: isFirst ? 'paid' : 'pending',
+      receiptUrl: isFirst ? '#recibo-demo' : undefined,
+    };
+  });
+
+  localStorage.setItem(PAYMENTS_KEY, JSON.stringify([...all, ...generated]));
+  return generated;
+}
+
+function readHousemates(propertyId: string, currentRoomNumber: string): MockHousemate[] {
+  const stored = localStorage.getItem(HOUSEMATES_KEY);
+  const all: MockHousemate[] = stored ? JSON.parse(stored) : [];
+  const existing = all.filter(housemate => housemate.propertyId === propertyId);
+
+  if (existing.length > 0) {
+    return existing;
+  }
+
+  const generated: MockHousemate[] = [
+    {
+      id: `mate_${propertyId}_1`,
+      propertyId,
+      name: 'Inês Ferreira',
+      course: 'Enfermagem',
+      room: currentRoomNumber === 'Quarto 2' ? 'Quarto 1' : 'Quarto 2',
+      initials: 'IF',
+      since: 'Setembro 2025',
+    },
+    {
+      id: `mate_${propertyId}_2`,
+      propertyId,
+      name: 'Miguel Costa',
+      course: 'Engenharia Informática',
+      room: currentRoomNumber === 'Quarto 3' ? 'Quarto 1' : 'Quarto 3',
+      initials: 'MC',
+      since: 'Outubro 2025',
+    },
+  ];
+
+  localStorage.setItem(HOUSEMATES_KEY, JSON.stringify([...all, ...generated]));
+  return generated;
 }
 
 export function MyHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { getProperty, getRoom, refreshProperties } = useProperties();
+
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
@@ -83,6 +160,7 @@ export function MyHome() {
     }
 
     const activeHomeData = getActiveHomeForStudent(user.id);
+
     if (!activeHomeData) {
       return null;
     }
@@ -105,7 +183,7 @@ export function MyHome() {
       images: [...room.images, ...property.images],
       landlordId: property.landlordId,
       roomType: room.roomType,
-      currentOccupants: 1,
+      currentOccupants: room.occupiedBy ? 1 : 0,
       maxOccupants: room.maxOccupants,
       coordinates: property.coordinates || { lat: 40.6582, lng: -7.9138 },
       distanceToUniversity: property.distanceToUniversity,
@@ -139,7 +217,7 @@ export function MyHome() {
       accommodation,
       activeHomeData,
     };
-  }, [user?.id, user?.type, homeRefreshKey]);
+  }, [user?.id, user?.type, homeRefreshKey, getProperty, getRoom]);
 
   const refreshMaintenanceRequests = () => {
     if (!user) {
@@ -151,17 +229,17 @@ export function MyHome() {
   };
 
   useEffect(() => {
+    refreshProperties();
     refreshMaintenanceRequests();
   }, [user?.id]);
 
   if (!activeHome) {
-    // Check if there's an accepted application awaiting confirmation
     const acceptedApp = user
-      ? getApplicationsForUser(user.id).find(a => a.status === 'accepted')
+      ? getApplicationsForUser(user.id).find(application => application.status === 'accepted')
       : null;
 
-    const acceptedRoom = acceptedApp?.roomId ? getRoom(acceptedApp.roomId) : null;
-    const acceptedProperty = acceptedApp?.propertyId ? getProperty(acceptedApp.propertyId) : null;
+    const acceptedRoom = acceptedApp?.roomId ? getRoom(acceptedApp.roomId) : undefined;
+    const acceptedProperty = acceptedApp?.propertyId ? getProperty(acceptedApp.propertyId) : undefined;
 
     return (
       <div className="min-h-screen bg-background">
@@ -178,30 +256,42 @@ export function MyHome() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                   <div className="absolute bottom-4 left-4 text-white">
                     <p className="font-semibold">{acceptedRoom.title}</p>
-                    <p className="text-sm text-white/80">{acceptedProperty.address}, {acceptedProperty.city}</p>
+                    <p className="text-sm text-white/80">
+                      {acceptedProperty.address}, {acceptedProperty.city}
+                    </p>
                   </div>
                 </div>
               )}
+
               <div className="p-8 text-center">
                 <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <CheckCircle className="w-8 h-8 text-green-600" />
                 </div>
                 <h2 className="text-2xl font-bold mb-2">Candidatura aceite!</h2>
                 <p className="text-muted-foreground mb-2 max-w-sm mx-auto">
-                  O senhorio aceitou a tua candidatura para{acceptedRoom ? ` ${acceptedRoom.title}` : ' este quarto'}.
-                  Confirma a estadia para garantir o teu lugar.
+                  O senhorio aceitou a tua candidatura
+                  {acceptedRoom ? ` para ${acceptedRoom.title}` : ' para este quarto'}.
+                  Confirma a estadia para ativar a tua casa.
                 </p>
+
                 {acceptedApp.moveInDate && (
                   <p className="text-sm text-primary font-medium mb-6">
-                    Entrada prevista: {new Date(acceptedApp.moveInDate).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    Entrada prevista:{' '}
+                    {new Date(acceptedApp.moveInDate).toLocaleDateString('pt-PT', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
                   </p>
                 )}
+
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Button
                     onClick={() => {
                       const home = confirmStay(acceptedApp.id);
                       if (home) {
-                        setHomeRefreshKey(k => k + 1);
+                        refreshProperties();
+                        setHomeRefreshKey(key => key + 1);
                       }
                     }}
                     className="bg-green-600 hover:bg-green-700 text-white"
@@ -223,7 +313,8 @@ export function MyHome() {
               </div>
               <h2 className="text-2xl font-bold mb-3">Ainda não tens uma casa ativa</h2>
               <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-                Quando uma candidatura for aceite e confirmares a estadia, esta página passa a mostrar todas as informações do teu alojamento.
+                Quando uma candidatura for aceite e confirmares a estadia, esta página passa a mostrar
+                todas as informações do teu alojamento.
               </p>
               <div className="flex flex-col sm:flex-row items-center gap-3 justify-center">
                 <Link to="/search">
@@ -242,12 +333,20 @@ export function MyHome() {
 
   const { property, room, accommodation, activeHomeData } = activeHome;
   const monthlyTotal = room.price + (room.utilities || 0);
-  const visibleMaintenanceRequests = maintenanceRequests;
+  const payments = readPayments(activeHomeData, monthlyTotal);
+  const housemates = readHousemates(property.id, room.roomNumber);
+  const nextPayment = payments.find(payment => payment.status !== 'paid') || payments[0];
+  const paidPayments = payments.filter(payment => payment.status === 'paid');
+  const visibleMaintenanceRequests = maintenanceRequests.filter(request =>
+    request.accommodationId === room.id ||
+    request.accommodationId === accommodation.id ||
+    request.landlordId === property.landlordId,
+  );
 
   const pendingRequests = visibleMaintenanceRequests.filter(request => request.status === 'pending').length;
   const inProgressRequests = visibleMaintenanceRequests.filter(request => request.status === 'in_progress').length;
   const urgentRequests = visibleMaintenanceRequests.filter(
-    request => request.urgency === 'high' && request.status !== 'resolved' && request.status !== 'closed'
+    request => request.urgency === 'high' && request.status !== 'resolved' && request.status !== 'closed',
   ).length;
 
   const amenities = [
@@ -297,7 +396,7 @@ export function MyHome() {
           <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr]">
             <div className="relative min-h-[280px]">
               <img
-                src={property.images[0]}
+                src={property.images[0] || room.images[0]}
                 alt={property.title}
                 className="absolute inset-0 w-full h-full object-cover"
               />
@@ -326,10 +425,11 @@ export function MyHome() {
                   <p className="text-sm font-semibold text-primary mb-1">Quarto arrendado</p>
                   <h3 className="text-xl font-bold text-foreground">{room.title}</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {room.roomNumber} · {room.size} m² · {room.privateBathroom ? 'casa de banho privativa' : 'casa de banho partilhada'}
+                    {room.roomNumber} · {room.size || '—'} m² ·{' '}
+                    {room.privateBathroom ? 'casa de banho privativa' : 'casa de banho partilhada'}
                   </p>
                 </div>
-                <Badge variant="success">Ativo</Badge>
+                <Badge variant="success">Ocupado</Badge>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-6">
@@ -426,18 +526,18 @@ export function MyHome() {
             <Card className="p-6">
               <h3 className="text-lg font-bold text-foreground mb-5">Colegas de casa</h3>
               <div className="space-y-4">
-                {housemates.map((mate) => (
-                  <div key={mate.id} className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
+                {housemates.map(housemate => (
+                  <div key={housemate.id} className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
                     <div className="w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold">
-                      {mate.initials}
+                      {housemate.initials}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-foreground">{mate.name}</h4>
-                        <Badge variant="outline" className="text-xs">{mate.room}</Badge>
+                        <h4 className="font-semibold text-foreground">{housemate.name}</h4>
+                        <Badge variant="outline" className="text-xs">{housemate.room}</Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground">{mate.course}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{mate.status}</p>
+                      <p className="text-sm text-muted-foreground">{housemate.course}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Em casa desde {housemate.since}</p>
                     </div>
                   </div>
                 ))}
@@ -464,55 +564,30 @@ export function MyHome() {
                     )}
                   </div>
 
-                  <div className="mb-4 p-4 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white">
-                        <HomeIcon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-foreground">{houseChat.groupName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {houseChat.participants.length} participantes
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {houseChat.participants.map((participant) => (
-                        <div key={participant.id} className="flex items-center gap-2 bg-white/80 px-3 py-1.5 rounded-full border border-purple-200">
-                          <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold">
-                            {participant.name.charAt(0)}
-                          </div>
-                          <span className="text-xs font-medium text-foreground">{participant.name.split(' ')[0]}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
                   <div className="space-y-3 mb-4">
                     {lastMessages.length === 0 ? (
                       <div className="text-center py-6 text-muted-foreground text-sm">
                         Nenhuma mensagem ainda. Começa a conversa!
                       </div>
                     ) : (
-                      lastMessages.map((msg) => (
-                        <div key={msg.id} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                      lastMessages.map(message => (
+                        <div key={message.id} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
                           <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-                            {msg.senderName.charAt(0)}
+                            {message.senderName.charAt(0)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-xs font-semibold text-foreground">
-                                {msg.senderName.split(' ')[0]}
+                                {message.senderName.split(' ')[0]}
                               </span>
                               <span className="text-xs text-muted-foreground">
-                                {msg.createdAt.toLocaleTimeString('pt-PT', {
+                                {message.createdAt.toLocaleTimeString('pt-PT', {
                                   hour: '2-digit',
                                   minute: '2-digit',
                                 })}
                               </span>
                             </div>
-                            <p className="text-sm text-foreground line-clamp-2">{msg.content}</p>
+                            <p className="text-sm text-foreground line-clamp-2">{message.content}</p>
                           </div>
                         </div>
                       ))
@@ -532,7 +607,7 @@ export function MyHome() {
             <Card className="p-6">
               <h3 className="text-lg font-bold text-foreground mb-5">Regras principais</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {rules.map((rule) => (
+                {rules.map(rule => (
                   <div key={rule} className="flex items-start gap-3 p-4 border border-border rounded-lg">
                     <CheckCircle className="w-4 h-4 text-secondary mt-0.5 flex-shrink-0" />
                     <p className="text-sm text-foreground">{rule}</p>
@@ -547,7 +622,12 @@ export function MyHome() {
               <h3 className="text-lg font-bold text-foreground mb-4">Senhorio responsável</h3>
               <div className="flex items-center gap-4 mb-5">
                 <div className="w-14 h-14 bg-secondary text-secondary-foreground rounded-full flex items-center justify-center text-lg font-bold">
-                  {activeHomeData.landlordName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                  {activeHomeData.landlordName
+                    .split(' ')
+                    .map(name => name[0])
+                    .join('')
+                    .substring(0, 2)
+                    .toUpperCase()}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -566,29 +646,45 @@ export function MyHome() {
             <Card className="p-6">
               <h3 className="text-lg font-bold text-foreground mb-4">Resumo financeiro</h3>
               <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 mb-4">
-                <p className="text-xs text-muted-foreground mb-1">Próximo pagamento</p>
-                <p className="text-3xl font-bold text-foreground">€{monthlyTotal}</p>
+                <p className="text-xs text-muted-foreground mb-1">
+                  {nextPayment?.status === 'paid' ? 'Último pagamento' : 'Próximo pagamento'}
+                </p>
+                <p className="text-3xl font-bold text-foreground">€{nextPayment?.amount || monthlyTotal}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Renda + despesas · dia {activeHomeData.paymentDay} de cada mês
                 </p>
               </div>
 
               <div className="space-y-3">
-                {recentPayments.map((payment) => (
+                {payments.map(payment => (
                   <div key={payment.id} className="flex items-center justify-between gap-3 text-sm">
                     <div>
                       <p className="font-medium text-foreground">{payment.month}</p>
-                      <p className="text-xs text-muted-foreground">{payment.date}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {payment.status === 'paid' && payment.paidAt
+                          ? `Pago em ${formatDate(payment.paidAt)}`
+                          : `Vence em ${formatDate(payment.dueDate)}`}
+                      </p>
                     </div>
-                    <Badge variant="success">{payment.status}</Badge>
+                    <Badge
+                      variant={
+                        payment.status === 'paid'
+                          ? 'success'
+                          : payment.status === 'late'
+                          ? 'outline'
+                          : 'warning'
+                      }
+                    >
+                      {payment.status === 'paid' ? 'Pago' : payment.status === 'late' ? 'Em atraso' : 'Pendente'}
+                    </Badge>
                   </div>
                 ))}
               </div>
             </Card>
 
             <Card className="p-6">
-              <h3 className="text-lg font-bold text-foreground mb-4">Contrato</h3>
-              <div className="space-y-3 text-sm">
+              <h3 className="text-lg font-bold text-foreground mb-4">Contrato e recibos</h3>
+              <div className="space-y-3 text-sm mb-5">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Quarto</span>
                   <span className="font-semibold text-foreground">{room.roomNumber}</span>
@@ -601,6 +697,21 @@ export function MyHome() {
                   <span className="text-muted-foreground">Moradores</span>
                   <span className="font-semibold text-foreground">{housemates.length + 1}/{property.totalRooms}</span>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Button variant="outline" className="w-full justify-start">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Contrato ativo
+                </Button>
+                <Button variant="outline" className="w-full justify-start" disabled={paidPayments.length === 0}>
+                  <Receipt className="w-4 h-4 mr-2" />
+                  {paidPayments.length} recibo{paidPayments.length === 1 ? '' : 's'} disponível
+                </Button>
+                <Button variant="outline" className="w-full justify-start">
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Método de pagamento
+                </Button>
               </div>
             </Card>
           </div>
@@ -626,7 +737,7 @@ export function MyHome() {
 
           {visibleMaintenanceRequests.length > 0 ? (
             <div className="space-y-3">
-              {visibleMaintenanceRequests.map((request) => (
+              {visibleMaintenanceRequests.map(request => (
                 <div key={request.id} className="p-5 border border-border rounded-lg hover:border-primary/40 transition-all">
                   <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                     <div className="flex-1">
@@ -656,6 +767,7 @@ export function MyHome() {
                           {maintenanceUrgencyLabels[request.urgency]}
                         </Badge>
                       </div>
+
                       <Badge variant="outline" className="mb-3">
                         {maintenanceCategoryLabels[request.category]}
                       </Badge>
