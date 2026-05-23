@@ -18,6 +18,8 @@ import {
   User,
   Users,
   X,
+  AlertCircle,
+  Archive,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -213,12 +215,10 @@ export function LandlordListings() {
 
   const landlordProperties = properties.filter(property => property.landlordId === user.id);
 
-  const groupedProperties = landlordProperties
-    .map(property => ({
-      property,
-      propertyRooms: rooms.filter(room => room.propertyId === property.id),
-    }))
-    .filter(group => group.propertyRooms.length > 0);
+  const groupedProperties = landlordProperties.map(property => ({
+    property,
+    propertyRooms: rooms.filter(room => room.propertyId === property.id),
+  }));
 
   const filteredProperties = filter === 'all'
     ? groupedProperties
@@ -242,29 +242,37 @@ export function LandlordListings() {
 
   const handlePauseProperty = (propertyId: string) => {
     updatePropertyStatus(propertyId, 'paused');
-    toast.success('Casa pausada com sucesso');
+    toast.success('Alojamento pausado com sucesso');
     setPausingPropertyId(null);
   };
 
   const handleReactivateProperty = (propertyId: string) => {
     updatePropertyStatus(propertyId, 'active');
-    toast.success('Casa reativada com sucesso');
+    toast.success('Alojamento reativado com sucesso');
   };
 
   const handlePublishProperty = (propertyId: string) => {
+    // Activate property and publish all draft rooms at once
     updatePropertyStatus(propertyId, 'active');
-    toast.success('Casa publicada com sucesso');
+    const propertyRooms = rooms.filter(r => r.propertyId === propertyId);
+    propertyRooms.forEach(room => {
+      if (room.status === 'draft') updateRoomStatus(room.id, 'available');
+    });
+    const published = propertyRooms.filter(r => r.status === 'draft').length;
+    toast.success(published > 0
+      ? `Alojamento publicado com ${published} quarto${published > 1 ? 's' : ''} disponíve${published > 1 ? 'is' : 'l'}`
+      : 'Alojamento publicado com sucesso',
+    );
   };
 
   const handleArchiveProperty = (propertyId: string) => {
     deleteProperty(propertyId);
-    toast.success('Casa arquivada');
+    toast.success('Alojamento arquivado');
     setArchivingPropertyId(null);
   };
 
   const handleEditProperty = (property: Property) => {
-    updateProperty(property.id, { updatedAt: new Date() });
-    toast.info('Edição de dados da casa disponível no detalhe da propriedade.');
+    navigate(`/landlord/property/${property.id}`);
   };
 
   const handleSaveRoomEdit = (id: string, updates: Partial<Room>) => {
@@ -292,7 +300,7 @@ export function LandlordListings() {
               Os Meus Alojamentos
             </h1>
             <p className="text-muted-foreground">
-              Gere casas, apartamentos e os quartos associados a cada propriedade
+              Gere os teus alojamentos e os quartos associados a cada um
             </p>
           </div>
 
@@ -321,12 +329,46 @@ export function LandlordListings() {
 
         {filteredProperties.length === 0 ? (
           <Card className="p-16 text-center">
-            <p className="text-muted-foreground mb-4">Nenhuma casa ou apartamento encontrado</p>
-            {filter === 'all' && (
-              <Button onClick={() => navigate('/landlord/new-listing')}>
-                <PlusCircle className="w-5 h-5 mr-2" />
-                Criar primeiro alojamento
-              </Button>
+            {filter === 'all' ? (
+              <>
+                <Home className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Ainda não tens alojamentos</h3>
+                <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
+                  Cria o primeiro alojamento para começares a receber candidaturas de estudantes.
+                </p>
+                <Button onClick={() => navigate('/landlord/new-listing')}>
+                  <PlusCircle className="w-5 h-5 mr-2" />
+                  Criar primeiro alojamento
+                </Button>
+              </>
+            ) : filter === 'active' ? (
+              <>
+                <CheckCircle className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Sem alojamentos ativos</h3>
+                <p className="text-muted-foreground text-sm mb-6">Publica um rascunho ou cria um novo alojamento para aparecer na pesquisa.</p>
+                <Button variant="outline" onClick={() => setFilter('draft')}>Ver rascunhos</Button>
+              </>
+            ) : filter === 'draft' ? (
+              <>
+                <FileText className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Sem rascunhos</h3>
+                <p className="text-muted-foreground text-sm mb-6">Todos os alojamentos estão publicados ou arquivados.</p>
+                <Button variant="outline" onClick={() => setFilter('all')}>Ver todos</Button>
+              </>
+            ) : filter === 'paused' ? (
+              <>
+                <AlertCircle className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Sem alojamentos pausados</h3>
+                <p className="text-muted-foreground text-sm mb-6">Não tens nenhum alojamento pausado neste momento.</p>
+                <Button variant="outline" onClick={() => setFilter('all')}>Ver todos</Button>
+              </>
+            ) : (
+              <>
+                <Archive className="w-14 h-14 text-muted-foreground/30 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Sem alojamentos arquivados</h3>
+                <p className="text-muted-foreground text-sm mb-6">Alojamentos arquivados ficam aqui preservados para consulta.</p>
+                <Button variant="outline" onClick={() => setFilter('all')}>Ver todos</Button>
+              </>
             )}
           </Card>
         ) : (
@@ -373,7 +415,7 @@ export function LandlordListings() {
                         <div>
                           <div className="flex items-center gap-2 text-sm text-primary font-semibold mb-2">
                             <Home className="w-4 h-4" />
-                            Casa/Apartamento
+                            Alojamento
                           </div>
 
                           <h2 className="text-2xl font-bold text-foreground mb-2">{property.title}</h2>
@@ -418,9 +460,9 @@ export function LandlordListings() {
                             <FileText className="w-4 h-4 text-blue-700" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-blue-800 mb-0.5">Propriedade em rascunho</p>
+                            <p className="text-sm font-semibold text-blue-800 mb-0.5">Alojamento em rascunho</p>
                             <p className="text-xs text-blue-700">
-                              Publica a propriedade para que os estudantes a possam ver. Podes publicar quartos individualmente.
+                              Publica o alojamento para que os estudantes o possam ver. Podes publicar quartos individualmente.
                             </p>
                           </div>
                           <Button variant="primary" size="sm" onClick={() => handlePublishProperty(property.id)}>
@@ -431,10 +473,12 @@ export function LandlordListings() {
                       )}
 
                       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mb-6">
-                        <Button variant="outline" size="sm" onClick={() => navigate(`/room/${propertyRooms[0].id}`)}>
-                          <Eye className="w-4 h-4 mr-1" />
-                          Ver casa
-                        </Button>
+                        {propertyRooms.length > 0 && (
+                          <Button variant="outline" size="sm" onClick={() => navigate(`/room/${propertyRooms[0].id}`)}>
+                            <Eye className="w-4 h-4 mr-1" />
+                            Ver anúncio
+                          </Button>
+                        )}
 
                         <Button variant="outline" size="sm" onClick={() => handleEditProperty(property)}>
                           <Edit className="w-4 h-4 mr-1" />
@@ -476,6 +520,17 @@ export function LandlordListings() {
                         </Button>
                       </div>
 
+                      {propertyRooms.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border p-8 text-center">
+                          <BedDouble className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                          <p className="text-sm font-medium text-foreground mb-1">Sem quartos ainda</p>
+                          <p className="text-xs text-muted-foreground mb-4">Adiciona quartos a este alojamento para receber candidaturas.</p>
+                          <Button size="sm" variant="outline" onClick={() => navigate(`/landlord/property/${property.id}`)}>
+                            <PlusCircle className="w-4 h-4 mr-1.5" />
+                            Adicionar quarto
+                          </Button>
+                        </div>
+                      ) : (
                       <div className="rounded-xl border border-border overflow-hidden">
                         <div className="grid grid-cols-[1fr_auto_auto] md:grid-cols-[1fr_110px_120px_220px] gap-3 px-4 py-3 bg-muted/60 text-xs font-semibold text-muted-foreground">
                           <span>Quarto</span>
@@ -589,6 +644,7 @@ export function LandlordListings() {
                           })}
                         </div>
                       </div>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -611,9 +667,9 @@ export function LandlordListings() {
           <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setPausingPropertyId(null)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <Card className="w-full max-w-md p-6">
-              <h3 className="text-xl font-bold mb-4">Pausar casa?</h3>
+              <h3 className="text-xl font-bold mb-4">Pausar alojamento?</h3>
               <p className="text-muted-foreground mb-6">
-                Esta casa e os respetivos quartos deixam de aparecer na pesquisa até voltares a reativar.
+                Este alojamento e os respetivos quartos deixam de aparecer na pesquisa até voltares a reativar.
               </p>
 
               <div className="flex gap-3">
@@ -635,9 +691,9 @@ export function LandlordListings() {
           <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setArchivingPropertyId(null)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <Card className="w-full max-w-md p-6">
-              <h3 className="text-xl font-bold mb-4 text-destructive">Arquivar casa?</h3>
+              <h3 className="text-xl font-bold mb-4 text-destructive">Arquivar alojamento?</h3>
               <p className="text-muted-foreground mb-6">
-                A casa será removida da pesquisa, mas o histórico fica preservado.
+                O alojamento será removido da pesquisa, mas o histórico fica preservado.
               </p>
 
               <div className="flex gap-3">

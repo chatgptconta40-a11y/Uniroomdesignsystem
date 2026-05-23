@@ -28,10 +28,14 @@ export interface Property {
   };
 
   houseRules?: {
-    smoking: boolean;
-    pets: boolean;
-    parties: boolean;
+    smoking: boolean;        // true = smoking allowed
+    pets: boolean;           // true = pets allowed
+    parties: boolean;        // true = parties allowed
+    studentsOnly: boolean;   // true = students only
     quietHours?: string;
+    cleaningPolicy?: string;
+    visitorsPolicy?: string;
+    preferredGender?: 'any' | 'male' | 'female';
   };
 
   totalRooms: number;

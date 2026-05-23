@@ -21,7 +21,7 @@ interface PropertiesContextType {
 const PropertiesContext = createContext<PropertiesContextType | undefined>(undefined);
 
 // Bump this version when mock data changes to force a reset for existing sessions
-const DATA_VERSION = '2026-05-v3';
+const DATA_VERSION = '2026-05-v4';
 
 export function PropertiesProvider({ children }: { children: ReactNode }) {
   const [properties, setProperties] = useState<Property[]>(() => {

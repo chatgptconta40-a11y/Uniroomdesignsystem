@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
-import { getLandlordMetrics, getDashboardActivity, getPerformanceData, getLandlordListings } from '../data/mockLandlord';
+import { getLandlordMetrics, getDashboardActivity, getPerformanceData } from '../data/mockLandlord';
 import { getMaintenanceStats } from '../data/mockMaintenance';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -17,20 +17,23 @@ export function LandlordDashboard() {
   const navigate = useNavigate();
   const { properties, rooms } = useProperties();
 
-  const metrics = getLandlordMetrics(user?.id || '');
+  // ── Data from mock services (messages, chart, maintenance, activities) ──────
+  const mockMetrics = getLandlordMetrics(user?.id || '');
   const activities = getDashboardActivity(user?.id || '');
   const performanceData = getPerformanceData(user?.id || '', 30);
   const maintenanceStats = getMaintenanceStats(user?.id || '');
-  const allListings = getLandlordListings(user?.id || '');
 
-  const pausedListings = allListings.filter(l => l.status === 'paused');
-  const lowViewListings = allListings.filter(l => l.status === 'active' && l.views < 50);
-  const fewPhotosListings = allListings.filter(l => l.status !== 'draft' && l.applications === 0 && l.views > 0);
-
-  // Room-level stats from context
+  // ── All stats derived from PropertiesContext ─────────────────────────────────
   const myProperties = properties.filter(p => p.landlordId === user?.id && p.status !== 'archived');
   const myPropertyIds = new Set(myProperties.map(p => p.id));
   const myRooms = rooms.filter(r => myPropertyIds.has(r.propertyId));
+
+  const activeProperties = myProperties.filter(p => p.status === 'active');
+  const pausedProperties = myProperties.filter(p => p.status === 'paused');
+  const draftProperties = myProperties.filter(p => p.status === 'draft');
+  const lowViewProperties = myProperties.filter(p => p.status === 'active' && p.views < 50);
+  const noImageProperties = myProperties.filter(p => p.status !== 'draft' && p.images.length === 0);
+  const totalViews = myProperties.reduce((acc, p) => acc + p.views, 0);
 
   const roomStats = {
     total: myRooms.length,
@@ -41,10 +44,9 @@ export function LandlordDashboard() {
     paused: myRooms.filter(r => r.status === 'paused').length,
   };
 
-  // Upcoming vacancies: occupied rooms with move-in date in the past (will be free soon)
-  // or rooms available in next 60 days
   const now = new Date();
   const in60Days = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+
   const upcomingVacancies = myRooms.filter(r => {
     if (r.status === 'available') {
       const avail = new Date(r.availableFrom);
@@ -53,20 +55,15 @@ export function LandlordDashboard() {
     return false;
   });
 
-  // Draft rooms that haven't been published yet
   const draftRooms = myRooms.filter(r => r.status === 'draft');
 
-  // Mock late rents: occupied rooms whose move-in date was > 30 days ago (simulate overdue)
   const lateRentRooms = myRooms.filter(r => {
     if (r.status !== 'occupied' || !r.moveInDate) return false;
-    const moveIn = new Date(r.moveInDate);
-    const daysSince = (now.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24);
-    // Simulate: rooms occupied > 60 days have a "late" flag for demo purposes
+    const daysSince = (now.getTime() - new Date(r.moveInDate).getTime()) / (1000 * 60 * 60 * 24);
     return daysSince > 60;
   });
 
-  // July reminder (it's May 2026, July is 2 months away)
-  const showJulyReminder = new Date().getMonth() < 6; // before July
+  const showJulyReminder = now.getMonth() < 6;
 
   const recentActivities = activities.slice(0, 5);
 
@@ -147,95 +144,92 @@ export function LandlordDashboard() {
           </div>
         )}
 
-        {metrics && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-              <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/listings')}>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center">
-                    <Home className="w-7 h-7 text-primary" />
-                  </div>
-                  <Badge variant="default">Ativos</Badge>
-                </div>
-                <h3 className="text-4xl font-bold text-foreground mb-3">{metrics.activeListings}</h3>
-                <p className="text-sm font-medium text-muted-foreground">Alojamentos Ativos</p>
-              </Card>
-
-              <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/applications')}>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-14 h-14 bg-secondary/10 rounded-xl flex items-center justify-center">
-                    <FileText className="w-7 h-7 text-secondary" />
-                  </div>
-                  {metrics.pendingApplications > 0 && (
-                    <Badge variant="success">{metrics.pendingApplications}</Badge>
-                  )}
-                </div>
-                <h3 className="text-4xl font-bold text-foreground mb-3">{metrics.pendingApplications}</h3>
-                <p className="text-sm font-medium text-muted-foreground">Candidaturas Pendentes</p>
-              </Card>
-
-              <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/messages')}>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-14 h-14 bg-accent/10 rounded-xl flex items-center justify-center">
-                    <MessageCircle className="w-7 h-7 text-accent-foreground" />
-                  </div>
-                  {metrics.unreadMessages > 0 && (
-                    <Badge variant="warning">{metrics.unreadMessages}</Badge>
-                  )}
-                </div>
-                <h3 className="text-4xl font-bold text-foreground mb-3">{metrics.unreadMessages}</h3>
-                <p className="text-sm font-medium text-muted-foreground">Mensagens Novas</p>
-              </Card>
-
-              <Card className="p-6" hover>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-14 h-14 bg-accent/10 rounded-xl flex items-center justify-center">
-                    <Star className="w-7 h-7 text-accent-foreground" />
-                  </div>
-                  <Badge variant="warning">★ {metrics.averageRating}</Badge>
-                </div>
-                <h3 className="text-4xl font-bold text-foreground mb-3">{metrics.averageRating.toFixed(1)}</h3>
-                <p className="text-sm font-medium text-muted-foreground">Avaliação Média</p>
-              </Card>
-            </div>
-
-            <Card className="p-8 mb-10 bg-gradient-to-br from-accent/5 to-accent/10 border-accent/20 cursor-pointer" hover onClick={() => navigate('/landlord/maintenance')}>
-              <div className="flex items-center gap-6">
-                <div className="w-16 h-16 bg-accent rounded-xl flex items-center justify-center shadow-md">
-                  <Wrench className="w-8 h-8 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-xl font-bold text-foreground mb-2">Pedidos de Manutenção</h3>
-                  <p className="text-sm text-muted-foreground mb-4">Acompanha e gere problemas reportados pelos estudantes</p>
-                  <div className="flex items-center gap-6">
-                    <div>
-                      <p className="text-2xl font-bold text-accent">{maintenanceStats.pending}</p>
-                      <p className="text-xs text-muted-foreground">Pendentes</p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-primary">{maintenanceStats.inProgress}</p>
-                      <p className="text-xs text-muted-foreground">Em resolução</p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-secondary">{maintenanceStats.resolved}</p>
-                      <p className="text-xs text-muted-foreground">Resolvidos</p>
-                    </div>
-                    {maintenanceStats.highUrgency > 0 && (
-                      <div>
-                        <Badge variant="destructive" className="text-lg px-3 py-1">
-                          {maintenanceStats.highUrgency} urgentes
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <Button variant="primary" onClick={(e) => { e.stopPropagation(); navigate('/landlord/maintenance'); }}>
-                  Ver pedidos
-                </Button>
+        {/* Top metric cards — derived from PropertiesContext + mock for messages/rating */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/listings')}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center">
+                <Home className="w-7 h-7 text-primary" />
               </div>
-            </Card>
-          </>
-        )}
+              <Badge variant="default">Ativos</Badge>
+            </div>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{activeProperties.length}</h3>
+            <p className="text-sm font-medium text-muted-foreground">Alojamentos Ativos</p>
+          </Card>
+
+          <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/applications')}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 bg-secondary/10 rounded-xl flex items-center justify-center">
+                <FileText className="w-7 h-7 text-secondary" />
+              </div>
+              {(mockMetrics?.pendingApplications ?? 0) > 0 && (
+                <Badge variant="success">{mockMetrics!.pendingApplications}</Badge>
+              )}
+            </div>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{mockMetrics?.pendingApplications ?? 0}</h3>
+            <p className="text-sm font-medium text-muted-foreground">Candidaturas Pendentes</p>
+          </Card>
+
+          <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/messages')}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 bg-accent/10 rounded-xl flex items-center justify-center">
+                <MessageCircle className="w-7 h-7 text-accent-foreground" />
+              </div>
+              {(mockMetrics?.unreadMessages ?? 0) > 0 && (
+                <Badge variant="warning">{mockMetrics!.unreadMessages}</Badge>
+              )}
+            </div>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{mockMetrics?.unreadMessages ?? 0}</h3>
+            <p className="text-sm font-medium text-muted-foreground">Mensagens Novas</p>
+          </Card>
+
+          <Card className="p-6" hover>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 bg-amber-50 rounded-xl flex items-center justify-center">
+                <Eye className="w-7 h-7 text-amber-600" />
+              </div>
+              <Badge variant="default">{myProperties.length} aloj.</Badge>
+            </div>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{totalViews}</h3>
+            <p className="text-sm font-medium text-muted-foreground">Total de Visualizações</p>
+          </Card>
+        </div>
+
+        <Card className="p-8 mb-10 bg-gradient-to-br from-accent/5 to-accent/10 border-accent/20 cursor-pointer" hover onClick={() => navigate('/landlord/maintenance')}>
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 bg-accent rounded-xl flex items-center justify-center shadow-md">
+              <Wrench className="w-8 h-8 text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-xl font-bold text-foreground mb-2">Pedidos de Manutenção</h3>
+              <p className="text-sm text-muted-foreground mb-4">Acompanha e gere problemas reportados pelos estudantes</p>
+              <div className="flex items-center gap-6">
+                <div>
+                  <p className="text-2xl font-bold text-accent">{maintenanceStats.pending}</p>
+                  <p className="text-xs text-muted-foreground">Pendentes</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-primary">{maintenanceStats.inProgress}</p>
+                  <p className="text-xs text-muted-foreground">Em resolução</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-secondary">{maintenanceStats.resolved}</p>
+                  <p className="text-xs text-muted-foreground">Resolvidos</p>
+                </div>
+                {maintenanceStats.highUrgency > 0 && (
+                  <div>
+                    <Badge variant="destructive" className="text-lg px-3 py-1">
+                      {maintenanceStats.highUrgency} urgentes
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button variant="primary" onClick={(e) => { e.stopPropagation(); navigate('/landlord/maintenance'); }}>
+              Ver pedidos
+            </Button>
+          </div>
+        </Card>
 
         {/* Room-level stats */}
         {myRooms.length > 0 && (
@@ -260,7 +254,7 @@ export function LandlordDashboard() {
                 { label: 'Reservados', value: roomStats.reserved, color: 'bg-blue-50 border-blue-200 text-blue-700', dot: 'bg-blue-500' },
                 { label: 'Rascunho', value: roomStats.draft, color: 'bg-muted border-border text-muted-foreground', dot: 'bg-muted-foreground/40' },
                 { label: 'Pausados', value: roomStats.paused, color: 'bg-amber-50 border-amber-200 text-amber-700', dot: 'bg-amber-400' },
-                { label: 'Propriedades', value: myProperties.length, color: 'bg-primary/5 border-primary/20 text-primary', dot: 'bg-primary' },
+                { label: 'Alojamentos', value: myProperties.length, color: 'bg-primary/5 border-primary/20 text-primary', dot: 'bg-primary' },
               ].map(stat => (
                 <div
                   key={stat.label}
@@ -351,8 +345,11 @@ export function LandlordDashboard() {
           </Button>
         </div>
 
-        {/* Ações Importantes */}
+        {/* Ações Importantes — all derived from PropertiesContext + mock for messages/applications */}
         {(() => {
+          const pending = mockMetrics?.pendingApplications ?? 0;
+          const unread = mockMetrics?.unreadMessages ?? 0;
+
           const actions: {
             key: string;
             icon: React.ReactNode;
@@ -364,65 +361,54 @@ export function LandlordDashboard() {
             badge?: number;
           }[] = [];
 
-          if (metrics && metrics.pendingApplications > 0) {
+          if (pending > 0) {
             actions.push({
               key: 'applications',
               icon: <FileText className="w-5 h-5 text-blue-600" />,
               iconBg: 'bg-blue-50',
-              title: `${metrics.pendingApplications} candidatura${metrics.pendingApplications > 1 ? 's' : ''} pendente${metrics.pendingApplications > 1 ? 's' : ''}`,
+              title: `${pending} candidatura${pending > 1 ? 's' : ''} pendente${pending > 1 ? 's' : ''}`,
               description: 'Estudantes à espera de uma resposta tua.',
               actionLabel: 'Ver candidaturas',
               route: '/landlord/applications',
-              badge: metrics.pendingApplications,
+              badge: pending,
             });
           }
 
-          if (metrics && metrics.unreadMessages > 0) {
+          if (unread > 0) {
             actions.push({
               key: 'messages',
               icon: <MessageCircle className="w-5 h-5 text-emerald-600" />,
               iconBg: 'bg-emerald-50',
-              title: `${metrics.unreadMessages} mensagem${metrics.unreadMessages > 1 ? 'ns' : ''} não lida${metrics.unreadMessages > 1 ? 's' : ''}`,
+              title: `${unread} mensagem${unread > 1 ? 'ns' : ''} não lida${unread > 1 ? 's' : ''}`,
               description: 'Há conversas que ainda não respondeste.',
               actionLabel: 'Ver mensagens',
               route: '/messages',
-              badge: metrics.unreadMessages,
+              badge: unread,
             });
           }
 
-          if (pausedListings.length > 0) {
+          if (pausedProperties.length > 0) {
             actions.push({
               key: 'paused',
               icon: <PauseCircle className="w-5 h-5 text-amber-600" />,
               iconBg: 'bg-amber-50',
-              title: `${pausedListings.length} anúncio${pausedListings.length > 1 ? 's' : ''} pausado${pausedListings.length > 1 ? 's' : ''}`,
-              description: pausedListings.map(l => l.title).join(', '),
+              title: `${pausedProperties.length} alojamento${pausedProperties.length > 1 ? 's' : ''} pausado${pausedProperties.length > 1 ? 's' : ''}`,
+              description: pausedProperties.map(p => p.title).join(', '),
               actionLabel: 'Reativar ou rever',
               route: '/landlord/listings',
             });
           }
 
-          if (lowViewListings.length > 0) {
+          if (draftProperties.length > 0) {
             actions.push({
-              key: 'lowviews',
-              icon: <BarChart2 className="w-5 h-5 text-purple-600" />,
-              iconBg: 'bg-purple-50',
-              title: `${lowViewListings.length} anúncio${lowViewListings.length > 1 ? 's' : ''} com poucas visualizações`,
-              description: 'Alguns anúncios ativos têm menos de 50 visitas. Considera melhorar o título ou as fotos.',
-              actionLabel: 'Ver analytics',
-              route: '/landlord/analytics',
-            });
-          }
-
-          if (fewPhotosListings.length > 0) {
-            actions.push({
-              key: 'photos',
-              icon: <Camera className="w-5 h-5 text-rose-600" />,
-              iconBg: 'bg-rose-50',
-              title: `${fewPhotosListings.length} anúncio${fewPhotosListings.length > 1 ? 's' : ''} sem candidaturas`,
-              description: 'Anúncios com visitas mas sem candidaturas podem beneficiar de mais fotos ou melhor descrição.',
-              actionLabel: 'Editar anúncios',
+              key: 'draftProps',
+              icon: <Home className="w-5 h-5 text-slate-600" />,
+              iconBg: 'bg-slate-50',
+              title: `${draftProperties.length} alojamento${draftProperties.length > 1 ? 's' : ''} em rascunho`,
+              description: `${draftProperties.map(p => p.title).join(', ')} — ainda não visível para estudantes.`,
+              actionLabel: 'Publicar alojamentos',
               route: '/landlord/listings',
+              badge: draftProperties.length,
             });
           }
 
@@ -439,15 +425,39 @@ export function LandlordDashboard() {
             });
           }
 
+          if (lowViewProperties.length > 0) {
+            actions.push({
+              key: 'lowviews',
+              icon: <BarChart2 className="w-5 h-5 text-purple-600" />,
+              iconBg: 'bg-purple-50',
+              title: `${lowViewProperties.length} alojamento${lowViewProperties.length > 1 ? 's' : ''} com poucas visitas`,
+              description: 'Alojamentos ativos com menos de 50 visualizações. Melhora o título ou adiciona mais fotos.',
+              actionLabel: 'Ver analytics',
+              route: '/landlord/analytics',
+            });
+          }
+
+          if (noImageProperties.length > 0) {
+            actions.push({
+              key: 'photos',
+              icon: <Camera className="w-5 h-5 text-rose-600" />,
+              iconBg: 'bg-rose-50',
+              title: `${noImageProperties.length} alojamento${noImageProperties.length > 1 ? 's' : ''} sem fotos`,
+              description: 'Anúncios com fotos recebem até 3× mais candidaturas. Adiciona imagens para melhorar a visibilidade.',
+              actionLabel: 'Editar alojamentos',
+              route: '/landlord/listings',
+            });
+          }
+
           if (lateRentRooms.length > 0) {
             actions.push({
               key: 'lateRent',
               icon: <AlertCircle className="w-5 h-5 text-red-600" />,
               iconBg: 'bg-red-50',
               title: `${lateRentRooms.length} renda${lateRentRooms.length > 1 ? 's' : ''} com atraso`,
-              description: 'Existem quartos ocupados com rendas não confirmadas. Contacta os inquilinos.',
-              actionLabel: 'Ver detalhes',
-              route: '/landlord/properties',
+              description: 'Quartos ocupados com rendas não confirmadas. Contacta os inquilinos.',
+              actionLabel: 'Ver alojamentos',
+              route: '/landlord/listings',
               badge: lateRentRooms.length,
             });
           }
@@ -609,45 +619,43 @@ export function LandlordDashboard() {
           </Card>
         </div>
 
-        {metrics && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-            <Card className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <Eye className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total de Visualizações</p>
-                  <p className="text-2xl font-bold text-foreground">{metrics.totalViews}</p>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+          <Card className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                <Eye className="w-6 h-6 text-primary" />
               </div>
-            </Card>
+              <div>
+                <p className="text-sm text-muted-foreground">Visualizações Totais</p>
+                <p className="text-2xl font-bold text-foreground">{totalViews}</p>
+              </div>
+            </div>
+          </Card>
 
-            <Card className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-rose-100 rounded-xl flex items-center justify-center">
-                  <Heart className="w-6 h-6 text-rose-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total de Favoritos</p>
-                  <p className="text-2xl font-bold text-foreground">{metrics.totalFavorites}</p>
-                </div>
+          <Card className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-rose-100 rounded-xl flex items-center justify-center">
+                <Heart className="w-6 h-6 text-rose-600" />
               </div>
-            </Card>
+              <div>
+                <p className="text-sm text-muted-foreground">Total de Favoritos</p>
+                <p className="text-2xl font-bold text-foreground">{mockMetrics?.totalFavorites ?? 0}</p>
+              </div>
+            </div>
+          </Card>
 
-            <Card className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                  <MessageCircle className="w-6 h-6 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Taxa de Resposta</p>
-                  <p className="text-2xl font-bold text-foreground">{metrics.responseRate}%</p>
-                </div>
+          <Card className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                <Star className="w-6 h-6 text-emerald-600" />
               </div>
-            </Card>
-          </div>
-        )}
+              <div>
+                <p className="text-sm text-muted-foreground">Avaliação Média</p>
+                <p className="text-2xl font-bold text-foreground">{mockMetrics?.averageRating.toFixed(1) ?? '—'}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
   );

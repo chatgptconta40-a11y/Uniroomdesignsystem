@@ -573,12 +573,17 @@ export function NewListing() {
         smoking: !rules.noSmoking,
         pets: !rules.noPets,
         parties: !rules.noParties,
+        studentsOnly: rules.studentsOnly,
         quietHours: rules.quietHours || undefined,
+        cleaningPolicy: rules.cleaningPolicy || undefined,
+        visitorsPolicy: rules.visitorsPolicy || undefined,
+        preferredGender: rules.preferredGender !== 'any' ? rules.preferredGender : undefined,
       },
       totalRooms: rooms.length,
       roomIds,
       wholePropertyAvailable: false,
-      status: publishAll ? 'active' as const : 'draft' as const,
+      // Property is active if any rooms are being published, otherwise draft
+      status: (publishAll || rooms.some(r => r.publishNow)) ? 'active' as const : 'draft' as const,
       verified: false,
       createdAt: now,
       updatedAt: now,
@@ -591,14 +596,16 @@ export function NewListing() {
     const publishedCount = roomsToCreate.filter(r => r.status === 'available').length;
 
     if (publishAll) {
-      toast.success('Propriedade publicada!', {
-        description: `${rooms.length} quarto${rooms.length > 1 ? 's' : ''} agora visível${rooms.length > 1 ? 'is' : ''} para estudantes.`,
+      toast.success('Alojamento publicado!', {
+        description: `${rooms.length} quarto${rooms.length > 1 ? 's' : ''} visível${rooms.length > 1 ? 'is' : ''} para estudantes.`,
+      });
+    } else if (publishedCount > 0) {
+      toast.success('Alojamento ativo com quartos selecionados!', {
+        description: `${publishedCount} quarto${publishedCount > 1 ? 's' : ''} publicado${publishedCount > 1 ? 's' : ''}, ${rooms.length - publishedCount} em rascunho.`,
       });
     } else {
       toast.success('Rascunho guardado!', {
-        description: publishedCount > 0
-          ? `${publishedCount} quarto${publishedCount > 1 ? 's' : ''} publicado${publishedCount > 1 ? 's' : ''}, ${rooms.length - publishedCount} em rascunho.`
-          : 'Todos os quartos ficaram em rascunho.',
+        description: 'Todos os quartos ficaram em rascunho. Podes publicá-los em "Os meus alojamentos".',
       });
     }
 
