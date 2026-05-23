@@ -3,13 +3,11 @@ import { useNavigate } from 'react-router';
 import {
   FileText,
   MapPin,
-  Calendar,
   MessageCircle,
   ExternalLink,
   XCircle,
   CheckCircle,
   Clock,
-  AlertCircle,
   Send,
   Home,
   Video,
@@ -19,26 +17,31 @@ import {
   Search,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useProperties } from '../context/PropertiesContext';
 import { getApplicationsForUser, confirmStay } from '../data/mockApplications';
 import { cancelUnifiedApplication } from '../data/unifiedApplications';
-import { getRoom, getProperty } from '../data/mockProperties';
 import { findOrCreateRoomConversation } from '../data/mockMessages';
 import { Application, ApplicationStatus } from '../types/accommodation';
 import { Button } from '../components/Button';
-import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from 'sonner';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function fmt(date: Date | string | undefined): string {
   if (!date) return '—';
-  return new Date(date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  return new Date(date).toLocaleDateString('pt-PT', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString('pt-PT', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 interface TimelineStep {
@@ -56,7 +59,6 @@ interface TimelineStep {
 function buildTimeline(app: Application): TimelineStep[] {
   const steps: TimelineStep[] = [];
 
-  // 1. Sent
   steps.push({
     key: 'sent',
     icon: Send,
@@ -67,8 +69,8 @@ function buildTimeline(app: Application): TimelineStep[] {
     done: true,
   });
 
-  // 2. Under review
   const isReviewing = ['under_review', 'accepted', 'confirmed', 'rejected'].includes(app.status);
+
   steps.push({
     key: 'review',
     icon: Clock,
@@ -79,23 +81,26 @@ function buildTimeline(app: Application): TimelineStep[] {
     done: isReviewing,
   });
 
-  // 3. Visit (optional)
   if (app.visitDate) {
-    const visitDt = new Date(app.visitDate);
-    const isPast = visitDt < new Date();
+    const visitDate = new Date(app.visitDate);
+    const isPast = visitDate < new Date();
+
     steps.push({
       key: 'visit',
       icon: app.visitFormat === 'videochamada' ? Video : Users,
       label: isPast ? 'Visita realizada' : 'Visita agendada',
-      sublabel: `${visitDt.toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })} às ${fmtTime(app.visitDate)} · ${app.visitFormat === 'videochamada' ? 'Videochamada' : 'Presencial'}${app.visitNote ? ` — ${app.visitNote}` : ''}`,
-      date: undefined,
+      sublabel: `${visitDate.toLocaleDateString('pt-PT', {
+        day: 'numeric',
+        month: 'long',
+      })} às ${fmtTime(app.visitDate)} · ${
+        app.visitFormat === 'videochamada' ? 'Videochamada' : 'Presencial'
+      }${app.visitNote ? ` · ${app.visitNote}` : ''}`,
       color: 'text-purple-600',
       bgColor: 'bg-purple-100',
       done: true,
     });
   }
 
-  // 4. Decision
   if (app.status === 'accepted' || app.status === 'confirmed') {
     steps.push({
       key: 'accepted',
@@ -128,7 +133,6 @@ function buildTimeline(app: Application): TimelineStep[] {
     });
   }
 
-  // 5. Confirmation
   if (app.status === 'confirmed' && app.confirmedAt) {
     steps.push({
       key: 'confirmed',
@@ -172,20 +176,21 @@ const STATUS_COLOR: Record<ApplicationStatus, string> = {
   confirmed: 'bg-emerald-100 text-emerald-700',
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export function Applications() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { getRoom, getProperty, refreshProperties } = useProperties();
+
   const [filter, setFilter] = useState<'all' | ApplicationStatus>('all');
   const [refreshKey, setRefreshKey] = useState(0);
   const [confirmWithdrawId, setConfirmWithdrawId] = useState<string | null>(null);
+  const [confirmStayApp, setConfirmStayApp] = useState<Application | null>(null);
 
   const applications = useMemo(
-    () => getApplicationsForUser(user?.id || '').sort((a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () =>
+      getApplicationsForUser(user?.id || '').sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
     [user?.id, refreshKey],
   );
 
@@ -196,11 +201,12 @@ export function Applications() {
 
   const counts = {
     all: applications.length,
-    pending: applications.filter(a => a.status === 'pending').length,
-    under_review: applications.filter(a => a.status === 'under_review').length,
-    accepted: applications.filter(a => a.status === 'accepted').length,
-    confirmed: applications.filter(a => a.status === 'confirmed').length,
-    rejected: applications.filter(a => a.status === 'rejected').length,
+    pending: applications.filter(app => app.status === 'pending').length,
+    under_review: applications.filter(app => app.status === 'under_review').length,
+    accepted: applications.filter(app => app.status === 'accepted').length,
+    confirmed: applications.filter(app => app.status === 'confirmed').length,
+    rejected: applications.filter(app => app.status === 'rejected').length,
+    withdrawn: applications.filter(app => app.status === 'withdrawn').length,
   };
 
   const handleWithdraw = (applicationId: string) => {
@@ -209,36 +215,46 @@ export function Applications() {
 
   const handleWithdrawConfirm = () => {
     if (!confirmWithdrawId) return;
+
     cancelUnifiedApplication(confirmWithdrawId);
     toast.success('Candidatura cancelada.');
     setConfirmWithdrawId(null);
-    setRefreshKey(k => k + 1);
+    setRefreshKey(key => key + 1);
+    refreshProperties();
   };
 
-  const handleConfirmStay = (applicationId: string) => {
-    const home = confirmStay(applicationId);
+  const handleConfirmStay = () => {
+    if (!confirmStayApp) return;
+
+    const home = confirmStay(confirmStayApp.id);
+
     if (home) {
       toast.success('Estadia confirmada! Bem-vindo/a à tua nova casa.');
-      setRefreshKey(k => k + 1);
-      setTimeout(() => navigate('/my-home'), 1200);
+      setConfirmStayApp(null);
+      setRefreshKey(key => key + 1);
+      refreshProperties();
+      setTimeout(() => navigate('/my-home'), 900);
     } else {
       toast.error('Não foi possível confirmar a estadia.');
+      setConfirmStayApp(null);
+      refreshProperties();
     }
   };
 
   const handleContactLandlord = (app: Application) => {
-    const room = app.roomId ? getRoom(app.roomId) : null;
-    const property = app.propertyId ? getProperty(app.propertyId) : null;
+    const room = app.roomId ? getRoom(app.roomId) : undefined;
+    const property = app.propertyId ? getProperty(app.propertyId) : undefined;
 
     if (!room || !property) {
-      toast.info('Abre "Mensagens" para contactar o senhorio.');
+      toast.info('Abre “Mensagens” para contactar o senhorio.');
       navigate('/messages');
       return;
     }
 
-    const contextMsg = app.status === 'accepted'
-      ? `Olá! A minha candidatura para ${room.title} foi aceite — queria confirmar os próximos passos e a data de entrada.`
-      : `Olá! Tenho uma candidatura ativa para ${room.title} e gostaria de esclarecer algumas dúvidas.`;
+    const contextMsg =
+      app.status === 'accepted'
+        ? `Olá! A minha candidatura para ${room.title} foi aceite. Queria confirmar os próximos passos e a data de entrada.`
+        : `Olá! Tenho uma candidatura ativa para ${room.title} e gostaria de esclarecer algumas dúvidas.`;
 
     const conversation = findOrCreateRoomConversation(
       user?.id || '',
@@ -272,7 +288,19 @@ export function Applications() {
     { key: 'accepted', label: 'Aceites', count: counts.accepted },
     { key: 'confirmed', label: 'Confirmadas', count: counts.confirmed },
     { key: 'rejected', label: 'Recusadas', count: counts.rejected },
+    { key: 'withdrawn', label: 'Canceladas', count: counts.withdrawn },
   ];
+
+  const confirmRoom = confirmStayApp?.roomId ? getRoom(confirmStayApp.roomId) : undefined;
+  const confirmProperty = confirmStayApp?.propertyId ? getProperty(confirmStayApp.propertyId) : undefined;
+
+  const confirmDescription = confirmStayApp
+    ? `Vais confirmar a estadia${
+        confirmRoom ? ` no ${confirmRoom.title}` : ''
+      }${
+        confirmProperty ? ` em ${confirmProperty.title}` : ''
+      }. O quarto passará para ocupado e a página “A Minha Casa” ficará ativa.`
+    : '';
 
   return (
     <div className="min-h-screen bg-background py-8">
@@ -305,28 +333,33 @@ export function Applications() {
           </Card>
         ) : (
           <>
-            {/* Filter tabs */}
             <div className="mb-6 flex gap-1 border-b overflow-x-auto pb-px">
-              {filterTabs.filter(t => t.count > 0 || t.key === 'all').map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setFilter(tab.key)}
-                  className={`px-4 py-3 font-medium transition-all border-b-2 whitespace-nowrap text-sm ${
-                    filter === tab.key
-                      ? 'border-primary text-primary'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {tab.label}
-                  {tab.count > 0 && (
-                    <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
-                      filter === tab.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              ))}
+              {filterTabs
+                .filter(tab => tab.count > 0 || tab.key === 'all')
+                .map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setFilter(tab.key)}
+                    className={`px-4 py-3 font-medium transition-all border-b-2 whitespace-nowrap text-sm ${
+                      filter === tab.key
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.count > 0 && (
+                      <span
+                        className={`ml-2 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                          filter === tab.key
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
             </div>
 
             {filteredApplications.length === 0 ? (
@@ -336,11 +369,11 @@ export function Applications() {
             ) : (
               <div className="space-y-5">
                 {filteredApplications.map(application => {
-                  const room = application.roomId ? getRoom(application.roomId) : null;
-                  const property = room ? getProperty(room.propertyId) : null;
+                  const room = application.roomId ? getRoom(application.roomId) : undefined;
+                  const property = application.propertyId ? getProperty(application.propertyId) : undefined;
                   const images = room?.images.length ? room.images : property?.images || [];
                   const coverImage = images[0];
-                  const title = room?.title || 'Quarto';
+                  const title = room?.title || application.accommodationId || 'Quarto';
                   const propertyTitle = property?.title;
                   const city = property?.city || '';
                   const zone = property?.zone || '';
@@ -348,6 +381,7 @@ export function Applications() {
                   const timeline = buildTimeline(application);
                   const isAccepted = application.status === 'accepted';
                   const isConfirmed = application.status === 'confirmed';
+                  const isCancelled = application.status === 'withdrawn' || application.status === 'rejected';
 
                   return (
                     <Card
@@ -356,7 +390,6 @@ export function Applications() {
                         isAccepted ? 'ring-2 ring-green-400 border-green-200' : ''
                       }`}
                     >
-                      {/* Accepted banner */}
                       {isAccepted && (
                         <div className="bg-green-50 border-b border-green-200 px-6 py-3 flex items-center gap-3">
                           <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
@@ -372,12 +405,13 @@ export function Applications() {
                       {isConfirmed && (
                         <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-3 flex items-center gap-3">
                           <Sparkles className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-                          <span className="font-semibold text-emerald-800">Estadia confirmada — tens uma casa ativa!</span>
+                          <span className="font-semibold text-emerald-800">
+                            Estadia confirmada. Tens uma casa ativa!
+                          </span>
                         </div>
                       )}
 
                       <div className="flex flex-col md:flex-row">
-                        {/* Image */}
                         {coverImage && (
                           <div
                             onClick={() => handleViewTarget(application)}
@@ -392,7 +426,6 @@ export function Applications() {
                         )}
 
                         <div className="flex-1 p-5 min-w-0">
-                          {/* Header */}
                           <div className="flex items-start justify-between gap-3 mb-3">
                             <div className="flex-1 min-w-0">
                               <button
@@ -401,55 +434,87 @@ export function Applications() {
                               >
                                 {title}
                               </button>
+
                               {propertyTitle && (
-                                <p className="text-xs font-medium text-primary mb-1 truncate">{propertyTitle}</p>
+                                <p className="text-xs font-medium text-primary mb-1 truncate">
+                                  {propertyTitle}
+                                </p>
                               )}
+
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                 <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span className="truncate">{zone}{zone && city ? ', ' : ''}{city}</span>
+                                <span className="truncate">
+                                  {zone}
+                                  {zone && city ? ', ' : ''}
+                                  {city}
+                                </span>
                               </div>
+
                               <div className="flex items-baseline gap-1.5 mt-1.5">
                                 <span className="text-xl font-bold text-foreground">€{price}</span>
                                 <span className="text-xs text-muted-foreground">/mês</span>
                                 {application.moveInDate && (
                                   <span className="text-xs text-muted-foreground ml-2">
-                                    · Entrada: {new Date(application.moveInDate).toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}
+                                    · Entrada:{' '}
+                                    {new Date(application.moveInDate).toLocaleDateString('pt-PT', {
+                                      month: 'long',
+                                      year: 'numeric',
+                                    })}
                                   </span>
                                 )}
                               </div>
                             </div>
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0 ${STATUS_COLOR[application.status]}`}>
+
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0 ${
+                                STATUS_COLOR[application.status]
+                              }`}
+                            >
                               {STATUS_LABEL[application.status]}
                             </span>
                           </div>
 
-                          {/* Message preview */}
                           {application.message && (
                             <p className="text-xs text-muted-foreground italic line-clamp-2 mb-3 bg-muted/40 rounded-lg px-3 py-2">
-                              "{application.message}"
+                              “{application.message}”
                             </p>
                           )}
 
-                          {/* Timeline */}
                           <div className="mb-4 space-y-2">
-                            {timeline.map((step, i) => {
+                            {timeline.map((step, index) => {
                               const Icon = step.icon;
+
                               return (
                                 <div key={step.key} className="flex items-start gap-2.5">
                                   <div className="flex flex-col items-center flex-shrink-0">
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${step.done || step.pending ? step.bgColor : 'bg-gray-100'}`}>
+                                    <div
+                                      className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                        step.done || step.pending ? step.bgColor : 'bg-gray-100'
+                                      }`}
+                                    >
                                       <Icon className={`w-3 h-3 ${step.color}`} />
                                     </div>
-                                    {i < timeline.length - 1 && (
-                                      <div className={`w-px flex-1 min-h-[8px] mt-0.5 ${step.done ? 'bg-border' : 'bg-gray-100'}`} />
+                                    {index < timeline.length - 1 && (
+                                      <div
+                                        className={`w-px flex-1 min-h-[8px] mt-0.5 ${
+                                          step.done ? 'bg-border' : 'bg-gray-100'
+                                        }`}
+                                      />
                                     )}
                                   </div>
+
                                   <div className="pb-1.5 min-w-0">
-                                    <span className={`text-xs font-medium ${step.pending ? 'text-gray-400' : 'text-foreground'}`}>
+                                    <span
+                                      className={`text-xs font-medium ${
+                                        step.pending ? 'text-gray-400' : 'text-foreground'
+                                      }`}
+                                    >
                                       {step.label}
                                     </span>
                                     {step.sublabel && (
-                                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{step.sublabel}</p>
+                                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                                        {step.sublabel}
+                                      </p>
                                     )}
                                     {step.date && (
                                       <p className="text-[11px] text-muted-foreground">{step.date}</p>
@@ -460,12 +525,10 @@ export function Applications() {
                             })}
                           </div>
 
-                          {/* Actions */}
                           <div className="flex flex-wrap gap-2">
-                            {/* Confirm stay — primary CTA for accepted */}
                             {isAccepted && (
                               <Button
-                                onClick={() => handleConfirmStay(application.id)}
+                                onClick={() => setConfirmStayApp(application)}
                                 size="sm"
                                 className="bg-green-600 hover:bg-green-700 text-white"
                               >
@@ -474,7 +537,6 @@ export function Applications() {
                               </Button>
                             )}
 
-                            {/* My home — for confirmed */}
                             {isConfirmed && (
                               <Button onClick={() => navigate('/my-home')} size="sm">
                                 <Home className="w-4 h-4 mr-2" />
@@ -482,8 +544,7 @@ export function Applications() {
                               </Button>
                             )}
 
-                            {/* Contact landlord — accepted or under_review */}
-                            {(isAccepted || application.status === 'under_review' || application.status === 'pending') && (
+                            {!isCancelled && !isConfirmed && (
                               <Button
                                 onClick={() => handleContactLandlord(application)}
                                 variant="outline"
@@ -494,7 +555,6 @@ export function Applications() {
                               </Button>
                             )}
 
-                            {/* View target */}
                             {room && (
                               <Button
                                 onClick={() => handleViewTarget(application)}
@@ -506,7 +566,6 @@ export function Applications() {
                               </Button>
                             )}
 
-                            {/* Cancel */}
                             {(application.status === 'pending' || application.status === 'under_review') && (
                               <Button
                                 onClick={() => handleWithdraw(application.id)}
@@ -519,7 +578,6 @@ export function Applications() {
                               </Button>
                             )}
 
-                            {/* Search similar for rejected */}
                             {application.status === 'rejected' && (
                               <Button
                                 onClick={() => navigate('/search')}
@@ -527,7 +585,7 @@ export function Applications() {
                                 size="sm"
                               >
                                 <Search className="w-4 h-4 mr-2" />
-                                Procurar alojamentos similares
+                                Procurar similares
                               </Button>
                             )}
                           </div>
@@ -550,6 +608,16 @@ export function Applications() {
         description="Tens a certeza que queres cancelar esta candidatura? O senhorio deixará de a ver como ativa."
         cancelLabel="Manter candidatura"
         confirmLabel="Cancelar candidatura"
+      />
+
+      <ConfirmModal
+        isOpen={!!confirmStayApp}
+        onClose={() => setConfirmStayApp(null)}
+        onConfirm={handleConfirmStay}
+        title="Confirmar estadia?"
+        description={confirmDescription}
+        cancelLabel="Ainda não"
+        confirmLabel="Confirmar estadia"
       />
     </div>
   );
