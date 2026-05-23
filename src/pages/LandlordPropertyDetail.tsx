@@ -29,6 +29,13 @@ import {
   Clock,
   Ban,
   FileEdit,
+  Users,
+  Star,
+  MessageCircle,
+  Phone,
+  GraduationCap,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -37,6 +44,222 @@ import { Button } from '../components/Button';
 import { toast } from 'sonner';
 import { Room, RoomStatus } from '../types/property';
 import { normalizeRoomStatus, getRoomStatusLabel, getRoomStatusBadgeClasses } from '../utils/roomStatus';
+
+// ─── Mock candidates ─────────────────────────────────────────────────────────
+
+interface Candidate {
+  id: string;
+  name: string;
+  initials: string;
+  color: string;
+  university: string;
+  course: string;
+  year: number;
+  isStudent: boolean;
+  compatibilityScore: number;
+  message: string;
+  status: 'pending' | 'under_review' | 'accepted' | 'rejected';
+  appliedAt: string;
+  wantedRoomTitle: string;
+}
+
+const MOCK_CANDIDATES: Candidate[] = [
+  {
+    id: 'cand-1',
+    name: 'Ana Rodrigues',
+    initials: 'AR',
+    color: 'from-purple-500 to-pink-500',
+    university: 'ESTGV',
+    course: 'Engenharia Informática',
+    year: 2,
+    isStudent: true,
+    compatibilityScore: 92,
+    message: 'Olá! Sou estudante de Informática no 2º ano na ESTGV. Procuro um quarto tranquilo e organizado. Tenho horários de estudo regulares e gosto de manter a casa limpa. Estou muito interessada por ser perto da faculdade.',
+    status: 'pending',
+    appliedAt: '2026-05-20',
+    wantedRoomTitle: 'Quarto 1',
+  },
+  {
+    id: 'cand-2',
+    name: 'Miguel Santos',
+    initials: 'MS',
+    color: 'from-blue-500 to-cyan-500',
+    university: 'ESTGV',
+    course: 'Gestão',
+    year: 3,
+    isStudent: true,
+    compatibilityScore: 85,
+    message: 'Bom dia! Sou estudante de Gestão, 3º ano. Procuro alojamento a partir de setembro. Sou calmo, responsável e não fumo. Tenho referências de senhorios anteriores disponíveis.',
+    status: 'under_review',
+    appliedAt: '2026-05-18',
+    wantedRoomTitle: 'Quarto 2',
+  },
+  {
+    id: 'cand-3',
+    name: 'Sofia Costa',
+    initials: 'SC',
+    color: 'from-green-500 to-teal-500',
+    university: 'ESTGV',
+    course: 'Design de Comunicação',
+    year: 1,
+    isStudent: true,
+    compatibilityScore: 78,
+    message: 'Olá! Sou estudante do 1º ano, transferi-me do Porto. Procuro quarto perto da ESTGV. Gosto de ambientes calmos e respeito as regras da casa.',
+    status: 'pending',
+    appliedAt: '2026-05-22',
+    wantedRoomTitle: 'Suite',
+  },
+  {
+    id: 'cand-4',
+    name: 'João Ferreira',
+    initials: 'JF',
+    color: 'from-orange-500 to-red-500',
+    university: 'ESTGV',
+    course: 'Marketing',
+    year: 2,
+    isStudent: true,
+    compatibilityScore: 71,
+    message: 'Estudante de Marketing, 2º ano. Procuro quarto económico com boa ligação à faculdade. Sou sociável mas respeito os espaços comuns.',
+    status: 'rejected',
+    appliedAt: '2026-05-15',
+    wantedRoomTitle: 'Quarto 2',
+  },
+];
+
+function CandidateCard({
+  candidate,
+  onAccept,
+  onReject,
+  onContact,
+}: {
+  candidate: Candidate;
+  onAccept: () => void;
+  onReject: () => void;
+  onContact: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const statusConfig = {
+    pending: { label: 'Pendente', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+    under_review: { label: 'Em análise', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+    accepted: { label: 'Aceite', cls: 'bg-green-50 text-green-700 border-green-200' },
+    rejected: { label: 'Rejeitado', cls: 'bg-red-50 text-red-600 border-red-200' },
+  };
+  const cfg = statusConfig[candidate.status];
+
+  const scoreColor = candidate.compatibilityScore >= 85 ? 'text-green-600' :
+    candidate.compatibilityScore >= 70 ? 'text-amber-600' : 'text-muted-foreground';
+
+  return (
+    <div className={`border rounded-xl p-4 transition-all ${
+      candidate.status === 'rejected' ? 'border-border opacity-60' : 'border-border hover:border-primary/30'
+    }`}>
+      <div className="flex items-start gap-3">
+        {/* Avatar */}
+        <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${candidate.color} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
+          {candidate.initials}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold text-foreground">{candidate.name}</p>
+            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${cfg.cls}`}>
+              {cfg.label}
+            </span>
+            {candidate.isStudent && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                <GraduationCap className="w-3 h-3" />
+                Estudante
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {candidate.course} · {candidate.year}º ano · {candidate.university}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Quarto pretendido: <span className="font-medium text-foreground">{candidate.wantedRoomTitle}</span>
+            {' · '}Candidatura a {new Date(candidate.appliedAt).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
+          </p>
+        </div>
+
+        {/* Compatibility */}
+        <div className="flex-shrink-0 text-right">
+          <div className={`text-lg font-bold ${scoreColor}`}>{candidate.compatibilityScore}%</div>
+          <div className="flex items-center justify-end gap-0.5">
+            {[1,2,3,4,5].map(i => (
+              <Star
+                key={i}
+                className={`w-2.5 h-2.5 ${i <= Math.round(candidate.compatibilityScore / 20) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`}
+              />
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground">compatibilidade</p>
+        </div>
+      </div>
+
+      {/* Message preview */}
+      <div className="mt-3 ml-[52px]">
+        <p className={`text-xs text-muted-foreground leading-relaxed ${expanded ? '' : 'line-clamp-2'}`}>
+          "{candidate.message}"
+        </p>
+        {candidate.message.length > 120 && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-primary mt-1 hover:underline"
+          >
+            {expanded ? 'Ver menos' : 'Ver mensagem completa'}
+          </button>
+        )}
+      </div>
+
+      {/* Actions */}
+      {candidate.status !== 'rejected' && candidate.status !== 'accepted' && (
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/60">
+          <button
+            onClick={onContact}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-xs font-medium transition-colors"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            Mensagem
+          </button>
+          <button
+            onClick={onContact}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-xs font-medium transition-colors"
+          >
+            <Phone className="w-3.5 h-3.5" />
+            Agendar visita
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={onReject}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 text-red-600 text-xs font-medium transition-colors"
+          >
+            <ThumbsDown className="w-3.5 h-3.5" />
+            Recusar
+          </button>
+          <button
+            onClick={onAccept}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors"
+          >
+            <ThumbsUp className="w-3.5 h-3.5" />
+            Aceitar
+          </button>
+        </div>
+      )}
+      {(candidate.status === 'accepted' || candidate.status === 'rejected') && (
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/60">
+          <button
+            onClick={onContact}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-xs font-medium transition-colors"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            Mensagem
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PROPERTY_STATUS_CONFIG = {
   active: { label: 'Ativa', color: 'bg-green-100 text-green-800 border-green-200' },
@@ -162,6 +385,8 @@ export function LandlordPropertyDetail() {
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'rooms' | 'candidates'>('rooms');
+  const [candidates, setCandidates] = useState<Candidate[]>(MOCK_CANDIDATES);
 
   const property = getProperty(id || '');
   const rooms = property ? getRoomsByProperty(property.id) : [];
@@ -234,6 +459,18 @@ export function LandlordPropertyDetail() {
     updateRoomStatus(roomId, 'available');
     toast.success('Quarto reativado com sucesso');
   };
+
+  const handleAcceptCandidate = (candidateId: string) => {
+    setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: 'accepted' as const } : c));
+    toast.success('Candidato aceite! Uma notificação será enviada.');
+  };
+
+  const handleRejectCandidate = (candidateId: string) => {
+    setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: 'rejected' as const } : c));
+    toast.success('Candidato rejeitado.');
+  };
+
+  const pendingCount = candidates.filter(c => c.status === 'pending' || c.status === 'under_review').length;
 
   const heroImage = property.images[selectedImage] || property.images[0];
 
@@ -394,40 +631,128 @@ export function LandlordPropertyDetail() {
               </Card>
             )}
 
-            {/* Rooms list */}
+            {/* Tabs */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-foreground flex items-center gap-2">
-                  <BedDouble className="w-5 h-5 text-primary" />
+              <div className="flex items-center gap-1 mb-5 border-b border-border">
+                <button
+                  onClick={() => setActiveTab('rooms')}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                    activeTab === 'rooms'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <BedDouble className="w-4 h-4" />
                   Quartos ({rooms.length})
-                </h2>
-                {roomStats.paused > 0 && (
-                  <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
-                    {roomStats.paused} pausado{roomStats.paused > 1 ? 's' : ''}
-                  </span>
-                )}
+                  {roomStats.paused > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full">
+                      {roomStats.paused} pausado{roomStats.paused > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('candidates')}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                    activeTab === 'candidates'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  Candidatos ({candidates.length})
+                  {pendingCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold">
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
               </div>
 
-              {rooms.length === 0 ? (
-                <Card className="p-10 text-center">
-                  <BedDouble className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
-                  <p className="text-muted-foreground text-sm mb-4">Nenhum quarto associado a esta propriedade.</p>
-                  <Button size="sm" onClick={() => navigate('/landlord/new-listing')}>
-                    <PlusCircle className="w-4 h-4 mr-1.5" />
-                    Adicionar Quarto
-                  </Button>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {rooms.map(room => (
-                    <RoomCard
-                      key={room.id}
-                      room={room}
-                      onEdit={() => toast.info('Edição de quarto em desenvolvimento')}
-                      onPause={normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved' ? () => handleRoomPause(room.id) : undefined}
-                      onReactivate={normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
-                    />
-                  ))}
+              {/* Rooms tab */}
+              {activeTab === 'rooms' && (
+                <>
+                  {rooms.length === 0 ? (
+                    <Card className="p-10 text-center">
+                      <BedDouble className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+                      <p className="text-muted-foreground text-sm mb-4">Nenhum quarto associado a esta propriedade.</p>
+                      <Button size="sm" onClick={() => navigate('/landlord/new-listing')}>
+                        <PlusCircle className="w-4 h-4 mr-1.5" />
+                        Adicionar Quarto
+                      </Button>
+                    </Card>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {rooms.map(room => (
+                        <RoomCard
+                          key={room.id}
+                          room={room}
+                          onEdit={() => toast.info('Edição de quarto em desenvolvimento')}
+                          onPause={normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved' ? () => handleRoomPause(room.id) : undefined}
+                          onReactivate={normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Candidates tab */}
+              {activeTab === 'candidates' && (
+                <div className="space-y-4">
+                  {/* Stats */}
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: 'Total', value: candidates.length, cls: 'bg-card border-border text-foreground' },
+                      { label: 'Pendentes', value: candidates.filter(c => c.status === 'pending').length, cls: 'bg-amber-50 border-amber-200 text-amber-700' },
+                      { label: 'Em análise', value: candidates.filter(c => c.status === 'under_review').length, cls: 'bg-blue-50 border-blue-200 text-blue-700' },
+                      { label: 'Aceites', value: candidates.filter(c => c.status === 'accepted').length, cls: 'bg-green-50 border-green-200 text-green-700' },
+                    ].map(stat => (
+                      <div key={stat.label} className={`border rounded-xl p-3 text-center ${stat.cls}`}>
+                        <p className="text-xl font-bold">{stat.value}</p>
+                        <p className="text-xs mt-0.5 opacity-80">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Filter buttons */}
+                  <div className="flex gap-2 flex-wrap">
+                    {(['all', 'pending', 'under_review', 'accepted', 'rejected'] as const).map(f => {
+                      const labels: Record<string, string> = { all: 'Todos', pending: 'Pendentes', under_review: 'Em análise', accepted: 'Aceites', rejected: 'Rejeitados' };
+                      const count = f === 'all' ? candidates.length : candidates.filter(c => c.status === f).length;
+                      return (
+                        <button
+                          key={f}
+                          onClick={() => {}}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors"
+                        >
+                          {labels[f]} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Candidate list */}
+                  {candidates.length === 0 ? (
+                    <Card className="p-10 text-center">
+                      <Users className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+                      <p className="text-muted-foreground text-sm">Ainda não há candidaturas para esta propriedade.</p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-3">
+                      {candidates.map(candidate => (
+                        <CandidateCard
+                          key={candidate.id}
+                          candidate={candidate}
+                          onAccept={() => handleAcceptCandidate(candidate.id)}
+                          onReject={() => handleRejectCandidate(candidate.id)}
+                          onContact={() => {
+                            navigate('/messages');
+                            toast.info(`A abrir conversa com ${candidate.name}`);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

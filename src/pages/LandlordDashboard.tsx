@@ -1,6 +1,11 @@
 import { useNavigate } from 'react-router';
-import { Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle, Clock, User, Wrench, AlertCircle, PauseCircle, Camera, BarChart2, ChevronRight } from 'lucide-react';
+import {
+  Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle,
+  Clock, User, Wrench, AlertCircle, PauseCircle, Camera, BarChart2,
+  ChevronRight, BedDouble, Users, RefreshCw, CalendarDays, Bell,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useProperties } from '../context/PropertiesContext';
 import { getLandlordMetrics, getDashboardActivity, getPerformanceData, getLandlordListings } from '../data/mockLandlord';
 import { getMaintenanceStats } from '../data/mockMaintenance';
 import { Card } from '../components/Card';
@@ -10,6 +15,7 @@ import { Badge } from '../components/Badge';
 export function LandlordDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { properties, rooms } = useProperties();
 
   const metrics = getLandlordMetrics(user?.id || '');
   const activities = getDashboardActivity(user?.id || '');
@@ -20,6 +26,47 @@ export function LandlordDashboard() {
   const pausedListings = allListings.filter(l => l.status === 'paused');
   const lowViewListings = allListings.filter(l => l.status === 'active' && l.views < 50);
   const fewPhotosListings = allListings.filter(l => l.status !== 'draft' && l.applications === 0 && l.views > 0);
+
+  // Room-level stats from context
+  const myProperties = properties.filter(p => p.landlordId === user?.id && p.status !== 'archived');
+  const myPropertyIds = new Set(myProperties.map(p => p.id));
+  const myRooms = rooms.filter(r => myPropertyIds.has(r.propertyId));
+
+  const roomStats = {
+    total: myRooms.length,
+    available: myRooms.filter(r => r.status === 'available').length,
+    occupied: myRooms.filter(r => r.status === 'occupied').length,
+    reserved: myRooms.filter(r => r.status === 'reserved').length,
+    draft: myRooms.filter(r => r.status === 'draft').length,
+    paused: myRooms.filter(r => r.status === 'paused').length,
+  };
+
+  // Upcoming vacancies: occupied rooms with move-in date in the past (will be free soon)
+  // or rooms available in next 60 days
+  const now = new Date();
+  const in60Days = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+  const upcomingVacancies = myRooms.filter(r => {
+    if (r.status === 'available') {
+      const avail = new Date(r.availableFrom);
+      return avail > now && avail <= in60Days;
+    }
+    return false;
+  });
+
+  // Draft rooms that haven't been published yet
+  const draftRooms = myRooms.filter(r => r.status === 'draft');
+
+  // Mock late rents: occupied rooms whose move-in date was > 30 days ago (simulate overdue)
+  const lateRentRooms = myRooms.filter(r => {
+    if (r.status !== 'occupied' || !r.moveInDate) return false;
+    const moveIn = new Date(r.moveInDate);
+    const daysSince = (now.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24);
+    // Simulate: rooms occupied > 60 days have a "late" flag for demo purposes
+    return daysSince > 60;
+  });
+
+  // July reminder (it's May 2026, July is 2 months away)
+  const showJulyReminder = new Date().getMonth() < 6; // before July
 
   const recentActivities = activities.slice(0, 5);
 
@@ -79,6 +126,26 @@ export function LandlordDashboard() {
             Aqui está um resumo da tua atividade como senhorio
           </p>
         </div>
+
+        {/* July republication reminder */}
+        {showJulyReminder && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+            <Bell className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-800">Lembrete: novo ano letivo em setembro</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Julho é a altura certa para republicar quartos para o ano letivo 2026/27. Estudantes começam a procurar com antecedência.
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/landlord/listings')}
+              className="flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:text-amber-900 whitespace-nowrap"
+            >
+              Ver alojamentos
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {metrics && (
           <>
@@ -170,6 +237,109 @@ export function LandlordDashboard() {
           </>
         )}
 
+        {/* Room-level stats */}
+        {myRooms.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BedDouble className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-bold text-foreground">Estado dos Quartos</h2>
+                <span className="text-sm text-muted-foreground">· {roomStats.total} no total</span>
+              </div>
+              <button
+                onClick={() => navigate('/landlord/listings')}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                Gerir quartos <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {[
+                { label: 'Publicados', value: roomStats.available, color: 'bg-green-50 border-green-200 text-green-700', dot: 'bg-green-500' },
+                { label: 'Ocupados', value: roomStats.occupied, color: 'bg-purple-50 border-purple-200 text-purple-700', dot: 'bg-purple-500' },
+                { label: 'Reservados', value: roomStats.reserved, color: 'bg-blue-50 border-blue-200 text-blue-700', dot: 'bg-blue-500' },
+                { label: 'Rascunho', value: roomStats.draft, color: 'bg-muted border-border text-muted-foreground', dot: 'bg-muted-foreground/40' },
+                { label: 'Pausados', value: roomStats.paused, color: 'bg-amber-50 border-amber-200 text-amber-700', dot: 'bg-amber-400' },
+                { label: 'Propriedades', value: myProperties.length, color: 'bg-primary/5 border-primary/20 text-primary', dot: 'bg-primary' },
+              ].map(stat => (
+                <div
+                  key={stat.label}
+                  className={`border rounded-xl p-3 text-center cursor-pointer hover:shadow-sm transition-shadow ${stat.color}`}
+                  onClick={() => navigate('/landlord/listings')}
+                >
+                  <div className="flex items-center justify-center gap-1.5 mb-1">
+                    <span className={`w-2 h-2 rounded-full ${stat.dot}`} />
+                    <p className="text-xl font-bold">{stat.value}</p>
+                  </div>
+                  <p className="text-xs opacity-80">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Upcoming vacancies */}
+        {upcomingVacancies.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <CalendarDays className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-bold text-foreground">Quartos a libertar nos próximos 60 dias</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {upcomingVacancies.map(room => {
+                const prop = myProperties.find(p => p.id === room.propertyId);
+                const daysUntil = Math.ceil((new Date(room.availableFrom).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                return (
+                  <div
+                    key={room.id}
+                    className="flex items-center gap-3 p-3 border border-border rounded-xl bg-card hover:border-primary/30 cursor-pointer transition-colors"
+                    onClick={() => navigate(`/landlord/property/${room.propertyId}`)}
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                      <CalendarDays className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{room.title}</p>
+                      <p className="text-xs text-muted-foreground truncate">{prop?.title}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-bold text-amber-600">{daysUntil}d</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {new Date(room.availableFrom).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Draft rooms quick publish */}
+        {draftRooms.length > 0 && (
+          <div className="mb-6">
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <BedDouble className="w-5 h-5 text-blue-700" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-blue-800 mb-1">
+                    {draftRooms.length} quarto{draftRooms.length > 1 ? 's' : ''} em rascunho
+                  </p>
+                  <p className="text-xs text-blue-700 mb-3">
+                    {draftRooms.map(r => r.title).join(', ')} — prontos para publicar para estudantes.
+                  </p>
+                  <Button size="sm" onClick={() => navigate('/landlord/listings')}>
+                    <RefreshCw className="w-4 h-4 mr-1.5" />
+                    Publicar quartos em rascunho
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mb-10 flex flex-wrap gap-4">
           <Button size="lg" variant="primary" onClick={() => navigate('/landlord/new-listing')}>
             <PlusCircle className="w-5 h-5" />
@@ -253,6 +423,32 @@ export function LandlordDashboard() {
               description: 'Anúncios com visitas mas sem candidaturas podem beneficiar de mais fotos ou melhor descrição.',
               actionLabel: 'Editar anúncios',
               route: '/landlord/listings',
+            });
+          }
+
+          if (draftRooms.length > 0) {
+            actions.push({
+              key: 'drafts',
+              icon: <BedDouble className="w-5 h-5 text-blue-600" />,
+              iconBg: 'bg-blue-50',
+              title: `${draftRooms.length} quarto${draftRooms.length > 1 ? 's' : ''} em rascunho`,
+              description: `${draftRooms.map(r => r.title).join(', ')} — prontos para publicar.`,
+              actionLabel: 'Publicar quartos',
+              route: '/landlord/listings',
+              badge: draftRooms.length,
+            });
+          }
+
+          if (lateRentRooms.length > 0) {
+            actions.push({
+              key: 'lateRent',
+              icon: <AlertCircle className="w-5 h-5 text-red-600" />,
+              iconBg: 'bg-red-50',
+              title: `${lateRentRooms.length} renda${lateRentRooms.length > 1 ? 's' : ''} com atraso`,
+              description: 'Existem quartos ocupados com rendas não confirmadas. Contacta os inquilinos.',
+              actionLabel: 'Ver detalhes',
+              route: '/landlord/properties',
+              badge: lateRentRooms.length,
             });
           }
 

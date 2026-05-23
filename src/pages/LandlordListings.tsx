@@ -411,6 +411,25 @@ export function LandlordListings() {
                         </div>
                       </div>
 
+                      {/* Draft property banner */}
+                      {property.status === 'draft' && (
+                        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <FileText className="w-4 h-4 text-blue-700" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-blue-800 mb-0.5">Propriedade em rascunho</p>
+                            <p className="text-xs text-blue-700">
+                              Publica a propriedade para que os estudantes a possam ver. Podes publicar quartos individualmente.
+                            </p>
+                          </div>
+                          <Button variant="primary" size="sm" onClick={() => handlePublishProperty(property.id)}>
+                            <Play className="w-4 h-4 mr-1" />
+                            Publicar tudo
+                          </Button>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mb-6">
                         <Button variant="outline" size="sm" onClick={() => navigate(`/room/${propertyRooms[0].id}`)}>
                           <Eye className="w-4 h-4 mr-1" />
@@ -422,7 +441,7 @@ export function LandlordListings() {
                           Editar
                         </Button>
 
-                        <Button variant="outline" size="sm" onClick={() => navigate('/landlord/properties')}>
+                        <Button variant="outline" size="sm" onClick={() => navigate(`/landlord/property/${property.id}`)}>
                           <Settings className="w-4 h-4 mr-1" />
                           Gerir quartos
                         </Button>
@@ -438,13 +457,6 @@ export function LandlordListings() {
                           <Button variant="primary" size="sm" onClick={() => handleReactivateProperty(property.id)}>
                             <Play className="w-4 h-4 mr-1" />
                             Reativar
-                          </Button>
-                        )}
-
-                        {property.status === 'draft' && (
-                          <Button variant="primary" size="sm" onClick={() => handlePublishProperty(property.id)}>
-                            <Play className="w-4 h-4 mr-1" />
-                            Publicar
                           </Button>
                         )}
 
@@ -537,6 +549,20 @@ export function LandlordListings() {
                                   >
                                     <Edit className="w-4 h-4" />
                                   </button>
+
+                                  {room.status === 'draft' && (
+                                    <button
+                                      onClick={() => {
+                                        handleReactivateRoom(room);
+                                        if (property.status === 'draft') handlePublishProperty(property.id);
+                                      }}
+                                      className="flex items-center gap-1 px-2.5 h-9 rounded-lg bg-green-50 border border-green-300 hover:bg-green-100 text-green-700 transition-colors text-xs font-medium"
+                                      title="Publicar quarto"
+                                    >
+                                      <Play className="w-3.5 h-3.5" />
+                                      Publicar
+                                    </button>
+                                  )}
 
                                   {canPauseRoom && (
                                     <button

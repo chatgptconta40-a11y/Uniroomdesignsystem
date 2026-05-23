@@ -5,6 +5,8 @@ import { mockProperties, mockRooms } from '../data/mockProperties';
 interface PropertiesContextType {
   properties: Property[];
   rooms: Room[];
+  addProperty: (property: Property) => void;
+  addRoom: (room: Room) => void;
   updatePropertyStatus: (id: string, status: PropertyStatus) => void;
   updateProperty: (id: string, updates: Partial<Property>) => void;
   deleteProperty: (id: string) => void;
@@ -18,8 +20,18 @@ interface PropertiesContextType {
 
 const PropertiesContext = createContext<PropertiesContextType | undefined>(undefined);
 
+// Bump this version when mock data changes to force a reset for existing sessions
+const DATA_VERSION = '2026-05-v3';
+
 export function PropertiesProvider({ children }: { children: ReactNode }) {
   const [properties, setProperties] = useState<Property[]>(() => {
+    const version = localStorage.getItem('uniroom_data_version');
+    if (version !== DATA_VERSION) {
+      localStorage.removeItem('uniroom_properties');
+      localStorage.removeItem('uniroom_rooms');
+      localStorage.setItem('uniroom_data_version', DATA_VERSION);
+    }
+
     const stored = localStorage.getItem('uniroom_properties');
 
     if (stored) {
@@ -80,6 +92,14 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       // LocalStorage can fail in restricted environments.
     }
   }, [rooms]);
+
+  const addProperty = (property: Property) => {
+    setProperties(previous => [...previous, property]);
+  };
+
+  const addRoom = (room: Room) => {
+    setRooms(previous => [...previous, room]);
+  };
 
   const updatePropertyStatus = (id: string, status: PropertyStatus) => {
     setProperties(previous =>
@@ -160,6 +180,8 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       value={{
         properties,
         rooms,
+        addProperty,
+        addRoom,
         updatePropertyStatus,
         updateProperty,
         deleteProperty,
