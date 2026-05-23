@@ -78,7 +78,7 @@ export function TrustSignals({ room, property, onReport }: TrustSignalsProps) {
         <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0">
           <ShieldCheck className="w-4 h-4 text-green-600" />
         </div>
-        <h3 className="font-bold text-foreground">Confiança e segurança</h3>
+        <h3 className="font-bold text-foreground">Responsável e segurança</h3>
       </div>
 
       {/* Landlord row */}

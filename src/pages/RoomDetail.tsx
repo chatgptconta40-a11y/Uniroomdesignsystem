@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router';
-import { useState } from 'react';
-import { ArrowLeft, MapPin, Users, Home, Check, MessageCircle, Heart, Maximize, Bath, Building, Calendar, Clock, ShieldCheck, Star, Flag, Edit, Pause, Play, FileText, BarChart3 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, MapPin, Users, Home, Check, MessageCircle, Heart, Maximize, Bath, Building, Calendar, Clock, Star, Edit, Pause, Play, FileText, BarChart3 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
@@ -20,7 +20,6 @@ import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
 import { TrustSignals } from '../components/TrustSignals';
-import { TrustPill } from '../components/TrustPill';
 
 export function RoomDetail() {
   const { id } = useParams<{ id: string }>();
@@ -35,6 +34,10 @@ export function RoomDetail() {
   const [showContactModal, setShowContactModal] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [, setReviewsVersion] = useState(0);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [id]);
 
   const room = getRoom(id || '');
   const property = room ? getProperty(room.propertyId) : null;
@@ -403,20 +406,6 @@ export function RoomDetail() {
               </Card>
             )}
 
-            <Card className="p-6 bg-gradient-to-br from-primary/5 to-secondary/5 border-primary/10">
-              <div className="flex items-start gap-4">
-                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Users className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold mb-2">Como funciona a compatibilidade</h2>
-                  <p className="text-foreground leading-relaxed">
-                    O UniRoom cruza preferências de convivência, hábitos de estudo, horários, limpeza e regras da casa para ajudar estudantes a perceber se um quarto combina com o seu perfil. Ao criares conta, a pontuação fica personalizada ao teu perfil.
-                  </p>
-                </div>
-              </div>
-            </Card>
-
             <Card className="p-6">
               <div className="flex items-center justify-between gap-4 mb-5">
                 <h2 className="text-xl font-bold">Avaliações</h2>
@@ -462,12 +451,12 @@ export function RoomDetail() {
                     </p>
                   </div>
                 )}
-                <button
-                  onClick={handleReview}
-                  className="text-sm font-semibold text-primary hover:underline"
-                >
-                  Deixar avaliação
-                </button>
+                {!isLandlordOwner && (
+                  <Button variant="outline" size="sm" onClick={handleReview}>
+                    <Star className="w-4 h-4 mr-2" />
+                    Deixar avaliação
+                  </Button>
+                )}
               </div>
             </Card>
 
@@ -506,14 +495,13 @@ export function RoomDetail() {
                   </div>
 
                   {room.compatibilityScore && (
-                    <div className="mb-6 p-4 bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-foreground">Compatibilidade</span>
-                        <span className="text-2xl font-bold text-green-600">{room.compatibilityScore}%</span>
-                      </div>
-                      <Badge variant="success" className="w-full justify-center">
-                        Ótima combinação
-                      </Badge>
+                    <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-green-50 rounded-lg border border-green-100">
+                      <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                      <span className="text-xs text-green-700">Compatibilidade</span>
+                      <span className={`ml-auto text-sm font-bold ${
+                        room.compatibilityScore >= 80 ? 'text-green-700' :
+                        room.compatibilityScore >= 60 ? 'text-amber-600' : 'text-muted-foreground'
+                      }`}>{room.compatibilityScore}%</span>
                     </div>
                   )}
 
@@ -537,25 +525,6 @@ export function RoomDetail() {
                 <ComfortScorePanel room={room} property={property} />
               )}
 
-              <Card className="p-6">
-                <h3 className="font-bold mb-4">Responsável pelo anúncio</h3>
-                <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold flex-shrink-0">
-                    {(mockUsers.find(u => u.id === room.landlordId)?.name ?? 'M').charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground">
-                      {mockUsers.find(u => u.id === room.landlordId)?.name ?? 'Maria Santos'}
-                    </p>
-                    <p className="text-sm text-muted-foreground mb-2">Senhorio UniRoom</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {property.verified && <TrustPill type="verified-landlord" size="xs" />}
-                      <TrustPill type="trusted-member" size="xs" />
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
               {!isLandlordOwner && (
                 <TrustSignals
                   room={room}
@@ -566,48 +535,43 @@ export function RoomDetail() {
 
               <Card className="p-6">
                 <h3 className="font-bold mb-4">Localização</h3>
-                <div className="mb-5">
+                <div className="mb-4">
                   <LocationMap
                     address={property.address}
                     zone={property.zone}
                     city={property.city}
                   />
                 </div>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Distância à universidade</span>
-                    <span className="font-semibold">{property.distanceToUniversity}km</span>
+                {property.address && (
+                  <p className="text-sm text-muted-foreground mb-4 flex items-start gap-1.5">
+                    <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" />
+                    {property.address}
+                  </p>
+                )}
+                <div className="space-y-2.5 text-sm">
+                  <div className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Building className="w-3.5 h-3.5" />
+                      Universidade mais próxima
+                    </span>
+                    <span className="font-semibold">{property.distanceToUniversity} km</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Zona</span>
-                    <span className="font-semibold">{property.zone}</span>
+                  <div className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      A pé
+                    </span>
+                    <span className="font-semibold">~{Math.round(property.distanceToUniversity * 13)} min</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Cidade</span>
-                    <span className="font-semibold">{property.city}</span>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      Transporte público
+                    </span>
+                    <span className="font-semibold">~{Math.round(property.distanceToUniversity * 5)} min</span>
                   </div>
                 </div>
               </Card>
-
-              {!isLandlordOwner && (
-                <Card className="p-6">
-                  <h3 className="font-bold mb-4">Ações da comunidade</h3>
-                  <div className="space-y-3">
-                    <Button variant="outline" className="w-full" onClick={handleReview}>
-                      <Star className="w-4 h-4 mr-2" />
-                      Deixar avaliação
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={handleReport}
-                    >
-                      <Flag className="w-4 h-4 mr-2" />
-                      Denunciar anúncio
-                    </Button>
-                  </div>
-                </Card>
-              )}
 
               {isLandlordOwner && (
                 <Card className="p-6 border-primary/20 bg-primary/5">
