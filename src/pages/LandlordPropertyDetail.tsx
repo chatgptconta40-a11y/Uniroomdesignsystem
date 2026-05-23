@@ -1268,6 +1268,10 @@ export function LandlordPropertyDetail() {
   const [candidateFilter, setCandidateFilter] = useState<'all' | CandidateStatus>('all');
   const [roomFilter, setRoomFilter] = useState<'all' | string>('all');
 
+  const reloadCandidates = () => {
+    if (id) setCandidates(getApplicationsByProperty(id));
+  };
+
   const property = getProperty(id || '');
   const rooms = property ? getRoomsByProperty(property.id) : [];
 
@@ -1361,12 +1365,24 @@ export function LandlordPropertyDetail() {
         );
         return;
       }
-      updateRoom(candidate.roomId, { status: 'reserved', reservedBy: candidate.studentId });
     }
 
-    updateCandidateStatus(candidateId, 'accepted');
-    setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: 'accepted' } : c));
-    toast.success(`${candidate.studentName} aceite! O quarto foi marcado como reservado.`);
+    const result = updateCandidateStatus(candidateId, 'accepted');
+    if (!result) {
+      toast.error('Não foi possível aceitar a candidatura. Tenta novamente.');
+      return;
+    }
+
+    if (targetRoom) {
+      updateRoom(candidate.roomId, {
+        status: 'reserved',
+        reservedBy: candidate.studentId,
+        occupiedBy: undefined,
+      });
+    }
+
+    reloadCandidates();
+    toast.success(`${candidate.studentName} aceite! O quarto foi marcado como reservado e os restantes candidatos deste quarto foram recusados.`);
   };
 
   const handleRejectCandidate = (candidateId: string) => {
@@ -1376,8 +1392,12 @@ export function LandlordPropertyDetail() {
   const handleRejectConfirm = () => {
     if (!confirmRejectId) return;
     const candidate = candidates.find(c => c.id === confirmRejectId);
-    updateCandidateStatus(confirmRejectId, 'rejected');
-    setCandidates(prev => prev.map(c => c.id === confirmRejectId ? { ...c, status: 'rejected' } : c));
+    const result = updateCandidateStatus(confirmRejectId, 'rejected');
+    if (!result) {
+      toast.error('Não foi possível recusar a candidatura. Tenta novamente.');
+      return;
+    }
+    reloadCandidates();
     toast.info(`Candidatura de ${candidate?.studentName ?? 'candidato'} recusada.`);
     setConfirmRejectId(null);
   };
@@ -1396,11 +1416,7 @@ export function LandlordPropertyDetail() {
 
   const handleScheduleVisit = (applicationId: string, visitDate: string, details: { format: 'presencial' | 'videochamada'; note: string }) => {
     scheduleVisit(applicationId, visitDate, details.format, details.note || undefined);
-    setCandidates(prev =>
-      prev.map(c => c.id === applicationId
-        ? { ...c, visitDate, visitFormat: details.format, visitNote: details.note || undefined, status: c.status === 'pending' ? 'under_review' : c.status }
-        : c),
-    );
+    reloadCandidates();
     setVisitCandidate(null);
     toast.success(details.format === 'videochamada' ? 'Videochamada agendada com sucesso' : 'Visita presencial agendada com sucesso');
   };
@@ -1719,7 +1735,7 @@ export function LandlordPropertyDetail() {
                         <RoomCard
                           key={room.id}
                           room={room}
-                          reservedByName={room.reservedBy ? (acceptedCandidate?.studentName ?? room.reservedBy) : undefined}
+                          reservedByName={(room.reservedBy || room.occupiedBy) ? (acceptedCandidate?.studentName ?? room.reservedBy ?? room.occupiedBy) : undefined}
                           onEdit={() => setEditingRoom(room)}
                           onPause={!property.adminSuspended && (normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved') ? () => handleRoomPause(room.id) : undefined}
                           onReactivate={!property.adminSuspended && !isAccountSuspended && normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
@@ -1824,9 +1840,13 @@ export function LandlordPropertyDetail() {
                   ) : (
                     <div className="space-y-3">
                       {filteredCandidates.map(candidate => {
-                        // Room is reserved by someone else (another accepted candidate)
+                        // Room is reserved/occupied by a different student — not by this candidate
+                        const targetRoom = rooms.find(r => r.id === candidate.roomId);
                         const roomReservedByOther =
-                          reservedRoomIds.has(candidate.roomId) && candidate.status !== 'accepted';
+                          reservedRoomIds.has(candidate.roomId) &&
+                          candidate.status !== 'accepted' &&
+                          targetRoom?.reservedBy !== candidate.studentId &&
+                          targetRoom?.occupiedBy !== candidate.studentId;
                         return (
                           <CandidateCard
                             key={candidate.id}
