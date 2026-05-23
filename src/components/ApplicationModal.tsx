@@ -5,6 +5,7 @@ import { Card } from './Card';
 import { Badge } from './Badge';
 import { Input } from './Input';
 import { useAuth } from '../context/AuthContext';
+import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { createUnifiedApplication, getExistingApplicationForRoom } from '../data/unifiedApplications';
 import { mockStudentProfiles } from '../data/mockUsers';
@@ -19,56 +20,117 @@ interface ApplicationModalProps {
   onSuccess: () => void;
 }
 
-export function ApplicationModal({ accommodation, roomId, propertyId, propertyTitle, onClose, onSuccess }: ApplicationModalProps) {
+export function ApplicationModal({
+  accommodation,
+  roomId,
+  propertyId,
+  propertyTitle,
+  onClose,
+  onSuccess,
+}: ApplicationModalProps) {
   const { user } = useAuth();
+  const { getRoom, getProperty, refreshProperties } = useProperties();
+
   const [step, setStep] = useState(1);
   const [message, setMessage] = useState('');
   const [moveInDate, setMoveInDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const studentProfile = mockStudentProfiles.find(p => p.userId === user?.id);
+  const effectiveRoomId = roomId || accommodation.id;
+  const room = getRoom(effectiveRoomId);
+  const property = getProperty(propertyId || room?.propertyId || '');
+  const effectivePropertyId = propertyId || property?.id || room?.propertyId || '';
+  const effectivePropertyTitle = propertyTitle || property?.title;
+  const isRoomUnavailable = !!room && room.status !== 'available';
+
+  const studentProfile = mockStudentProfiles.find(profile => profile.userId === user?.id);
 
   const profileCompleteness = user
     ? Math.round(
-        ((user.name ? 33 : 0) +
+        (user.name ? 33 : 0) +
           (studentProfile?.university ? 33 : 0) +
-          (studentProfile?.course ? 34 : 0))
+          (studentProfile?.course ? 34 : 0),
       )
     : 0;
 
-  // Duplicate check
-  const existingApplication = roomId ? getExistingApplicationForRoom(user?.id || '', roomId) : null;
-  const hasPendingApplication = existingApplication && (existingApplication.status === 'pending' || existingApplication.status === 'under_review');
-  const hasRejectedApplication = existingApplication && (existingApplication.status === 'rejected' || existingApplication.status === 'withdrawn');
+  const existingApplication = user
+    ? getExistingApplicationForRoom(user.id, effectiveRoomId)
+    : null;
+
+  const hasActiveApplication =
+    !!existingApplication &&
+    (
+      existingApplication.status === 'pending' ||
+      existingApplication.status === 'under_review' ||
+      existingApplication.status === 'accepted' ||
+      existingApplication.status === 'confirmed'
+    );
+
+  const hasRejectedApplication =
+    !!existingApplication &&
+    (
+      existingApplication.status === 'rejected' ||
+      existingApplication.status === 'withdrawn'
+    );
+
+  const canSubmit =
+    !!user &&
+    !isSubmitting &&
+    !hasActiveApplication &&
+    !isRoomUnavailable;
 
   const handleSubmit = async () => {
-    if (hasPendingApplication) {
+    if (!user) {
+      toast.error('Inicia sessão para te candidatares.');
+      return;
+    }
+
+    if (hasActiveApplication) {
       toast.error('Já tens uma candidatura ativa para este quarto.');
       return;
     }
 
+    if (isRoomUnavailable) {
+      toast.error('Este quarto já não está disponível.');
+      refreshProperties();
+      return;
+    }
+
     setIsSubmitting(true);
-    await new Promise(resolve => setTimeout(resolve, 1200));
 
-    createUnifiedApplication({
-      studentId: user?.id || '',
-      studentName: user?.name || 'Estudante',
-      studentUniversity: studentProfile?.university,
-      studentCourse: studentProfile?.course,
-      studentYear: studentProfile?.year,
-      roomId: roomId || accommodation.id,
-      propertyId: propertyId || '',
-      landlordId: accommodation.landlordId,
-      landlordName: 'Senhorio',
-      message,
-      moveInDate: moveInDate ? new Date(moveInDate) : undefined,
-      accommodationId: accommodation.id,
-    });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 800));
 
-    setIsSubmitting(false);
-    toast.success('Candidatura enviada com sucesso!');
-    onSuccess();
-    onClose();
+      createUnifiedApplication({
+        studentId: user.id,
+        studentName: user.name || 'Estudante',
+        studentUniversity: studentProfile?.university,
+        studentCourse: studentProfile?.course,
+        studentYear: studentProfile?.year,
+        roomId: effectiveRoomId,
+        propertyId: effectivePropertyId,
+        landlordId: accommodation.landlordId || property?.landlordId || '',
+        landlordName: undefined,
+        message,
+        moveInDate: moveInDate ? new Date(moveInDate) : undefined,
+        accommodationId: accommodation.id,
+      });
+
+      refreshProperties();
+      toast.success('Candidatura enviada com sucesso!');
+      onSuccess();
+      onClose();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível enviar a candidatura.';
+
+      toast.error(message);
+      refreshProperties();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const messageSuggestions = [
@@ -78,7 +140,11 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
     'Indica se tens alguma dúvida',
   ];
 
-  const exampleMessage = `Olá! Sou estudante de ${studentProfile?.course || '[Curso]'} na ${studentProfile?.university || '[Universidade]'}. Procuro alojamento a partir de ${moveInDate ? new Date(moveInDate).toLocaleDateString('pt-PT', { month: 'long' }) : '[mês]'}. Estou muito interessado/a neste espaço pela localização e ambiente descrito.`;
+  const exampleMessage = `Olá! Sou estudante de ${studentProfile?.course || '[Curso]'} na ${studentProfile?.university || '[Universidade]'}. Procuro alojamento a partir de ${
+    moveInDate
+      ? new Date(moveInDate).toLocaleDateString('pt-PT', { month: 'long' })
+      : '[mês]'
+  }. Estou muito interessado/a neste espaço pela localização e ambiente descrito.`;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -91,53 +157,65 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors"
+            aria-label="Fechar"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Duplicate warning banner */}
-        {hasPendingApplication && (
-          <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        {isRoomUnavailable && (
+          <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-amber-900">Já tens uma candidatura ativa para este quarto</p>
-              <p className="text-sm text-amber-700 mt-0.5">
-                Estado atual: <strong>{existingApplication?.status === 'pending' ? 'Pendente' : 'Em análise'}</strong>.
-                Podes acompanhar em "As Minhas Candidaturas".
+              <p className="font-semibold text-red-900">Este quarto já não está disponível</p>
+              <p className="text-sm text-red-700 mt-0.5">
+                O estado atual do quarto é “{room?.status}”. Podes procurar outro quarto disponível.
               </p>
             </div>
           </div>
         )}
 
-        {hasRejectedApplication && !hasPendingApplication && (
+        {hasActiveApplication && (
+          <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-900">Já tens uma candidatura ativa para este quarto</p>
+              <p className="text-sm text-amber-700 mt-0.5">
+                Estado atual: <strong>{existingApplication?.status}</strong>. Podes acompanhar em “As Minhas Candidaturas”.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {hasRejectedApplication && !hasActiveApplication && (
           <div className="mx-6 mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-blue-700">
-              A tua candidatura anterior para este quarto foi {existingApplication?.status === 'rejected' ? 'recusada' : 'cancelada'}. Podes candidatar-te novamente.
+              A tua candidatura anterior para este quarto foi {existingApplication?.status === 'rejected' ? 'recusada' : 'cancelada'}.
+              Podes candidatar-te novamente se o quarto estiver disponível.
             </p>
           </div>
         )}
 
         <div className="px-6 py-4 border-b border-border bg-muted/30">
           <div className="flex items-center justify-between mb-2">
-            {[1, 2, 3].map((s) => (
-              <div key={s} className="flex items-center flex-1">
+            {[1, 2, 3].map(item => (
+              <div key={item} className="flex items-center flex-1">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm transition-all ${
-                    step > s
+                    step > item
                       ? 'bg-green-500 text-white'
-                      : step === s
+                      : step === item
                       ? 'bg-primary text-white'
                       : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  {step > s ? <Check className="w-5 h-5" /> : s}
+                  {step > item ? <Check className="w-5 h-5" /> : item}
                 </div>
-                {s < 3 && (
+                {item < 3 && (
                   <div
                     className={`flex-1 h-1 mx-2 transition-all ${
-                      step > s ? 'bg-green-500' : 'bg-muted'
+                      step > item ? 'bg-green-500' : 'bg-muted'
                     }`}
                   />
                 )}
@@ -164,11 +242,11 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
               <Card className="p-6">
                 <div className="flex items-start gap-4 mb-6">
                   <div className="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-semibold flex-shrink-0">
-                    {user?.name.charAt(0)}
+                    {user?.name?.charAt(0) || 'E'}
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-semibold text-foreground mb-1">{user?.name}</h4>
-                    <p className="text-sm text-muted-foreground mb-2">{user?.email}</p>
+                    <h4 className="font-semibold text-foreground mb-1">{user?.name || 'Estudante'}</h4>
+                    <p className="text-sm text-muted-foreground mb-2">{user?.email || 'Sessão não iniciada'}</p>
                     <div className="flex items-center gap-2">
                       <Badge variant={profileCompleteness === 100 ? 'success' : 'warning'}>
                         Perfil {profileCompleteness}% completo
@@ -224,7 +302,7 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
               <div>
                 <h3 className="font-semibold text-foreground mb-2">Mensagem de apresentação</h3>
                 <p className="text-sm text-muted-foreground">
-                  Apresenta-te ao senhorio (opcional mas recomendado).
+                  Apresenta-te ao senhorio. É opcional, mas ajuda muito na decisão.
                 </p>
               </div>
 
@@ -235,18 +313,18 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
                 <Input
                   type="date"
                   value={moveInDate}
-                  onChange={(e) => setMoveInDate(e.target.value)}
+                  onChange={event => setMoveInDate(event.target.value)}
                   min={new Date().toISOString().split('T')[0]}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Mensagem (opcional)
+                  Mensagem
                 </label>
                 <textarea
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={event => setMessage(event.target.value)}
                   placeholder={exampleMessage}
                   className="w-full px-4 py-3 bg-input-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary resize-none"
                   rows={6}
@@ -290,10 +368,12 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
                   <div>
                     <h4 className="font-medium text-foreground mb-1">Alojamento</h4>
                     <p className="text-sm text-muted-foreground">{accommodation.title}</p>
-                    {propertyTitle && (
-                      <p className="text-sm text-muted-foreground">Casa: {propertyTitle}</p>
+                    {effectivePropertyTitle && (
+                      <p className="text-sm text-muted-foreground">Casa: {effectivePropertyTitle}</p>
                     )}
-                    <p className="text-sm text-muted-foreground">{accommodation.address}, {accommodation.city}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {accommodation.address}, {accommodation.city}
+                    </p>
                   </div>
 
                   <div className="border-t pt-4">
@@ -317,7 +397,7 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
                   {message && (
                     <div className="border-t pt-4">
                       <h4 className="font-medium text-foreground mb-1">Mensagem</h4>
-                      <p className="text-sm text-muted-foreground italic">"{message}"</p>
+                      <p className="text-sm text-muted-foreground italic">“{message}”</p>
                     </div>
                   )}
                 </div>
@@ -331,7 +411,7 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
                     <ul className="space-y-1 text-xs">
                       <li>• O senhorio será notificado da tua candidatura</li>
                       <li>• Receberás atualizações sobre o estado em tempo real</li>
-                      <li>• Quando aceite, confirmas a estadia em "As Minhas Candidaturas"</li>
+                      <li>• Se for aceite, confirmas a estadia em “As Minhas Candidaturas”</li>
                     </ul>
                   </div>
                 </div>
@@ -347,16 +427,17 @@ export function ApplicationModal({ accommodation, roomId, propertyId, propertyTi
           >
             {step === 1 ? 'Cancelar' : 'Voltar'}
           </Button>
+
           <Button
             onClick={step === 3 ? handleSubmit : () => setStep(step + 1)}
-            disabled={isSubmitting || (step === 3 && hasPendingApplication)}
+            disabled={step === 3 ? !canSubmit : false}
           >
             {isSubmitting ? (
               'A enviar...'
             ) : step === 3 ? (
               <>
                 <Send className="w-4 h-4 mr-2" />
-                {hasPendingApplication ? 'Candidatura já enviada' : 'Enviar Candidatura'}
+                {hasActiveApplication ? 'Candidatura já enviada' : 'Enviar Candidatura'}
               </>
             ) : (
               'Continuar'
