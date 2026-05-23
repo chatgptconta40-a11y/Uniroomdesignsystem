@@ -127,10 +127,17 @@ function CandidateCard({
             Candidatura a {new Date(candidate.appliedAt).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
           </p>
           {candidate.visitDate && (
-            <p className="text-xs text-blue-600 font-medium mt-0.5 flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              Visita: {new Date(candidate.visitDate).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })} às {new Date(candidate.visitDate).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
-            </p>
+            <div className="mt-1">
+              <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                {candidate.visitFormat === 'videochamada' ? <Video className="w-3 h-3" /> : <Calendar className="w-3 h-3" />}
+                {candidate.visitFormat === 'videochamada' ? 'Videochamada' : 'Visita presencial'} marcada para{' '}
+                {new Date(candidate.visitDate).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })} às{' '}
+                {new Date(candidate.visitDate).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+              {candidate.visitNote && (
+                <p className="text-xs text-muted-foreground mt-0.5 italic">"{candidate.visitNote}"</p>
+              )}
+            </div>
           )}
         </div>
         <div className="flex-shrink-0 text-right">
@@ -257,8 +264,9 @@ function AmenityTag({ active, icon: Icon, label }: { active: boolean; icon: Reac
 
 // ─── RoomCard ─────────────────────────────────────────────────────────────────
 
-function RoomCard({ room, onEdit, onPause, onReactivate }: {
+function RoomCard({ room, reservedByName, onEdit, onPause, onReactivate }: {
   room: Room;
+  reservedByName?: string;
   onEdit: () => void;
   onPause?: () => void;
   onReactivate?: () => void;
@@ -302,6 +310,13 @@ function RoomCard({ room, onEdit, onPause, onReactivate }: {
           <p className="font-medium text-foreground">{ROOM_TYPE_LABELS[room.roomType]}</p>
         </div>
       </div>
+
+      {reservedByName && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+          <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Reservado por <span className="font-semibold">{reservedByName}</span></span>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 pt-1 flex-wrap">
         <button
@@ -806,7 +821,7 @@ function ScheduleVisitModal({
   candidate: LandlordApplication;
   roomTitle: string;
   onClose: () => void;
-  onSchedule: (applicationId: string, visitDate: string, details: { format: string; note: string }) => void;
+  onSchedule: (applicationId: string, visitDate: string, details: { format: 'presencial' | 'videochamada'; note: string }) => void;
 }) {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -824,7 +839,7 @@ function ScheduleVisitModal({
     if (!form.date) { toast.error('Escolhe uma data'); return; }
     if (!form.time) { toast.error('Escolhe uma hora'); return; }
     const visitDateTime = `${form.date}T${form.time}`;
-    onSchedule(candidate.id, visitDateTime, { format: form.format, note: form.note });
+    onSchedule(candidate.id, visitDateTime, { format: form.format as 'presencial' | 'videochamada', note: form.note });
   };
 
   return (
@@ -1332,7 +1347,7 @@ export function LandlordPropertyDetail() {
         );
         return;
       }
-      updateRoomStatus(candidate.roomId, 'reserved');
+      updateRoom(candidate.roomId, { status: 'reserved', reservedBy: candidate.studentId });
     }
 
     updateCandidateStatus(candidateId, 'accepted');
@@ -1359,13 +1374,15 @@ export function LandlordPropertyDetail() {
     toast.success('Quarto atualizado com sucesso');
   };
 
-  const handleScheduleVisit = (applicationId: string, visitDate: string, details: { format: string; note: string }) => {
-    scheduleVisit(applicationId, visitDate);
+  const handleScheduleVisit = (applicationId: string, visitDate: string, details: { format: 'presencial' | 'videochamada'; note: string }) => {
+    scheduleVisit(applicationId, visitDate, details.format, details.note || undefined);
     setCandidates(prev =>
-      prev.map(c => c.id === applicationId ? { ...c, visitDate, status: c.status === 'pending' ? 'under_review' : c.status } : c),
+      prev.map(c => c.id === applicationId
+        ? { ...c, visitDate, visitFormat: details.format, visitNote: details.note || undefined, status: c.status === 'pending' ? 'under_review' : c.status }
+        : c),
     );
     setVisitCandidate(null);
-    toast.success(`Visita agendada com sucesso${details.format === 'videochamada' ? ' (videochamada)' : ''}`);
+    toast.success(details.format === 'videochamada' ? 'Videochamada agendada com sucesso' : 'Visita presencial agendada com sucesso');
   };
 
   const handleAddRoom = (room: Room) => {
@@ -1643,14 +1660,19 @@ export function LandlordPropertyDetail() {
                     </Card>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {rooms.map(room => (
+                      {rooms.map(room => {
+                        const acceptedCandidate = candidates.find(c => c.roomId === room.id && c.status === 'accepted');
+                        return (
                         <RoomCard
                           key={room.id}
                           room={room}
+                          reservedByName={room.reservedBy ? (acceptedCandidate?.studentName ?? room.reservedBy) : undefined}
                           onEdit={() => setEditingRoom(room)}
                           onPause={normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved' ? () => handleRoomPause(room.id) : undefined}
                           onReactivate={normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
                         />
+                        );
+                      })
                       ))}
                     </div>
                   )}

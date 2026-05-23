@@ -672,15 +672,25 @@ export function RoomDetail() {
         />
       )}
 
-      {showReportModal && (
-        <ReportModal
-          reportedType="accommodation"
-          reportedId={room.id}
-          reportedName={room.title}
-          userId={user?.id || ''}
-          onClose={() => setShowReportModal(false)}
-        />
-      )}
+      {showReportModal && (() => {
+        const landlord = mockUsers.find(u => u.id === room.landlordId);
+        return (
+          <ReportModal
+            reportedType="accommodation"
+            reportedId={room.id}
+            reportedName={room.title}
+            userId={user?.id || ''}
+            userName={user?.name}
+            onClose={() => setShowReportModal(false)}
+            propertyId={property.id}
+            propertyTitle={property.title}
+            roomId={room.id}
+            roomTitle={room.title}
+            landlordId={room.landlordId}
+            landlordName={landlord?.name}
+          />
+        );
+      })()}
 
       {showContactModal && (() => {
         const landlord = mockUsers.find(u => u.id === room.landlordId);

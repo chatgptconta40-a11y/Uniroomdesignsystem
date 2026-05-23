@@ -216,6 +216,14 @@ export function addInternalNote(reportId: string, note: string): AdminReport | n
   return all[idx];
 }
 
+export function addReport(report: Omit<AdminReport, 'id'>): AdminReport {
+  const all = initStorage();
+  const newReport: AdminReport = { ...report, id: `rep-${Date.now()}` };
+  all.push(newReport);
+  saveAll(all);
+  return newReport;
+}
+
 export function applyAdminAction(
   reportId: string,
   action: 'suspend_property' | 'suspend_landlord' | 'block_landlord',

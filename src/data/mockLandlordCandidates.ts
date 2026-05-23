@@ -20,6 +20,8 @@ export interface LandlordApplication {
   status: CandidateStatus;
   appliedAt: string; // ISO date string
   visitDate?: string; // ISO date string, optional
+  visitFormat?: 'presencial' | 'videochamada';
+  visitNote?: string;
 }
 
 const STORAGE_KEY = 'uniroom_landlord_applications';
@@ -179,11 +181,19 @@ export function addApplication(app: LandlordApplication): void {
 export function scheduleVisit(
   applicationId: string,
   visitDate: string,
+  visitFormat: 'presencial' | 'videochamada' = 'presencial',
+  visitNote?: string,
 ): LandlordApplication | null {
   const all = initStorage();
   const idx = all.findIndex(a => a.id === applicationId);
   if (idx < 0) return null;
-  all[idx] = { ...all[idx], visitDate, status: all[idx].status === 'pending' ? 'under_review' : all[idx].status };
+  all[idx] = {
+    ...all[idx],
+    visitDate,
+    visitFormat,
+    visitNote: visitNote || undefined,
+    status: all[idx].status === 'pending' ? 'under_review' : all[idx].status,
+  };
   saveAll(all);
   return all[idx];
 }

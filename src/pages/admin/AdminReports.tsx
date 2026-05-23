@@ -7,23 +7,20 @@ import {
   Eye,
   Ban,
   X,
-  AlertTriangle,
   Search,
-  Shield,
   ShieldAlert,
   ShieldOff,
+  ShieldCheck,
   UserX,
   Home,
   MessageSquare,
   BedDouble,
-  ChevronDown,
   FilePen,
   CheckSquare,
   XSquare,
+  PauseCircle,
 } from 'lucide-react';
 import { Card } from '../../components/Card';
-import { Badge } from '../../components/Badge';
-import { Button } from '../../components/Button';
 import {
   AdminReport,
   ReportType,
@@ -35,6 +32,8 @@ import {
   applyAdminAction,
 } from '../../data/mockAdminReports';
 import { addAuditEntry } from '../../data/mockAdminAudit';
+import { setUserSuspended, setUserBlockedFromPublishing } from '../../data/mockAdminUsersState';
+import { useProperties } from '../../context/PropertiesContext';
 
 const REPORT_TYPE_LABELS: Record<ReportType, string> = {
   fraude_possivel: 'Possível Fraude',
@@ -59,19 +58,29 @@ const STATUS_CONFIG: Record<ReportStatus, { label: string; cls: string; icon: Re
   rejeitada: { label: 'Rejeitada', cls: 'bg-gray-100 text-gray-600 border-gray-200', icon: XSquare },
 };
 
+const ADMIN_ID = 'admin-1';
+const ADMIN_NAME = 'Admin UniRoom';
+
+// ─── ReportDetailModal ────────────────────────────────────────────────────────
+
 function ReportDetailModal({
   report: initialReport,
   onClose,
   onUpdate,
+  onSuspendProperty,
+  onSuspendLandlord,
+  onBlockLandlord,
 }: {
   report: AdminReport;
   onClose: () => void;
   onUpdate: (report: AdminReport) => void;
+  onSuspendProperty: (propertyId: string) => void;
+  onSuspendLandlord: (landlordId: string, landlordName: string) => void;
+  onBlockLandlord: (landlordId: string, landlordName: string) => void;
 }) {
   const [report, setReport] = useState(initialReport);
   const [noteText, setNoteText] = useState(report.internalNote || '');
   const [showNoteInput, setShowNoteInput] = useState(false);
-  const ADMIN_ID = 'admin-1';
 
   const handleAction = (action: 'suspend_property' | 'suspend_landlord' | 'block_landlord') => {
     const updated = applyAdminAction(report.id, action);
@@ -79,13 +88,18 @@ function ReportDetailModal({
     setReport(updated);
     onUpdate(updated);
 
-    const auditMap = {
-      suspend_property: { action: 'property_suspended' as const, entity: 'property' as const, name: report.propertyTitle || report.landlordName },
-      suspend_landlord: { action: 'landlord_suspended' as const, entity: 'landlord' as const, name: report.landlordName },
-      block_landlord: { action: 'landlord_blocked' as const, entity: 'landlord' as const, name: report.landlordName },
-    };
-    const a = auditMap[action];
-    addAuditEntry({ action: a.action, entityType: a.entity, entityId: report.landlordId, entityName: a.name, adminId: ADMIN_ID, adminName: 'Admin UniRoom' });
+    if (action === 'suspend_property' && report.propertyId) {
+      onSuspendProperty(report.propertyId);
+      addAuditEntry({ action: 'property_suspended', entityType: 'property', entityId: report.propertyId, entityName: report.propertyTitle || report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspenso por denúncia ${report.id}` });
+    }
+    if (action === 'suspend_landlord') {
+      onSuspendLandlord(report.landlordId, report.landlordName);
+      addAuditEntry({ action: 'landlord_suspended', entityType: 'landlord', entityId: report.landlordId, entityName: report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspenso por denúncia ${report.id}` });
+    }
+    if (action === 'block_landlord') {
+      onBlockLandlord(report.landlordId, report.landlordName);
+      addAuditEntry({ action: 'landlord_blocked', entityType: 'landlord', entityId: report.landlordId, entityName: report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Bloqueado por denúncia ${report.id}` });
+    }
   };
 
   const handleResolve = (newStatus: ReportStatus) => {
@@ -99,7 +113,7 @@ function ReportDetailModal({
       entityId: report.id,
       entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.type]} — ${report.landlordName}`,
       adminId: ADMIN_ID,
-      adminName: 'Admin UniRoom',
+      adminName: ADMIN_NAME,
       note: noteText || undefined,
     });
   };
@@ -110,15 +124,7 @@ function ReportDetailModal({
     setReport(updated);
     onUpdate(updated);
     setShowNoteInput(false);
-    addAuditEntry({
-      action: 'note_added',
-      entityType: 'report',
-      entityId: report.id,
-      entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.type]} — ${report.landlordName}`,
-      adminId: ADMIN_ID,
-      adminName: 'Admin UniRoom',
-      note: noteText,
-    });
+    addAuditEntry({ action: 'note_added', entityType: 'report', entityId: report.id, entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.type]} — ${report.landlordName}`, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: noteText });
   };
 
   const statusCfg = STATUS_CONFIG[report.status];
@@ -128,7 +134,7 @@ function ReportDetailModal({
   return (
     <>
       <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="bg-background rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between p-5 border-b border-border sticky top-0 bg-background rounded-t-2xl z-10">
             <div className="flex items-center gap-3">
@@ -166,17 +172,17 @@ function ReportDetailModal({
                 <p className="text-xs font-semibold text-red-800">Sanções aplicadas</p>
                 {report.propertySuspended && (
                   <div className="flex items-center gap-1.5 text-xs text-red-700">
-                    <ShieldOff className="w-3.5 h-3.5" /> Anúncio suspenso
+                    <PauseCircle className="w-3.5 h-3.5" /> Anúncio pausado na plataforma
                   </div>
                 )}
                 {report.landlordSuspended && (
                   <div className="flex items-center gap-1.5 text-xs text-red-700">
-                    <UserX className="w-3.5 h-3.5" /> Senhorio suspenso
+                    <UserX className="w-3.5 h-3.5" /> Conta de senhorio suspensa
                   </div>
                 )}
                 {report.landlordBlocked && (
                   <div className="flex items-center gap-1.5 text-xs text-red-700">
-                    <Ban className="w-3.5 h-3.5" /> Senhorio bloqueado de criar novos anúncios
+                    <Ban className="w-3.5 h-3.5" /> Bloqueado de criar novos anúncios
                   </div>
                 )}
               </div>
@@ -193,6 +199,16 @@ function ReportDetailModal({
                 <p className="text-xs font-semibold text-muted-foreground mb-2">SENHORIO DENUNCIADO</p>
                 <p className="text-sm font-semibold">{report.landlordName}</p>
                 <p className="text-xs text-muted-foreground">{report.landlordId}</p>
+                {report.landlordSuspended && (
+                  <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-semibold">
+                    <UserX className="w-2.5 h-2.5" /> Suspenso
+                  </span>
+                )}
+                {report.landlordBlocked && !report.landlordSuspended && (
+                  <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-semibold">
+                    <Ban className="w-2.5 h-2.5" /> Bloqueado
+                  </span>
+                )}
               </div>
             </div>
 
@@ -204,6 +220,11 @@ function ReportDetailModal({
                   <div className="flex items-center gap-2 text-sm mb-1">
                     <Home className="w-4 h-4 text-muted-foreground" />
                     <span className="font-medium">{report.propertyTitle}</span>
+                    {report.propertySuspended && (
+                      <span className="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-semibold">
+                        <PauseCircle className="w-2.5 h-2.5" /> Pausado
+                      </span>
+                    )}
                   </div>
                 )}
                 {report.roomTitle && (
@@ -217,7 +238,7 @@ function ReportDetailModal({
 
             {/* Description */}
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-2">DESCRIÇÃO DA DENÚNCIA</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">DESCRIÇÃO</p>
               <p className="text-sm text-foreground leading-relaxed bg-muted/30 rounded-xl p-3">
                 "{report.description}"
               </p>
@@ -270,7 +291,7 @@ function ReportDetailModal({
                       onClick={() => handleAction('suspend_property')}
                       className="flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl text-xs font-medium hover:bg-orange-100 transition-colors"
                     >
-                      <ShieldOff className="w-4 h-4" />
+                      <PauseCircle className="w-4 h-4" />
                       Suspender anúncio
                     </button>
                   )}
@@ -316,7 +337,8 @@ function ReportDetailModal({
             {!isActionable && (
               <div className="border-t border-border pt-4 text-center">
                 <p className="text-xs text-muted-foreground">
-                  Esta denúncia foi {report.status === 'resolvida' ? 'resolvida' : 'rejeitada'} em {report.resolvedAt}.
+                  Esta denúncia foi {report.status === 'resolvida' ? 'resolvida' : 'rejeitada'}
+                  {report.resolvedAt ? ` em ${report.resolvedAt}` : ''}.
                 </p>
               </div>
             )}
@@ -327,7 +349,10 @@ function ReportDetailModal({
   );
 }
 
+// ─── AdminReports ─────────────────────────────────────────────────────────────
+
 export function AdminReports() {
+  const { properties, rooms, updateProperty, updateRoomStatus } = useProperties();
   const [reports, setReports] = useState<AdminReport[]>(() => getAllReports());
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | ReportStatus>('all');
@@ -340,12 +365,12 @@ export function AdminReports() {
     const matchesSearch = !q ||
       r.reportedByStudentName.toLowerCase().includes(q) ||
       r.landlordName.toLowerCase().includes(q) ||
-      r.propertyTitle?.toLowerCase().includes(q) ||
+      (r.propertyTitle?.toLowerCase().includes(q) ?? false) ||
       r.description.toLowerCase().includes(q);
-    const matchesStatus = filterStatus === 'all' || r.status === filterStatus;
-    const matchesPriority = filterPriority === 'all' || r.priority === filterPriority;
-    const matchesType = filterType === 'all' || r.type === filterType;
-    return matchesSearch && matchesStatus && matchesPriority && matchesType;
+    return matchesSearch &&
+      (filterStatus === 'all' || r.status === filterStatus) &&
+      (filterPriority === 'all' || r.priority === filterPriority) &&
+      (filterType === 'all' || r.type === filterType);
   });
 
   const handleUpdate = (updated: AdminReport) => {
@@ -353,8 +378,32 @@ export function AdminReports() {
     if (selectedReport?.id === updated.id) setSelectedReport(updated);
   };
 
+  const handleSuspendProperty = (propertyId: string) => {
+    updateProperty(propertyId, { status: 'paused' });
+    // Also pause all rooms of the property
+    const propertyRooms = rooms.filter(r => r.propertyId === propertyId);
+    propertyRooms.forEach(room => {
+      if (room.status === 'available') updateRoomStatus(room.id, 'paused');
+    });
+  };
+
+  const handleSuspendLandlord = (landlordId: string, landlordName: string) => {
+    setUserSuspended(landlordId, true, `Suspenso por moderação admin`);
+    // Pause all active properties of this landlord
+    const landlordProperties = properties.filter(p => p.landlordId === landlordId && p.status === 'active');
+    landlordProperties.forEach(p => {
+      updateProperty(p.id, { status: 'paused' });
+      const propertyRooms = rooms.filter(r => r.propertyId === p.id && r.status === 'available');
+      propertyRooms.forEach(room => updateRoomStatus(room.id, 'paused'));
+    });
+  };
+
+  const handleBlockLandlord = (landlordId: string, landlordName: string) => {
+    setUserBlockedFromPublishing(landlordId, true, `Bloqueado de publicar novos anúncios`);
+    setUserSuspended(landlordId, true, `Suspenso por moderação admin`);
+  };
+
   const stats = {
-    total: reports.length,
     open: reports.filter(r => r.status === 'aberta').length,
     inReview: reports.filter(r => r.status === 'em_analise').length,
     resolved: reports.filter(r => r.status === 'resolvida').length,
@@ -395,7 +444,6 @@ export function AdminReports() {
               className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
-
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value as typeof filterStatus)}
@@ -407,7 +455,6 @@ export function AdminReports() {
             <option value="resolvida">Resolvida</option>
             <option value="rejeitada">Rejeitada</option>
           </select>
-
           <select
             value={filterPriority}
             onChange={e => setFilterPriority(e.target.value as typeof filterPriority)}
@@ -419,7 +466,6 @@ export function AdminReports() {
             <option value="media">Média</option>
             <option value="baixa">Baixa</option>
           </select>
-
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value as typeof filterType)}
@@ -486,8 +532,12 @@ export function AdminReports() {
                       </span>
                       {report.landlordSuspended && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border bg-red-50 text-red-700 border-red-200">
-                          <UserX className="w-2.5 h-2.5" />
-                          Susp.
+                          <UserX className="w-2.5 h-2.5" /> Senhorio suspenso
+                        </span>
+                      )}
+                      {report.propertySuspended && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border bg-orange-50 text-orange-700 border-orange-200">
+                          <PauseCircle className="w-2.5 h-2.5" /> Anúncio pausado
                         </span>
                       )}
                     </div>
@@ -509,15 +559,13 @@ export function AdminReports() {
                     </div>
                   </div>
 
-                  <div className="flex-shrink-0">
-                    <button
-                      onClick={e => { e.stopPropagation(); setSelectedReport(report); }}
-                      className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded-lg text-xs hover:bg-muted transition-colors"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      Abrir
-                    </button>
-                  </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); setSelectedReport(report); }}
+                    className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 border border-border rounded-lg text-xs hover:bg-muted transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    Abrir
+                  </button>
                 </div>
 
                 {report.internalNote && (
@@ -537,6 +585,9 @@ export function AdminReports() {
           report={selectedReport}
           onClose={() => setSelectedReport(null)}
           onUpdate={handleUpdate}
+          onSuspendProperty={handleSuspendProperty}
+          onSuspendLandlord={handleSuspendLandlord}
+          onBlockLandlord={handleBlockLandlord}
         />
       )}
     </div>

@@ -4,6 +4,8 @@ import { X, AlertTriangle, Flag } from 'lucide-react';
 import { Button } from './Button';
 import { createReport } from '../data/mockTrust';
 import { Report, ReportReason } from '../types/trust';
+import { addReport } from '../data/mockAdminReports';
+import { ReportType, ReportPriority } from '../data/mockAdminReports';
 import { toast } from 'sonner';
 
 interface ReportModalProps {
@@ -11,7 +13,28 @@ interface ReportModalProps {
   reportedId: string;
   reportedName: string;
   userId: string;
+  userName?: string;
   onClose: () => void;
+  // Optional context for property/room reports
+  propertyId?: string;
+  propertyTitle?: string;
+  roomId?: string;
+  roomTitle?: string;
+  landlordId?: string;
+  landlordName?: string;
+}
+
+// Map generic reason to admin report type and priority
+function mapToAdminReport(reason: ReportReason): { type: ReportType; priority: ReportPriority } {
+  switch (reason) {
+    case 'scam': return { type: 'fraude_possivel', priority: 'critica' };
+    case 'fake_listing': return { type: 'localizacao_falsa', priority: 'media' };
+    case 'inappropriate_content': return { type: 'fotos_enganosas', priority: 'alta' };
+    case 'harassment': return { type: 'comportamento_abusivo', priority: 'alta' };
+    case 'discrimination': return { type: 'comportamento_abusivo', priority: 'alta' };
+    case 'spam': return { type: 'pagamento_externo', priority: 'media' };
+    default: return { type: 'fraude_possivel', priority: 'media' };
+  }
 }
 
 export function ReportModal({
@@ -19,7 +42,14 @@ export function ReportModal({
   reportedId,
   reportedName,
   userId,
+  userName,
   onClose,
+  propertyId,
+  propertyTitle,
+  roomId,
+  roomTitle,
+  landlordId,
+  landlordName,
 }: ReportModalProps) {
   const [reason, setReason] = useState<ReportReason | ''>('');
   const [description, setDescription] = useState('');
@@ -74,16 +104,36 @@ export function ReportModal({
       toast.error('Por favor, seleciona um motivo');
       return;
     }
-
     if (!description.trim()) {
       toast.error('Por favor, descreve o problema');
       return;
     }
 
+    // Persist to legacy trust mock
     createReport(userId, reportedType, reportedId, reason, description.trim());
 
+    // Also create entry in admin moderation system
+    if (landlordId) {
+      const { type, priority } = mapToAdminReport(reason as ReportReason);
+      addReport({
+        type,
+        propertyId: propertyId,
+        propertyTitle: propertyTitle,
+        roomId: roomId,
+        roomTitle: roomTitle,
+        landlordId,
+        landlordName: landlordName ?? 'Senhorio',
+        reportedByStudentId: userId,
+        reportedByStudentName: userName ?? 'Estudante',
+        description: description.trim(),
+        date: new Date().toISOString().split('T')[0],
+        priority,
+        status: 'aberta',
+      });
+    }
+
     toast.success('Denúncia enviada com sucesso!', {
-      description: 'A nossa equipa irá analisar e tomar as medidas necessárias.',
+      description: 'A equipa UniRoom irá analisar em 24-48h. A tua identidade é mantida em confidencialidade.',
     });
 
     onClose();

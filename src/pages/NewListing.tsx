@@ -37,6 +37,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
+import { isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -437,6 +438,7 @@ export function NewListing() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { addProperty, addRoom } = useProperties();
+  const isBlocked = user ? isUserBlockedFromPublishing(user.id) : false;
 
   const [step, setStep] = useState(1);
   const [property, setProperty] = useState<PropertyDraft>(defaultProperty);
@@ -506,6 +508,12 @@ export function NewListing() {
   // mode='all'      → property=active, ALL rooms=available
   const buildAndSave = (mode: 'draft' | 'selected' | 'all') => {
     if (!user) return;
+
+    // Block landlords that have been restricted by admin
+    if (mode !== 'draft' && isUserBlockedFromPublishing(user.id)) {
+      toast.error('A tua conta está temporariamente bloqueada para publicar novos anúncios. Contacta o suporte UniRoom.');
+      return;
+    }
 
     const propertyId = `prop-${Date.now()}`;
     const now = new Date();
@@ -1197,6 +1205,19 @@ export function NewListing() {
                     {rules.noPets && <span className="text-xs px-2 py-1 bg-card border border-border rounded-full">Sem animais</span>}
                     {rules.noSmoking && <span className="text-xs px-2 py-1 bg-card border border-border rounded-full">Não fumadores</span>}
                     {rules.quietHours && <span className="text-xs px-2 py-1 bg-card border border-border rounded-full">{rules.quietHours}</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* Block banner for restricted landlords */}
+              {isBlocked && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+                  <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600">⚠</div>
+                  <div>
+                    <p className="text-sm font-semibold text-red-800">Conta bloqueada para publicação</p>
+                    <p className="text-xs text-red-700 mt-0.5">
+                      A tua conta está temporariamente bloqueada para publicar novos anúncios. Podes guardar rascunhos mas não publicar. Contacta o suporte UniRoom para resolver.
+                    </p>
                   </div>
                 </div>
               )}
