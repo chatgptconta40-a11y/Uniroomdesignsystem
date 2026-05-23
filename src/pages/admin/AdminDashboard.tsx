@@ -374,10 +374,10 @@ export function AdminDashboard() {
                     <p className="text-xs font-medium text-gray-800">{auditActionLabels[entry.action]}</p>
                     <p className="text-xs text-gray-500 truncate">{entry.entityName}</p>
                     {entry.note && (
-                      <p className="text-[10px] text-gray-400 truncate mt-0.5">"{entry.note}"</p>
+                      <p className="text-[10px] text-gray-500 truncate mt-0.5">"{entry.note}"</p>
                     )}
                   </div>
-                  <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                  <span className="text-[10px] text-gray-500 whitespace-nowrap">
                     {new Date(entry.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
                   </span>
                 </div>

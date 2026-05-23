@@ -50,6 +50,7 @@ import { useProperties } from '../context/PropertiesContext';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from 'sonner';
 import { isUserSuspended, isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
 import { Room, RoomStatus, Property } from '../types/property';
@@ -1259,9 +1260,10 @@ export function LandlordPropertyDetail() {
   const [showAddRoomModal, setShowAddRoomModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [visitCandidate, setVisitCandidate] = useState<Candidate | null>(null);
+  const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'rooms' | 'candidates'>('rooms');
   const [candidates, setCandidates] = useState<Candidate[]>(() =>
-    id ? getApplicationsByProperty(id) : [],
+  id ? getApplicationsByProperty(id) : [],
   );
   const [candidateFilter, setCandidateFilter] = useState<'all' | CandidateStatus>('all');
   const [roomFilter, setRoomFilter] = useState<'all' | string>('all');
@@ -1368,10 +1370,16 @@ export function LandlordPropertyDetail() {
   };
 
   const handleRejectCandidate = (candidateId: string) => {
-    const candidate = candidates.find(c => c.id === candidateId);
-    updateCandidateStatus(candidateId, 'rejected');
-    setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, status: 'rejected' } : c));
+    setConfirmRejectId(candidateId);
+  };
+
+  const handleRejectConfirm = () => {
+    if (!confirmRejectId) return;
+    const candidate = candidates.find(c => c.id === confirmRejectId);
+    updateCandidateStatus(confirmRejectId, 'rejected');
+    setCandidates(prev => prev.map(c => c.id === confirmRejectId ? { ...c, status: 'rejected' } : c));
     toast.info(`Candidatura de ${candidate?.studentName ?? 'candidato'} recusada.`);
+    setConfirmRejectId(null);
   };
 
   const handleSaveProperty = (updates: Partial<Property>) => {
@@ -1956,6 +1964,16 @@ export function LandlordPropertyDetail() {
           onSave={handleSaveRoomEdit}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!confirmRejectId}
+        onClose={() => setConfirmRejectId(null)}
+        onConfirm={handleRejectConfirm}
+        title="Rejeitar candidatura?"
+        description="Esta candidatura será marcada como rejeitada e o estudante será notificado."
+        cancelLabel="Voltar"
+        confirmLabel="Rejeitar candidatura"
+      />
 
       {/* Schedule visit modal */}
       {visitCandidate && (

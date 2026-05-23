@@ -11,6 +11,7 @@ import { ApplicationStatus } from '../types/accommodation';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { TrustPill, trustLevelToPill } from '../components/TrustPill';
 import { toast } from 'sonner';
 
@@ -31,6 +32,7 @@ export function LandlordApplications() {
   const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [selectedApp, setSelectedApp] = useState<DetailedApplication | null>(null);
   const [confirmAcceptApp, setConfirmAcceptApp] = useState<DetailedApplication | null>(null);
+  const [confirmRejectApp, setConfirmRejectApp] = useState<DetailedApplication | null>(null);
   const [version, setVersion] = useState(0);
 
   const allApplications = useMemo(
@@ -119,11 +121,17 @@ export function LandlordApplications() {
   };
 
   const handleReject = (app: DetailedApplication) => {
-    if (updateApplicationStatus(app.id, 'rejected', user?.id)) {
+    setConfirmRejectApp(app);
+  };
+
+  const handleRejectConfirm = () => {
+    if (!confirmRejectApp) return;
+    if (updateApplicationStatus(confirmRejectApp.id, 'rejected', user?.id)) {
       toast.success('Candidatura rejeitada');
       setVersion(v => v + 1);
       setSelectedApp(null);
     }
+    setConfirmRejectApp(null);
   };
 
   const getCompatColor = (score: number) => {
@@ -469,6 +477,16 @@ export function LandlordApplications() {
           </div>
         </Modal>
       )}
+
+      <ConfirmModal
+        isOpen={!!confirmRejectApp}
+        onClose={() => setConfirmRejectApp(null)}
+        onConfirm={handleRejectConfirm}
+        title="Rejeitar candidatura?"
+        description="Esta candidatura será marcada como rejeitada e o estudante será notificado."
+        cancelLabel="Voltar"
+        confirmLabel="Rejeitar candidatura"
+      />
     </div>
   );
 }

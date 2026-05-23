@@ -27,6 +27,7 @@ import { Application, ApplicationStatus } from '../types/accommodation';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from 'sonner';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -178,6 +179,7 @@ export function Applications() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'all' | ApplicationStatus>('all');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [confirmWithdrawId, setConfirmWithdrawId] = useState<string | null>(null);
 
   const applications = useMemo(
     () => getApplicationsForUser(user?.id || '').sort((a, b) =>
@@ -202,9 +204,14 @@ export function Applications() {
   };
 
   const handleWithdraw = (applicationId: string) => {
-    if (!window.confirm('Tens a certeza que queres cancelar esta candidatura?')) return;
-    cancelUnifiedApplication(applicationId);
-    toast.success('Candidatura cancelada');
+    setConfirmWithdrawId(applicationId);
+  };
+
+  const handleWithdrawConfirm = () => {
+    if (!confirmWithdrawId) return;
+    cancelUnifiedApplication(confirmWithdrawId);
+    toast.success('Candidatura cancelada.');
+    setConfirmWithdrawId(null);
     setRefreshKey(k => k + 1);
   };
 
@@ -534,6 +541,16 @@ export function Applications() {
           </>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!confirmWithdrawId}
+        onClose={() => setConfirmWithdrawId(null)}
+        onConfirm={handleWithdrawConfirm}
+        title="Cancelar candidatura?"
+        description="Tens a certeza que queres cancelar esta candidatura? O senhorio deixará de a ver como ativa."
+        cancelLabel="Manter candidatura"
+        confirmLabel="Cancelar candidatura"
+      />
     </div>
   );
 }

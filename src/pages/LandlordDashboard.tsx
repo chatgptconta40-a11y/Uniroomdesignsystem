@@ -650,11 +650,11 @@ export function LandlordDashboard() {
                     </p>
                     <p className="text-xs text-muted-foreground truncate">{activity.listingTitle}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <User className="w-3 h-3 text-gray-400" />
+                      <User className="w-3 h-3 text-muted-foreground" />
                       <span className="text-xs text-muted-foreground">{activity.userName}</span>
                     </div>
                   </div>
-                  <span className="text-xs text-gray-400 flex-shrink-0">
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
                     {formatTime(activity.timestamp)}
                   </span>
                 </div>

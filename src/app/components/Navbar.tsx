@@ -1,21 +1,32 @@
 import { Home, LogOut, LayoutDashboard, ChevronDown, User, Bell, Heart, FileText, MessageCircle, Shield, BarChart3, Wrench } from 'lucide-react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useLocation } from 'react-router';
 import { Button } from '../../components/Button';
 import { TrustBadge } from '../../components/TrustBadge';
 import { useAuth } from '../../context/AuthContext';
 import { useState } from 'react';
-import { getNotificationsForUser, getUnreadCount, markNotificationAsRead, markAllNotificationsAsRead } from '../../data/mockApplications';
+import { getNotificationsForUser, getUnreadCount, markNotificationAsRead, markAllNotificationsAsRead, getActiveHomeForStudent } from '../../data/mockApplications';
 import { getTotalUnreadCount } from '../../data/mockMessages';
 
 export function Navbar() {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showMenu, setShowMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
   const notifications = getNotificationsForUser(user?.id || '');
   const unreadCount = getUnreadCount(user?.id || '');
   const unreadMessagesCount = getTotalUnreadCount(user?.id || '');
+  const hasActiveHome = user?.type === 'student' ? !!getActiveHomeForStudent(user.id) : false;
+
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
+
+  const navLinkClass = (path: string) =>
+    `flex items-center gap-3 px-4 py-2 transition-colors rounded-lg mx-1 ${
+      isActive(path)
+        ? 'bg-blue-50 text-blue-600 font-semibold'
+        : 'hover:bg-muted text-foreground'
+    }`;
 
   const logoHref = !isAuthenticated
     ? '/'
@@ -186,27 +197,29 @@ export function Navbar() {
                           <>
                             <Link
                               to="/dashboard"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/dashboard')}
                               onClick={() => setShowMenu(false)}
                             >
                               <LayoutDashboard className="w-4 h-4" />
                               <span className="text-sm">Dashboard</span>
                             </Link>
-                            <Link
-                              to="/my-home"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <Home className="w-4 h-4" />
-                              <span className="text-sm">A Minha Casa</span>
-                            </Link>
+                            {hasActiveHome && (
+                              <Link
+                                to="/my-home"
+                                className={navLinkClass('/my-home')}
+                                onClick={() => setShowMenu(false)}
+                              >
+                                <Home className="w-4 h-4" />
+                                <span className="text-sm">A Minha Casa</span>
+                              </Link>
+                            )}
                             <div className="border-t border-border my-1" />
                             <div className="px-4 py-2">
                               <TrustBadge userId={user.id} size="sm" showLabel={false} />
                             </div>
                             <Link
                               to="/verification"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/verification')}
                               onClick={() => setShowMenu(false)}
                             >
                               <Shield className="w-4 h-4" />
@@ -214,7 +227,7 @@ export function Navbar() {
                             </Link>
                             <Link
                               to="/profile"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/profile')}
                               onClick={() => setShowMenu(false)}
                             >
                               <User className="w-4 h-4" />
@@ -223,7 +236,7 @@ export function Navbar() {
                             <div className="border-t border-border my-1" />
                             <Link
                               to="/applications"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/applications')}
                               onClick={() => setShowMenu(false)}
                             >
                               <FileText className="w-4 h-4" />
@@ -231,7 +244,7 @@ export function Navbar() {
                             </Link>
                             <Link
                               to="/favorites"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/favorites')}
                               onClick={() => setShowMenu(false)}
                             >
                               <Heart className="w-4 h-4" />
@@ -239,7 +252,7 @@ export function Navbar() {
                             </Link>
                             <Link
                               to="/messages"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/messages')}
                               onClick={() => setShowMenu(false)}
                             >
                               <MessageCircle className="w-4 h-4" />
@@ -257,7 +270,7 @@ export function Navbar() {
                           <>
                             <Link
                               to="/landlord/dashboard"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/landlord/dashboard')}
                               onClick={() => setShowMenu(false)}
                             >
                               <LayoutDashboard className="w-4 h-4" />
@@ -265,7 +278,7 @@ export function Navbar() {
                             </Link>
                             <Link
                               to="/landlord/listings"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/landlord/listings')}
                               onClick={() => setShowMenu(false)}
                             >
                               <Home className="w-4 h-4" />
@@ -273,7 +286,7 @@ export function Navbar() {
                             </Link>
                             <Link
                               to="/landlord/applications"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/landlord/applications')}
                               onClick={() => setShowMenu(false)}
                             >
                               <FileText className="w-4 h-4" />
@@ -281,7 +294,7 @@ export function Navbar() {
                             </Link>
                             <Link
                               to="/landlord/maintenance"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/landlord/maintenance')}
                               onClick={() => setShowMenu(false)}
                             >
                               <Wrench className="w-4 h-4" />
@@ -289,7 +302,7 @@ export function Navbar() {
                             </Link>
                             <Link
                               to="/landlord/analytics"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/landlord/analytics')}
                               onClick={() => setShowMenu(false)}
                             >
                               <BarChart3 className="w-4 h-4" />
@@ -298,7 +311,7 @@ export function Navbar() {
                             <div className="border-t border-border my-1" />
                             <Link
                               to="/messages"
-                              className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
+                              className={navLinkClass('/messages')}
                               onClick={() => setShowMenu(false)}
                             >
                               <MessageCircle className="w-4 h-4" />
@@ -313,14 +326,16 @@ export function Navbar() {
                         )}
 
                         {user?.type === 'admin' && (
-                          <Link
-                            to="/admin"
-                            className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-foreground"
-                            onClick={() => setShowMenu(false)}
-                          >
-                            <Shield className="w-4 h-4" />
-                            <span className="text-sm">Admin Dashboard</span>
-                          </Link>
+                          <>
+                            <Link
+                              to="/admin"
+                              className={navLinkClass('/admin')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <Shield className="w-4 h-4" />
+                              <span className="text-sm">Backoffice Admin</span>
+                            </Link>
+                          </>
                         )}
 
                         <div className="border-t border-border my-1" />
