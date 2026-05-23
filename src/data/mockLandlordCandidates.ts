@@ -13,7 +13,7 @@ export interface LandlordApplication {
   studentId: string;
   studentName: string;
   initials: string;
-  avatarColor: string; // tailwind gradient classes
+  avatarColor: string;
   university: string;
   course: string;
   year: number;
@@ -21,20 +21,18 @@ export interface LandlordApplication {
   compatibilityScore: number;
   message: string;
   status: CandidateStatus;
-  appliedAt: string; // ISO date string
+  appliedAt: string;
   visitDate?: string;
   visitFormat?: 'presencial' | 'videochamada';
   visitNote?: string;
-  // Cross-reference to student-side Application
   linkedStudentAppId?: string;
 }
 
 const STORAGE_KEY = 'uniroom_landlord_applications';
 const DATA_VERSION_KEY = 'uniroom_landlord_applications_version';
-const CURRENT_VERSION = '2026-05-v2';
+const CURRENT_VERSION = '2026-05-v3';
 
 const INITIAL_APPLICATIONS: LandlordApplication[] = [
-  // ── Demo entries linked to the logged-in student (id: '1', João Silva) ────
   {
     id: 'lapp-demo-a',
     propertyId: 'prop-estgv',
@@ -92,7 +90,6 @@ const INITIAL_APPLICATIONS: LandlordApplication[] = [
     appliedAt: '2026-04-08',
     linkedStudentAppId: 'app3',
   },
-  // ── Other students (no linkedStudentAppId — not linked to the demo account) ─
   {
     id: 'lapp-1',
     propertyId: 'prop-estgv',
@@ -180,23 +177,26 @@ const INITIAL_APPLICATIONS: LandlordApplication[] = [
   },
 ];
 
-// ─── Storage helpers ──────────────────────────────────────────────────────────
-
 function initStorage(): LandlordApplication[] {
   const version = localStorage.getItem(DATA_VERSION_KEY);
+
   if (version !== CURRENT_VERSION) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_APPLICATIONS));
     localStorage.setItem(DATA_VERSION_KEY, CURRENT_VERSION);
     return [...INITIAL_APPLICATIONS];
   }
+
   const stored = localStorage.getItem(STORAGE_KEY);
+
   if (!stored) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_APPLICATIONS));
     return [...INITIAL_APPLICATIONS];
   }
+
   try {
     return JSON.parse(stored) as LandlordApplication[];
   } catch {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_APPLICATIONS));
     return [...INITIAL_APPLICATIONS];
   }
 }
@@ -205,42 +205,90 @@ function saveAll(apps: LandlordApplication[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(apps));
 }
 
-// ─── Queries ──────────────────────────────────────────────────────────────────
+function isActiveCandidate(status: CandidateStatus): boolean {
+  return status === 'pending' || status === 'under_review';
+}
 
 export function getAllApplications(): LandlordApplication[] {
   return initStorage();
 }
 
 export function getApplicationsByProperty(propertyId: string): LandlordApplication[] {
-  return initStorage().filter(a => a.propertyId === propertyId);
+  return initStorage().filter(app => app.propertyId === propertyId);
 }
 
 export function getApplicationsByRoom(propertyId: string, roomId: string): LandlordApplication[] {
-  return initStorage().filter(a => a.propertyId === propertyId && a.roomId === roomId);
+  return initStorage().filter(app => app.propertyId === propertyId && app.roomId === roomId);
 }
 
 export function getPendingCountForLandlord(landlordId: string, propertyIds: string[]): number {
   return initStorage().filter(
-    a => propertyIds.includes(a.propertyId) && (a.status === 'pending' || a.status === 'under_review'),
+    app => propertyIds.includes(app.propertyId) && isActiveCandidate(app.status),
   ).length;
 }
-
-// ─── Mutations (with bidirectional sync) ──────────────────────────────────────
 
 export function updateCandidateStatus(
   applicationId: string,
   status: CandidateStatus,
 ): LandlordApplication | null {
   const all = initStorage();
-  const idx = all.findIndex(a => a.id === applicationId);
+  const idx = all.findIndex(app => app.id === applicationId);
+
   if (idx < 0) return null;
-  all[idx] = { ...all[idx], status };
+
+  const target = all[idx];
+
+  if (status === 'accepted') {
+    const updated = all.map(app => {
+      if (app.id === applicationId) {
+        return { ...app, status: 'accepted' as CandidateStatus };
+      }
+
+      const sameRoom =
+        app.propertyId === target.propertyId &&
+        app.roomId === target.roomId;
+
+      if (sameRoom && isActiveCandidate(app.status)) {
+        return { ...app, status: 'rejected' as CandidateStatus };
+      }
+
+      return app;
+    });
+
+    saveAll(updated);
+
+    if (target.linkedStudentAppId) {
+      updateApplicationStatus(
+        target.linkedStudentAppId,
+        'accepted',
+        'O senhorio aceitou a tua candidatura. Confirma a estadia para garantir o quarto.',
+      );
+    }
+
+    updated
+      .filter(app =>
+        app.id !== applicationId &&
+        app.propertyId === target.propertyId &&
+        app.roomId === target.roomId &&
+        app.status === 'rejected' &&
+        !!app.linkedStudentAppId,
+      )
+      .forEach(app => {
+        updateApplicationStatus(
+          app.linkedStudentAppId as string,
+          'rejected',
+          'O quarto foi reservado por outro candidato.',
+        );
+      });
+
+    return updated.find(app => app.id === applicationId) ?? null;
+  }
+
+  all[idx] = { ...target, status };
   saveAll(all);
 
-  // Sync to student-side
-  const linked = all[idx].linkedStudentAppId;
-  if (linked) {
-    updateApplicationStatus(linked, status);
+  if (target.linkedStudentAppId) {
+    updateApplicationStatus(target.linkedStudentAppId, status);
   }
 
   return all[idx];
@@ -248,6 +296,16 @@ export function updateCandidateStatus(
 
 export function addApplication(app: LandlordApplication): void {
   const all = initStorage();
+
+  const alreadyExists = all.some(existing =>
+    existing.studentId === app.studentId &&
+    existing.roomId === app.roomId &&
+    existing.propertyId === app.propertyId &&
+    existing.status !== 'rejected',
+  );
+
+  if (alreadyExists) return;
+
   all.push(app);
   saveAll(all);
 }
@@ -259,21 +317,26 @@ export function scheduleVisit(
   visitNote?: string,
 ): LandlordApplication | null {
   const all = initStorage();
-  const idx = all.findIndex(a => a.id === applicationId);
+  const idx = all.findIndex(app => app.id === applicationId);
+
   if (idx < 0) return null;
+
+  const nextStatus = all[idx].status === 'pending'
+    ? 'under_review'
+    : all[idx].status;
+
   all[idx] = {
     ...all[idx],
     visitDate,
     visitFormat,
     visitNote: visitNote || undefined,
-    status: all[idx].status === 'pending' ? 'under_review' : all[idx].status,
+    status: nextStatus,
   };
+
   saveAll(all);
 
-  // Sync visit data to student-side
-  const linked = all[idx].linkedStudentAppId;
-  if (linked) {
-    syncVisitData(linked, visitDate, visitFormat, visitNote);
+  if (all[idx].linkedStudentAppId) {
+    syncVisitData(all[idx].linkedStudentAppId, visitDate, visitFormat, visitNote);
   }
 
   return all[idx];
