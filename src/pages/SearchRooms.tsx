@@ -4,7 +4,7 @@ import {
   SlidersHorizontal,
   Grid,
   List,
-  Map,
+  Map as MapIcon,
   X,
   MapPin,
   Navigation,
@@ -769,20 +769,18 @@ export function SearchRooms() {
               </div>
 
               <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
-                {([
-                  { mode: 'grid' as const, icon: <Grid className="w-4 h-4" />, title: 'Grelha' },
-                  { mode: 'list' as const, icon: <List className="w-4 h-4" />, title: 'Lista' },
-                  { mode: 'map' as const, icon: <Map className="w-4 h-4" />, title: 'Mapa' },
-                ] as const).map(({ mode, icon, title }) => (
+                {(['grid', 'list', 'map'] as ViewMode[]).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
-                    title={title}
+                    title={mode === 'grid' ? 'Grelha' : mode === 'list' ? 'Lista' : 'Mapa'}
                     className={`p-2 rounded-md transition-colors ${
                       viewMode === mode ? 'bg-card shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    {icon}
+                    {mode === 'grid' && <Grid className="w-4 h-4" />}
+                    {mode === 'list' && <List className="w-4 h-4" />}
+                    {mode === 'map' && <MapIcon className="w-4 h-4" />}
                   </button>
                 ))}
               </div>
