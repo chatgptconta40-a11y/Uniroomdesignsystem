@@ -1,5 +1,24 @@
 import { Message, Conversation } from '../types/message';
 
+const USER_ID_ALIASES: Record<string, string> = {
+  estudante: '1',
+  student: '1',
+  senhorio: '2',
+  landlord: '2',
+  landlord2: '2',
+  r1: '4',
+  'mate-1': '4',
+  'mate-2': '5',
+};
+
+export function normalizeMessageUserId(userId: string): string {
+  return USER_ID_ALIASES[userId] || userId;
+}
+
+export function isSameMessageUser(leftId: string, rightId: string): boolean {
+  return normalizeMessageUserId(leftId) === normalizeMessageUserId(rightId);
+}
+
 export const mockMessages: Message[] = [
   {
     id: 'msg1',
@@ -278,8 +297,10 @@ export const mockConversations: Conversation[] = [
 ];
 
 export function getConversationsForUser(userId: string): Conversation[] {
+  const normalizedUserId = normalizeMessageUserId(userId);
+
   return mockConversations
-    .filter(conversation => conversation.participants.some(participant => participant.id === userId))
+    .filter(conversation => conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedUserId)))
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
@@ -294,9 +315,11 @@ export function getMessagesForConversation(conversationId: string): Message[] {
 }
 
 export function getUnreadCountForConversation(conversationId: string, userId: string): number {
+  const normalizedUserId = normalizeMessageUserId(userId);
+
   return mockMessages.filter(message =>
     message.conversationId === conversationId &&
-    message.senderId !== userId &&
+    !isSameMessageUser(message.senderId, normalizedUserId) &&
     !message.read
   ).length;
 }
@@ -315,10 +338,11 @@ export function sendMessage(
   senderName: string,
   content: string
 ): Message {
+  const normalizedSenderId = normalizeMessageUserId(senderId);
   const newMessage: Message = {
     id: `msg${mockMessages.length + 1}`,
     conversationId,
-    senderId,
+    senderId: normalizedSenderId,
     senderName,
     content,
     createdAt: new Date(),
@@ -333,7 +357,7 @@ export function sendMessage(
     conversation.lastMessage = newMessage;
     conversation.updatedAt = new Date();
 
-    if (conversation.participants.some(participant => participant.id !== senderId)) {
+    if (conversation.participants.some(participant => !isSameMessageUser(participant.id, normalizedSenderId))) {
       conversation.unreadCount += 1;
     }
   }
@@ -342,13 +366,14 @@ export function sendMessage(
 }
 
 export function markConversationAsRead(conversationId: string, userId: string): void {
+  const normalizedUserId = normalizeMessageUserId(userId);
   const conversation = mockConversations.find(item => item.id === conversationId);
   if (!conversation) return;
 
   conversation.unreadCount = 0;
 
   mockMessages
-    .filter(message => message.conversationId === conversationId && message.senderId !== userId)
+    .filter(message => message.conversationId === conversationId && !isSameMessageUser(message.senderId, normalizedUserId))
     .forEach(message => {
       message.read = true;
     });
@@ -369,17 +394,19 @@ export function createConversation(
   roomId?: string,
   propertyId?: string
 ): Conversation {
+  const normalizedCurrentUserId = normalizeMessageUserId(currentUserId);
+  const normalizedOtherUserId = normalizeMessageUserId(otherUserId);
   const newConversation: Conversation = {
     id: `conv${mockConversations.length + 1}`,
     participants: [
       {
-        id: currentUserId,
+        id: normalizedCurrentUserId,
         name: currentUserName,
         type: currentUserType,
         online: true,
       },
       {
-        id: otherUserId,
+        id: normalizedOtherUserId,
         name: otherUserName,
         type: otherUserType,
         online: false,
@@ -398,7 +425,7 @@ export function createConversation(
 
   mockConversations.push(newConversation);
 
-  const message = sendMessage(newConversation.id, currentUserId, currentUserName, initialMessage);
+  const message = sendMessage(newConversation.id, normalizedCurrentUserId, currentUserName, initialMessage);
   newConversation.lastMessage = message;
 
   return newConversation;
@@ -417,15 +444,17 @@ export function findOrCreateRoomConversation(
   roomImage: string,
   customMessage?: string
 ): Conversation {
+  const normalizedCurrentUserId = normalizeMessageUserId(currentUserId);
+  const normalizedLandlordId = normalizeMessageUserId(landlordId);
   const existingConversation = mockConversations.find(conversation =>
     conversation.roomId === roomId &&
-    conversation.participants.some(participant => participant.id === currentUserId) &&
-    conversation.participants.some(participant => participant.id === landlordId)
+    conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedCurrentUserId)) &&
+    conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedLandlordId))
   );
 
   if (existingConversation) {
     if (customMessage && customMessage.trim()) {
-      sendMessage(existingConversation.id, currentUserId, currentUserName, customMessage.trim());
+      sendMessage(existingConversation.id, normalizedCurrentUserId, currentUserName, customMessage.trim());
     }
 
     return existingConversation;
@@ -434,10 +463,10 @@ export function findOrCreateRoomConversation(
   const initialMessage = customMessage || 'Olá, tenho interesse neste quarto. Ainda está disponível?';
 
   return createConversation(
-    currentUserId,
+    normalizedCurrentUserId,
     currentUserName,
     currentUserType,
-    landlordId,
+    normalizedLandlordId,
     landlordName,
     'landlord',
     initialMessage,
@@ -451,9 +480,11 @@ export function findOrCreateRoomConversation(
 }
 
 export function getHouseGroupConversation(propertyId: string, userId: string): Conversation | undefined {
+  const normalizedUserId = normalizeMessageUserId(userId);
+
   return mockConversations.find(conversation =>
     conversation.isGroup &&
     conversation.propertyId === propertyId &&
-    conversation.participants.some(participant => participant.id === userId)
+    conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedUserId))
   );
 }

@@ -18,6 +18,7 @@ import {
   getConversationsForUser,
   getMessagesForConversation,
   getUnreadCountForConversation,
+  isSameMessageUser,
   sendMessage,
   markConversationAsRead,
 } from '../data/mockMessages';
@@ -42,7 +43,7 @@ export function Messages() {
   const conversations = getConversationsForUser(user?.id || '');
   const selectedConversation = conversations.find(conversation => conversation.id === selectedConversationId);
   const messages = selectedConversationId ? getMessagesForConversation(selectedConversationId) : [];
-  const otherParticipant = selectedConversation?.participants.find(participant => participant.id !== user?.id);
+  const otherParticipant = selectedConversation?.participants.find(participant => !isSameMessageUser(participant.id, user?.id || ''));
   const isGroupChat = selectedConversation?.isGroup || false;
 
   const filteredConversations = useMemo(() => {
@@ -50,7 +51,7 @@ export function Messages() {
 
     if (searchQuery) {
       filtered = filtered.filter(conversation => {
-        const participant = conversation.participants.find(item => item.id !== user?.id);
+        const participant = conversation.participants.find(item => !isSameMessageUser(item.id, user?.id || ''));
         const query = searchQuery.toLowerCase();
 
         return participant?.name.toLowerCase().includes(query)
@@ -60,11 +61,11 @@ export function Messages() {
 
     if (filter === 'landlords') {
       filtered = filtered.filter(conversation =>
-        conversation.participants.some(participant => participant.id !== user?.id && participant.type === 'landlord'),
+        conversation.participants.some(participant => !isSameMessageUser(participant.id, user?.id || '') && participant.type === 'landlord'),
       );
     } else if (filter === 'students') {
       filtered = filtered.filter(conversation =>
-        conversation.participants.some(participant => participant.id !== user?.id && participant.type === 'student'),
+        conversation.participants.some(participant => !isSameMessageUser(participant.id, user?.id || '') && participant.type === 'student'),
       );
     } else if (filter === 'unread') {
       filtered = filtered.filter(conversation =>
@@ -211,10 +212,11 @@ export function Messages() {
                 </div>
               </div>
 
-              <div className="px-4 py-3 border-b border-border flex gap-2 overflow-x-auto">
+              <div className="px-4 py-3 border-b border-border grid grid-cols-2 gap-2">
                 <button
+                  type="button"
                   onClick={() => setFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filter === 'all'
                       ? 'bg-primary text-white'
                       : 'bg-card text-muted-foreground border border-border hover:bg-muted'
@@ -224,8 +226,9 @@ export function Messages() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setFilter('landlords')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filter === 'landlords'
                       ? 'bg-primary text-white'
                       : 'bg-card text-muted-foreground border border-border hover:bg-muted'
@@ -235,8 +238,9 @@ export function Messages() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setFilter('students')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filter === 'students'
                       ? 'bg-primary text-white'
                       : 'bg-card text-muted-foreground border border-border hover:bg-muted'
@@ -246,8 +250,9 @@ export function Messages() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setFilter('unread')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filter === 'unread'
                       ? 'bg-primary text-white'
                       : 'bg-card text-muted-foreground border border-border hover:bg-muted'
@@ -266,7 +271,7 @@ export function Messages() {
                 ) : (
                   <div className="divide-y divide-border">
                     {filteredConversations.map(conversation => {
-                      const participant = conversation.participants.find(item => item.id !== user?.id);
+                      const participant = conversation.participants.find(item => !isSameMessageUser(item.id, user?.id || ''));
                       const isSelected = conversation.id === selectedConversationId;
                       const isGroup = conversation.isGroup || false;
                       const unreadCount = getUnreadCountForConversation(conversation.id, user?.id || '');
@@ -489,7 +494,7 @@ export function Messages() {
                             </div>
 
                             {group.messages.map(message => {
-                              const isOwn = message.senderId === user?.id;
+                              const isOwn = isSameMessageUser(message.senderId, user?.id || '');
 
                               return (
                                 <div
