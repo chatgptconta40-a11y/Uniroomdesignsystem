@@ -1,13 +1,12 @@
-
 import { useState } from 'react';
-import { X, AlertTriangle, Flag, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Flag, ShieldAlert, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from './Button';
 import { createReport } from '../data/mockTrust';
-import { ReportReason } from '../types/trust';
 import { addReport } from '../data/mockAdminReports';
-import { ReportType, ReportPriority } from '../data/mockAdminReports';
-import { Report } from '../types/trust';
-import { toast } from 'sonner';
+import type { Report } from '../types/trust';
+import type { ReportReason } from '../types/trust';
+import type { ReportPriority, ReportType } from '../data/mockAdminReports';
 
 interface ReportModalProps {
   reportedType: Report['reportedType'];
@@ -16,7 +15,6 @@ interface ReportModalProps {
   userId: string;
   userName?: string;
   onClose: () => void;
-  // Optional context for property/room reports
   propertyId?: string;
   propertyTitle?: string;
   roomId?: string;
@@ -25,64 +23,54 @@ interface ReportModalProps {
   landlordName?: string;
 }
 
-// Accommodation-specific report reasons — map directly to admin report types
-type AccommodationReportReason = ReportType | 'outro';
-
 interface ReasonOption {
-  value: AccommodationReportReason;
+  value: ReportType;
   label: string;
   description: string;
   priority: ReportPriority;
-  legacyReason: ReportReason; // for trust.ts compat
+  legacyReason: ReportReason;
 }
 
 const REASON_OPTIONS: ReasonOption[] = [
   {
     value: 'fraude_possivel',
     label: 'Possível fraude',
-    description: 'Conta suspeita, pagamento adiantado sem contrato ou perfil falso',
+    description: 'Conta suspeita, pedido de caução sem contrato, perfil falso ou tentativa de burla.',
     priority: 'critica',
     legacyReason: 'scam',
   },
   {
     value: 'pagamento_externo',
     label: 'Pedido de pagamento fora da plataforma',
-    description: 'Senhorio pediu transferência bancária, MB Way ou outro método externo',
+    description: 'Pedido de transferência bancária, MB Way ou outro método externo sem garantias.',
     priority: 'critica',
     legacyReason: 'scam',
   },
   {
     value: 'comportamento_abusivo',
     label: 'Comportamento abusivo',
-    description: 'Ameaças, assédio ou comunicação intimidatória',
+    description: 'Ameaças, assédio, pressão indevida ou comunicação intimidatória.',
     priority: 'alta',
     legacyReason: 'harassment',
   },
   {
     value: 'fotos_enganosas',
     label: 'Fotos enganosas',
-    description: 'O alojamento real não corresponde às fotos do anúncio',
+    description: 'O alojamento real não corresponde às fotografias ou às condições apresentadas.',
     priority: 'alta',
     legacyReason: 'inappropriate_content',
   },
   {
     value: 'localizacao_falsa',
     label: 'Localização falsa',
-    description: 'A morada ou distância à universidade está incorreta',
+    description: 'A morada, zona ou distância à universidade está incorreta.',
     priority: 'media',
     legacyReason: 'fake_listing',
   },
   {
     value: 'identidade_nao_verificada',
     label: 'Identidade do senhorio não verificada',
-    description: 'Não foi possível confirmar a identidade real do senhorio',
-    priority: 'media',
-    legacyReason: 'other',
-  },
-  {
-    value: 'outro',
-    label: 'Outro problema',
-    description: 'Outro problema não listado acima',
+    description: 'Não foi possível confirmar a identidade real do senhorio ou há dados contraditórios.',
     priority: 'media',
     legacyReason: 'other',
   },
@@ -93,6 +81,13 @@ const PRIORITY_BADGE: Record<ReportPriority, { label: string; cls: string }> = {
   alta: { label: 'Alta', cls: 'bg-orange-100 text-orange-700 border-orange-200' },
   media: { label: 'Média', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
   baixa: { label: 'Baixa', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+};
+
+const TYPE_LABELS: Record<Report['reportedType'], string> = {
+  accommodation: 'alojamento',
+  user: 'utilizador',
+  message: 'mensagem',
+  review: 'avaliação',
 };
 
 export function ReportModal({
@@ -109,36 +104,38 @@ export function ReportModal({
   landlordId,
   landlordName,
 }: ReportModalProps) {
-  const [reason, setReason] = useState<AccommodationReportReason | ''>('');
+  const [reason, setReason] = useState<ReportType | ''>('');
   const [description, setDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedOption = REASON_OPTIONS.find(r => r.value === reason);
+  const selectedOption = REASON_OPTIONS.find(option => option.value === reason);
+  const trimmedDescription = description.trim();
+  const canSubmit = Boolean(reason && selectedOption && trimmedDescription.length >= 20 && !isSubmitting);
 
-  const typeLabels = {
-    accommodation: 'alojamento',
-    user: 'utilizador',
-    message: 'mensagem',
-    review: 'avaliação',
-  };
-
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!reason || !selectedOption) {
-      toast.error('Por favor, seleciona um motivo');
-      return;
-    }
-    if (!description.trim()) {
-      toast.error('Por favor, descreve o problema');
+      toast.error('Seleciona um motivo para a denúncia.');
       return;
     }
 
-    // Persist to legacy trust mock
-    createReport(userId, reportedType, reportedId, selectedOption.legacyReason, description.trim());
+    if (trimmedDescription.length < 20) {
+      toast.error('Descreve o problema com pelo menos 20 caracteres.');
+      return;
+    }
 
-    // Also create entry in admin moderation system
+    setIsSubmitting(true);
+
+    createReport(
+      userId,
+      reportedType,
+      reportedId,
+      selectedOption.legacyReason,
+      trimmedDescription,
+    );
+
     if (landlordId) {
-      const adminType: ReportType = reason === 'outro' ? 'fraude_possivel' : reason as ReportType;
       addReport({
-        type: adminType,
+        type: selectedOption.value,
         propertyId,
         propertyTitle,
         roomId,
@@ -147,17 +144,20 @@ export function ReportModal({
         landlordName: landlordName ?? 'Senhorio',
         reportedByStudentId: userId,
         reportedByStudentName: userName ?? 'Estudante',
-        description: description.trim(),
+        description: trimmedDescription,
         date: new Date().toISOString().split('T')[0],
         priority: selectedOption.priority,
         status: 'aberta',
       });
     }
 
+    await new Promise(resolve => setTimeout(resolve, 400));
+
     toast.success('Denúncia enviada com sucesso!', {
-      description: 'A equipa UniRoom irá analisar em 24-48h. A tua identidade é mantida em confidencialidade.',
+      description: 'A equipa UniRoom vai analisar o caso. A tua identidade será mantida em confidencialidade.',
     });
 
+    setIsSubmitting(false);
     onClose();
   };
 
@@ -169,17 +169,20 @@ export function ReportModal({
             <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
               <Flag className="w-5 h-5 text-red-600" />
             </div>
+
             <div>
               <h2 className="text-xl font-bold text-foreground">
-                Denunciar {typeLabels[reportedType]}
+                Denunciar {TYPE_LABELS[reportedType]}
               </h2>
               <p className="text-sm text-muted-foreground">{reportedName}</p>
             </div>
           </div>
+
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors"
             aria-label="Fechar modal"
+            disabled={isSubmitting}
           >
             <X className="w-5 h-5" />
           </button>
@@ -190,28 +193,40 @@ export function ReportModal({
             <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm">
               <p className="font-medium text-yellow-900 mb-1">
-                Denúncias falsas são levadas a sério
+                Usa a denúncia apenas quando existe um problema real
               </p>
               <p className="text-yellow-700">
-                Apenas denuncia se realmente existe um problema. Denúncias falsas podem resultar na
-                suspensão da tua conta.
+                Denúncias falsas podem prejudicar outros utilizadores e podem resultar na suspensão da conta.
               </p>
             </div>
           </div>
 
+          {(propertyTitle || roomTitle || landlordName) && (
+            <div className="p-4 bg-muted/40 border border-border rounded-lg">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Contexto da denúncia</p>
+              <div className="space-y-1 text-sm text-foreground">
+                {propertyTitle && <p>Alojamento: {propertyTitle}</p>}
+                {roomTitle && <p>Quarto: {roomTitle}</p>}
+                {landlordName && <p>Senhorio: {landlordName}</p>}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-foreground mb-3">
-              Motivo da denúncia:
+              Motivo da denúncia
             </label>
+
             <div className="space-y-2">
-              {REASON_OPTIONS.map(item => {
-                const isSelected = reason === item.value;
-                const badge = PRIORITY_BADGE[item.priority];
+              {REASON_OPTIONS.map(option => {
+                const isSelected = reason === option.value;
+                const badge = PRIORITY_BADGE[option.priority];
+
                 return (
                   <button
-                    key={item.value}
+                    key={option.value}
                     type="button"
-                    onClick={() => setReason(item.value)}
+                    onClick={() => setReason(option.value)}
                     className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
                       isSelected
                         ? 'border-primary bg-primary/5'
@@ -219,14 +234,16 @@ export function ReportModal({
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="font-medium text-foreground">{item.label}</span>
-                      {(item.priority === 'critica' || item.priority === 'alta') && (
+                      <span className="font-medium text-foreground">{option.label}</span>
+
+                      {(option.priority === 'critica' || option.priority === 'alta') && (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-semibold ${badge.cls}`}>
                           {badge.label}
                         </span>
                       )}
                     </div>
-                    <div className="text-sm text-muted-foreground">{item.description}</div>
+
+                    <div className="text-sm text-muted-foreground">{option.description}</div>
                   </button>
                 );
               })}
@@ -237,17 +254,24 @@ export function ReportModal({
             <label className="block text-sm font-medium text-foreground mb-2">
               Descreve o problema
             </label>
+
             <textarea
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Fornece detalhes sobre o problema que encontraste..."
+              onChange={event => setDescription(event.target.value)}
+              placeholder="Explica o que aconteceu, quando aconteceu e porque consideras que deve ser analisado."
               className="w-full px-4 py-3 bg-input-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary resize-none"
               rows={5}
               maxLength={1000}
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              {description.length}/1000 caracteres
-            </p>
+
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-muted-foreground">
+                Mínimo recomendado: 20 caracteres.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {description.length}/1000
+              </p>
+            </div>
           </div>
 
           {selectedOption && (selectedOption.priority === 'critica' || selectedOption.priority === 'alta') && (
@@ -256,31 +280,30 @@ export function ReportModal({
               <div className="text-sm">
                 <p className="font-medium text-red-900 mb-1">Denúncia prioritária</p>
                 <p className="text-red-700">
-                  Este tipo de problema é tratado com prioridade máxima pela equipa UniRoom. Receberás uma resposta em menos de 24h.
+                  Este tipo de problema será tratado com prioridade pela equipa UniRoom.
                 </p>
               </div>
             </div>
           )}
 
           <div className="p-5 bg-primary/5 rounded-lg border border-primary/20">
-            <p className="text-sm text-foreground font-medium">
-              O que acontece a seguir?
-            </p>
+            <p className="text-sm text-foreground font-medium">O que acontece a seguir?</p>
             <ul className="text-sm text-foreground mt-2 space-y-1">
-              <li>A nossa equipa irá analisar a tua denúncia em 24-48h.</li>
-              <li>Poderás acompanhar o estado na tua área de notificações.</li>
-              <li>A tua identidade será mantida em confidencialidade.</li>
-              <li>Tomaremos as medidas apropriadas se o problema for confirmado.</li>
+              <li>A equipa UniRoom analisa a denúncia e o contexto associado.</li>
+              <li>O caso fica disponível no backoffice para moderação.</li>
+              <li>A tua identidade é mantida em confidencialidade.</li>
+              <li>Se o problema for confirmado, podem ser aplicadas medidas ao anúncio ou ao senhorio.</li>
             </ul>
           </div>
         </div>
 
         <div className="sticky bottom-0 bg-card border-t border-border px-6 py-4 flex items-center justify-between gap-3">
-          <Button onClick={onClose} variant="outline">
+          <Button onClick={onClose} variant="outline" disabled={isSubmitting}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={!reason || !description.trim()}>
-            Enviar denúncia
+
+          <Button onClick={handleSubmit} disabled={!canSubmit}>
+            {isSubmitting ? 'A enviar...' : 'Enviar denúncia'}
           </Button>
         </div>
       </div>
