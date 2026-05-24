@@ -29,6 +29,7 @@ import { Property, PropertyStatus, Room, RoomStatus } from '../types/property';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from 'sonner';
 import { mockUsers } from '../data/mockUsers';
 import { getApplicationsByProperty } from '../data/mockLandlordCandidates';
@@ -807,57 +808,25 @@ export function LandlordListings() {
         />
       )}
 
-      {pausingPropertyId && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setPausingPropertyId(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-md p-6">
-              <h3 className="text-xl font-bold mb-4">Pausar alojamento?</h3>
-              <p className="text-muted-foreground mb-6">
-                Este alojamento e os respetivos quartos deixam de aparecer na pesquisa até voltares a reativar.
-              </p>
+      <ConfirmModal
+        isOpen={!!pausingPropertyId}
+        onClose={() => setPausingPropertyId(null)}
+        onConfirm={() => pausingPropertyId && handlePauseProperty(pausingPropertyId)}
+        title="Pausar alojamento?"
+        description="Este alojamento e os respetivos quartos deixam de aparecer na pesquisa até voltares a reativar."
+        cancelLabel="Cancelar"
+        confirmLabel="Pausar alojamento"
+      />
 
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={() => setPausingPropertyId(null)}>
-                  Cancelar
-                </Button>
-
-                <Button variant="primary" className="flex-1" onClick={() => handlePauseProperty(pausingPropertyId)}>
-                  Pausar
-                </Button>
-              </div>
-            </Card>
-          </div>
-        </>
-      )}
-
-      {archivingPropertyId && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setArchivingPropertyId(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-md p-6">
-              <h3 className="text-xl font-bold mb-4 text-destructive">Arquivar alojamento?</h3>
-              <p className="text-muted-foreground mb-6">
-                O alojamento será removido da pesquisa, mas o histórico fica preservado.
-              </p>
-
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={() => setArchivingPropertyId(null)}>
-                  Cancelar
-                </Button>
-
-                <Button
-                  variant="primary"
-                  className="flex-1 bg-destructive hover:bg-destructive/90"
-                  onClick={() => handleArchiveProperty(archivingPropertyId)}
-                >
-                  Arquivar
-                </Button>
-              </div>
-            </Card>
-          </div>
-        </>
-      )}
+      <ConfirmModal
+        isOpen={!!archivingPropertyId}
+        onClose={() => setArchivingPropertyId(null)}
+        onConfirm={() => archivingPropertyId && handleArchiveProperty(archivingPropertyId)}
+        title="Arquivar alojamento?"
+        description="O alojamento será removido da pesquisa, mas o histórico será mantido."
+        cancelLabel="Cancelar"
+        confirmLabel="Arquivar"
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
 import { TrustBadge } from '../components/TrustBadge';
 import { getProfile, saveProfile } from '../data/mockProfiles';
+import { toast } from 'sonner';
 import {
   StudentProfile,
   PersonalProfile,
@@ -52,6 +53,7 @@ export function Profile() {
       const updatedProfile = { ...profile, personal: updatedPersonal };
       setProfile(updatedProfile);
       saveProfile(updatedProfile);
+      toast.success('Alterações guardadas com sucesso.');
     }
   };
 
@@ -60,6 +62,7 @@ export function Profile() {
       const updatedProfile = { ...profile, lifestyle: updatedLifestyle };
       setProfile(updatedProfile);
       saveProfile(updatedProfile);
+      toast.success('Alterações guardadas com sucesso.');
     }
   };
 
@@ -68,6 +71,7 @@ export function Profile() {
       const updatedProfile = { ...profile, preferences: updatedPreferences };
       setProfile(updatedProfile);
       saveProfile(updatedProfile);
+      toast.success('Alterações guardadas com sucesso.');
     }
   };
 

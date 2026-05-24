@@ -8,6 +8,7 @@ import { Checkbox } from '../components/Checkbox';
 import { Card } from '../components/Card';
 import { useAccommodations } from '../context/AccommodationsContext';
 import { Accommodation, SearchFilters } from '../types/accommodation';
+import { toast } from 'sonner';
 
 export function Search() {
   const { accommodations } = useAccommodations();
@@ -107,6 +108,13 @@ export function Search() {
       maxDistance: 10,
       sortBy: 'compatibility',
     });
+    toast.info('Filtros limpos.');
+  };
+
+  const handleSetView = (newView: 'grid' | 'map') => {
+    if (newView === view) return;
+    setView(newView);
+    toast.info(newView === 'map' ? 'Vista de mapa ativada.' : 'Vista de lista ativada.');
   };
 
   const toggleCity = (city: string) => {
@@ -248,8 +256,15 @@ export function Search() {
             <div className="flex items-center justify-between mb-8">
               <div>
                 <h2 className="text-2xl font-bold mb-2">Alojamentos disponíveis</h2>
-                <p className="text-muted-foreground text-sm">
-                  {loading ? 'A procurar...' : `${results.length} alojamentos encontrados`}
+                <p className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                  {loading ? (
+                    <>
+                      <span className="inline-block w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      A pesquisar alojamentos…
+                    </>
+                  ) : (
+                    `${results.length} alojamento${results.length !== 1 ? 's' : ''} encontrado${results.length !== 1 ? 's' : ''}`
+                  )}
                 </p>
               </div>
 
@@ -263,7 +278,8 @@ export function Search() {
 
                 <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
                   <button
-                    onClick={() => setView('grid')}
+                    onClick={() => handleSetView('grid')}
+                    title="Vista de lista"
                     className={`p-2.5 rounded-md transition-colors ${
                       view === 'grid' ? 'bg-card shadow-sm text-primary' : 'hover:bg-card/50 text-muted-foreground'
                     }`}
@@ -271,7 +287,8 @@ export function Search() {
                     <Grid className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => setView('map')}
+                    onClick={() => handleSetView('map')}
+                    title="Vista de mapa"
                     className={`p-2.5 rounded-md transition-colors ${
                       view === 'map' ? 'bg-card shadow-sm text-primary' : 'hover:bg-card/50 text-muted-foreground'
                     }`}
@@ -287,7 +304,20 @@ export function Search() {
               <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="bg-card rounded-xl h-96 animate-pulse" />
+                    <div key={i} className="bg-card rounded-xl border border-border overflow-hidden shadow-sm flex flex-col">
+                      <div className="aspect-[4/3] bg-muted animate-pulse" />
+                      <div className="p-6 flex-1 flex flex-col gap-3">
+                        <div className="h-5 bg-muted animate-pulse rounded-md w-3/4" />
+                        <div className="h-4 bg-muted animate-pulse rounded-md w-1/2" />
+                        <div className="h-8 bg-muted animate-pulse rounded-md w-1/3 mt-1" />
+                        <div className="h-4 bg-muted animate-pulse rounded-md w-2/3" />
+                        <div className="flex gap-2 mt-auto pt-2">
+                          <div className="h-6 bg-muted animate-pulse rounded-full w-20" />
+                          <div className="h-6 bg-muted animate-pulse rounded-full w-16" />
+                          <div className="h-6 bg-muted animate-pulse rounded-full w-18" />
+                        </div>
+                      </div>
+                    </div>
                   ))
                 ) : results.length > 0 ? (
                   results.map(accommodation => (
@@ -315,7 +345,12 @@ export function Search() {
             {/* Map View */}
             {view === 'map' && (
               loading ? (
-                <div className="bg-card rounded-xl h-[650px] animate-pulse" />
+                <div className="bg-muted rounded-xl h-[650px] animate-pulse flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                    <span className="inline-block w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" style={{ borderWidth: '3px' }} />
+                    <span className="text-sm font-medium">A pesquisar alojamentos…</span>
+                  </div>
+                </div>
               ) : results.length > 0 ? (
                 <MapView accommodations={results} />
               ) : (

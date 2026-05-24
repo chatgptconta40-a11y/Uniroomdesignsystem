@@ -202,7 +202,7 @@ export function LandlordDashboard() {
               <Badge variant="default">Ativos</Badge>
             </div>
             <h3 className="text-4xl font-bold text-foreground mb-3">{activeProperties.length}</h3>
-            <p className="text-sm font-medium text-muted-foreground">Alojamentos Ativos</p>
+            <p className="text-sm font-medium text-gray-600">Alojamentos Ativos</p>
           </Card>
 
           <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/applications')}>
@@ -215,7 +215,7 @@ export function LandlordDashboard() {
               )}
             </div>
             <h3 className="text-4xl font-bold text-foreground mb-3">{pendingApplicationsCount}</h3>
-            <p className="text-sm font-medium text-muted-foreground">Candidaturas Pendentes</p>
+            <p className="text-sm font-medium text-gray-600">Candidaturas Pendentes</p>
           </Card>
 
           <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/messages')}>
@@ -228,18 +228,22 @@ export function LandlordDashboard() {
               )}
             </div>
             <h3 className="text-4xl font-bold text-foreground mb-3">{mockMetrics?.unreadMessages ?? 0}</h3>
-            <p className="text-sm font-medium text-muted-foreground">Mensagens Novas</p>
+            <p className="text-sm font-medium text-gray-600">Mensagens Novas</p>
           </Card>
 
           <Card className="p-6" hover>
             <div className="flex items-center justify-between mb-4">
               <div className="w-14 h-14 bg-amber-50 rounded-xl flex items-center justify-center">
-                <Eye className="w-7 h-7 text-amber-600" />
+                <Star className="w-7 h-7 text-amber-500" />
               </div>
-              <Badge variant="default">{myProperties.length} aloj.</Badge>
+              {mockMetrics?.averageRating && mockMetrics.averageRating > 0 && (
+                <Badge variant="default">Avaliação</Badge>
+              )}
             </div>
-            <h3 className="text-4xl font-bold text-foreground mb-3">{totalViews}</h3>
-            <p className="text-sm font-medium text-muted-foreground">Total de Visualizações</p>
+            <h3 className="text-4xl font-bold text-foreground mb-3">
+              {mockMetrics?.averageRating ? mockMetrics.averageRating.toFixed(1) : '—'}
+            </h3>
+            <p className="text-sm font-medium text-gray-600">Rating Médio</p>
           </Card>
         </div>
 
@@ -382,14 +386,19 @@ export function LandlordDashboard() {
           </div>
         )}
 
+        {/* Quick actions */}
         <div className="mb-10 flex flex-wrap gap-4">
-          <Button size="lg" variant="primary" onClick={() => navigate('/landlord/new-listing')}>
+          <Button size="lg" variant="primary" onClick={() => navigate('/landlord/new-listing')} disabled={isAccountSuspended || isBlockedFromPublishing}>
             <PlusCircle className="w-5 h-5" />
             Publicar Novo Alojamento
           </Button>
+          <Button size="lg" variant="outline" onClick={() => navigate('/landlord/listings')}>
+            <Home className="w-5 h-5" />
+            Gerir Alojamentos
+          </Button>
           <Button size="lg" variant="outline" onClick={() => navigate('/landlord/analytics')}>
             <TrendingUp className="w-5 h-5" />
-            Ver Analytics Detalhadas
+            Ver Analytics
           </Button>
         </div>
 
@@ -552,6 +561,12 @@ export function LandlordDashboard() {
             </div>
           );
         })()}
+
+        {/* Analytics & History */}
+        <div className="flex items-center gap-2 mb-6 pt-2 border-t border-border">
+          <BarChart2 className="w-5 h-5 text-muted-foreground" />
+          <h2 className="text-lg font-bold text-foreground">Analytics e Histórico</h2>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2 p-8">

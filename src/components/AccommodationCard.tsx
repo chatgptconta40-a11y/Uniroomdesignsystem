@@ -110,7 +110,7 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
           </h3>
 
           {/* Location */}
-          <div className="flex items-center gap-2 text-muted-foreground mb-4">
+          <div className="flex items-center gap-2 text-gray-600 mb-4">
             <MapPin className="w-4 h-4 flex-shrink-0" />
             <span className="text-sm font-medium">{accommodation.zone}, {accommodation.city}</span>
           </div>
@@ -118,11 +118,11 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
           {/* Price */}
           <div className="mb-4">
             <span className="text-3xl font-bold text-foreground">€{accommodation.price}</span>
-            <span className="text-base text-muted-foreground">/mês</span>
+            <span className="text-base text-gray-500">/mês</span>
           </div>
 
           {/* Distance */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-5">
+          <div className="flex items-center gap-2 text-sm text-gray-600 mb-5">
             <MapPin className="w-4 h-4" />
             <span className="font-medium">
               {accommodation.distanceToUniversity < 1

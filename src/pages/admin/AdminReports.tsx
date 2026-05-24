@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
   Flag,
   AlertCircle,
@@ -23,6 +24,7 @@ import {
   Unlock,
 } from 'lucide-react';
 import { Card } from '../../components/Card';
+import { ConfirmModal } from '../../components/ConfirmModal';
 import {
   AdminReport,
   ReportType,
@@ -95,6 +97,24 @@ function ReportDetailModal({
   const [report, setReport] = useState(initialReport);
   const [noteText, setNoteText] = useState(report.internalNote || '');
   const [showNoteInput, setShowNoteInput] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    action: AdminActionType | 'resolve' | 'reject';
+    title: string;
+    description: string;
+    confirmLabel: string;
+  } | null>(null);
+
+  const executeAction = (action: AdminActionType | 'resolve' | 'reject') => {
+    if (action === 'resolve') {
+      handleResolve('resolvida');
+      return;
+    }
+    if (action === 'reject') {
+      handleResolve('rejeitada');
+      return;
+    }
+    applyAction(action);
+  };
 
   const applyAction = (action: AdminActionType) => {
     const updated = applyAdminAction(report.id, action);
@@ -344,7 +364,7 @@ function ReportDetailModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                   {report.propertyId && !report.propertySuspended && (
                     <button
-                      onClick={() => applyAction('suspend_property')}
+                      onClick={() => setPendingAction({ action: 'suspend_property', title: 'Suspender anúncio?', description: `O anúncio de ${report.propertyTitle || report.landlordName} ficará invisível para estudantes imediatamente.`, confirmLabel: 'Suspender anúncio' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl text-xs font-medium hover:bg-orange-100 transition-colors"
                     >
                       <ShieldOff className="w-4 h-4" />
@@ -353,7 +373,7 @@ function ReportDetailModal({
                   )}
                   {!report.landlordSuspended && (
                     <button
-                      onClick={() => applyAction('suspend_landlord')}
+                      onClick={() => setPendingAction({ action: 'suspend_landlord', title: 'Suspender senhorio?', description: `A conta de ${report.landlordName} será suspensa. O senhorio não poderá publicar ou gerir anúncios.`, confirmLabel: 'Suspender senhorio' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium hover:bg-red-100 transition-colors"
                     >
                       <UserX className="w-4 h-4" />
@@ -362,7 +382,7 @@ function ReportDetailModal({
                   )}
                   {!report.landlordBlocked && (
                     <button
-                      onClick={() => applyAction('block_landlord')}
+                      onClick={() => setPendingAction({ action: 'block_landlord', title: 'Bloquear novos anúncios?', description: `${report.landlordName} ficará impedido de publicar novos anúncios. Os anúncios existentes mantêm-se.`, confirmLabel: 'Bloquear publicação' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 text-red-900 rounded-xl text-xs font-medium hover:bg-red-100 transition-colors"
                     >
                       <Ban className="w-4 h-4" />
@@ -373,14 +393,14 @@ function ReportDetailModal({
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleResolve('rejeitada')}
+                    onClick={() => setPendingAction({ action: 'reject', title: 'Rejeitar denúncia?', description: 'Esta denúncia será marcada como rejeitada. O processo de moderação será encerrado.', confirmLabel: 'Rejeitar denúncia' })}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 border border-border text-muted-foreground rounded-xl text-xs font-medium hover:bg-muted transition-colors"
                   >
                     <XSquare className="w-4 h-4" />
                     Rejeitar denúncia
                   </button>
                   <button
-                    onClick={() => handleResolve('resolvida')}
+                    onClick={() => setPendingAction({ action: 'resolve', title: 'Resolver denúncia?', description: 'Esta denúncia será marcada como resolvida. Confirma que o problema foi tratado adequadamente.', confirmLabel: 'Marcar como resolvida' })}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-600 text-white rounded-xl text-xs font-medium hover:bg-green-700 transition-colors"
                   >
                     <CheckSquare className="w-4 h-4" />
@@ -437,6 +457,21 @@ function ReportDetailModal({
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={!!pendingAction}
+        onClose={() => setPendingAction(null)}
+        onConfirm={() => {
+          if (pendingAction) {
+            executeAction(pendingAction.action);
+            setPendingAction(null);
+          }
+        }}
+        title={pendingAction?.title || ''}
+        description={pendingAction?.description || ''}
+        cancelLabel="Cancelar"
+        confirmLabel={pendingAction?.confirmLabel || 'Confirmar'}
+      />
     </>
   );
 }
@@ -478,9 +513,10 @@ export function AdminReports() {
     propertyRooms.forEach(room => {
       if (room.status === 'available') updateRoomStatus(room.id, 'paused');
     });
+    toast.success(`Anúncio "${propertyTitle}" suspenso com sucesso.`);
   };
 
-  const handleSuspendLandlord = (landlordId: string, _landlordName: string) => {
+  const handleSuspendLandlord = (landlordId: string, landlordName: string) => {
     setUserSuspended(landlordId, true, `Suspenso por moderação admin`);
     const landlordProperties = properties.filter(p => p.landlordId === landlordId && p.status === 'active');
     landlordProperties.forEach(p => {
@@ -488,28 +524,30 @@ export function AdminReports() {
       const propertyRooms = rooms.filter(r => r.propertyId === p.id && r.status === 'available');
       propertyRooms.forEach(room => updateRoomStatus(room.id, 'paused'));
     });
+    toast.success(`Senhorio "${landlordName}" suspenso com sucesso.`);
   };
 
-  const handleBlockLandlord = (landlordId: string, _landlordName: string) => {
+  const handleBlockLandlord = (landlordId: string, landlordName: string) => {
     setUserBlockedFromPublishing(landlordId, true, `Bloqueado de publicar novos anúncios`);
     setUserSuspended(landlordId, true, `Suspenso por moderação admin`);
+    toast.success(`Publicação bloqueada para "${landlordName}".`);
   };
 
   // ── Lift (reverse) ───────────────────────────────────────────────────────────
 
   const handleLiftPropertySuspension = (propertyId: string, _propertyTitle: string) => {
     liftAdminSuspension(propertyId);
-    // Property stays paused; landlord can reactivate manually
+    toast.success('Suspensão do anúncio levantada.');
   };
 
   const handleLiftLandlordSuspension = (landlordId: string, _landlordName: string) => {
-    // Only lift suspension — blockedFromPublishing stays as-is
     liftUserSuspension(landlordId);
+    toast.success('Suspensão do senhorio levantada.');
   };
 
   const handleUnblockLandlord = (landlordId: string, _landlordName: string) => {
-    // Only remove publishing block — suspended stays as-is
     unblockUserPublishing(landlordId);
+    toast.success('Bloqueio de publicação removido.');
   };
 
   const stats = {
