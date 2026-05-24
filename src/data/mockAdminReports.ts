@@ -23,17 +23,15 @@ export interface AdminReport {
   reportedByStudentId: string;
   reportedByStudentName: string;
   description: string;
-  date: string; // ISO date string
+  date: string;
   priority: ReportPriority;
   status: ReportStatus;
   internalNote?: string;
   resolvedAt?: string;
   resolvedByAdminId?: string;
-  // actions applied (sanctions)
   landlordSuspended?: boolean;
   propertySuspended?: boolean;
   landlordBlocked?: boolean;
-  // lift actions applied
   propertySuspensionLifted?: boolean;
   landlordSuspensionLifted?: boolean;
   landlordUnblocked?: boolean;
@@ -41,7 +39,7 @@ export interface AdminReport {
 
 const STORAGE_KEY = 'uniroom_admin_reports';
 const DATA_VERSION_KEY = 'uniroom_admin_reports_version';
-const CURRENT_VERSION = '2026-05-v1';
+const CURRENT_VERSION = '2026-05-v2';
 
 const INITIAL_REPORTS: AdminReport[] = [
   {
@@ -60,7 +58,7 @@ const INITIAL_REPORTS: AdminReport[] = [
     date: '2026-05-21',
     priority: 'critica',
     status: 'em_analise',
-    internalNote: 'Padrão recorrente nesta conta. Verificar histórico de pagamentos externos.',
+    internalNote: 'Padrão recorrente nesta conta. Verificar histórico de pedidos de pagamento externos.',
   },
   {
     id: 'rep-2',
@@ -72,7 +70,7 @@ const INITIAL_REPORTS: AdminReport[] = [
     reportedByStudentId: 'student-1',
     reportedByStudentName: 'Ana Rodrigues',
     description:
-      'As fotos do anúncio mostram um apartamento renovado mas quando fui visitar o quarto estava degradado, com humidade nas paredes e a mobília partida.',
+      'As fotos do anúncio mostram um apartamento renovado, mas quando fui visitar o quarto estava degradado, com humidade nas paredes e mobília partida.',
     date: '2026-05-20',
     priority: 'alta',
     status: 'aberta',
@@ -87,7 +85,7 @@ const INITIAL_REPORTS: AdminReport[] = [
     reportedByStudentId: 'student-2',
     reportedByStudentName: 'Miguel Santos',
     description:
-      'O anúncio diz que fica a 500m da ESTGV mas na verdade fica a mais de 3km. A morada indicada está errada.',
+      'O anúncio diz que fica a 500 m da ESTGV, mas na verdade fica a mais de 3 km. A morada indicada está errada.',
     date: '2026-05-19',
     priority: 'media',
     status: 'aberta',
@@ -100,7 +98,7 @@ const INITIAL_REPORTS: AdminReport[] = [
     reportedByStudentId: 'student-4',
     reportedByStudentName: 'João Ferreira',
     description:
-      'Recebi uma proposta de arrendamento de um senhorio que diz não poder fazer visitas mas pediu pagamento adiantado de 3 meses. O perfil foi criado há 2 dias.',
+      'Recebi uma proposta de arrendamento de um senhorio que diz não poder fazer visitas, mas pediu pagamento adiantado de 3 meses. O perfil foi criado há 2 dias.',
     date: '2026-05-18',
     priority: 'critica',
     status: 'aberta',
@@ -115,7 +113,7 @@ const INITIAL_REPORTS: AdminReport[] = [
     reportedByStudentId: 'student-5',
     reportedByStudentName: 'Beatriz Lopes',
     description:
-      'Tentei verificar a identidade do senhorio através dos documentos pedidos mas nunca os recebeu. A plataforma mostra o perfil como "Verificado" sem evidência.',
+      'Tentei confirmar a identidade do senhorio através dos documentos pedidos, mas nunca obtive resposta. A plataforma mostra o perfil como "Verificado" sem evidência visível.',
     date: '2026-05-17',
     priority: 'media',
     status: 'resolvida',
@@ -131,7 +129,7 @@ const INITIAL_REPORTS: AdminReport[] = [
     reportedByStudentId: 'student-2',
     reportedByStudentName: 'Miguel Santos',
     description:
-      'O senhorio enviou-me mensagens ameaçadoras após eu recusar a sua proposta de arrendamento, dizendo que iria "arranjar problemas".',
+      'O senhorio enviou-me mensagens ameaçadoras após eu recusar a proposta de arrendamento, dizendo que iria "arranjar problemas".',
     date: '2026-05-15',
     priority: 'alta',
     status: 'em_analise',
@@ -145,31 +143,38 @@ const INITIAL_REPORTS: AdminReport[] = [
     landlordName: 'Carlos Ferreira',
     reportedByStudentId: 'student-4',
     reportedByStudentName: 'João Ferreira',
-    description: 'Recebi pedido de pagamento de caução fora da plataforma, por Mbway. O senhorio disse que era "mais rápido".',
+    description:
+      'Recebi um pedido de pagamento de caução fora da plataforma, por MB Way. O senhorio disse que era "mais rápido".',
     date: '2026-05-14',
     priority: 'alta',
     status: 'rejeitada',
     resolvedAt: '2026-05-16',
     resolvedByAdminId: 'admin-1',
-    internalNote: 'Após análise, a transação foi acordada pelos dois lados e documentada. Sem evidência de má-fé.',
+    internalNote:
+      'Após análise, a transação foi acordada pelos dois lados e documentada. Sem evidência de má-fé.',
   },
 ];
 
 function initStorage(): AdminReport[] {
   const version = localStorage.getItem(DATA_VERSION_KEY);
+
   if (version !== CURRENT_VERSION) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_REPORTS));
     localStorage.setItem(DATA_VERSION_KEY, CURRENT_VERSION);
     return INITIAL_REPORTS;
   }
+
   const stored = localStorage.getItem(STORAGE_KEY);
+
   if (!stored) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_REPORTS));
     return INITIAL_REPORTS;
   }
+
   try {
     return JSON.parse(stored) as AdminReport[];
   } catch {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_REPORTS));
     return INITIAL_REPORTS;
   }
 }
@@ -183,11 +188,18 @@ export function getAllReports(): AdminReport[] {
 }
 
 export function getOpenReportsCount(): number {
-  return initStorage().filter(r => r.status === 'aberta' || r.status === 'em_analise').length;
+  return initStorage().filter(
+    report => report.status === 'aberta' || report.status === 'em_analise'
+  ).length;
 }
 
 export function getCriticalReportsCount(): number {
-  return initStorage().filter(r => r.priority === 'critica' && r.status !== 'resolvida' && r.status !== 'rejeitada').length;
+  return initStorage().filter(
+    report =>
+      report.priority === 'critica' &&
+      report.status !== 'resolvida' &&
+      report.status !== 'rejeitada'
+  ).length;
 }
 
 export function updateReportStatus(
@@ -197,34 +209,52 @@ export function updateReportStatus(
   note?: string,
 ): AdminReport | null {
   const all = initStorage();
-  const idx = all.findIndex(r => r.id === reportId);
-  if (idx < 0) return null;
-  all[idx] = {
-    ...all[idx],
+  const index = all.findIndex(report => report.id === reportId);
+
+  if (index < 0) return null;
+
+  all[index] = {
+    ...all[index],
     status,
     ...(note ? { internalNote: note } : {}),
     ...(status === 'resolvida' || status === 'rejeitada'
-      ? { resolvedAt: new Date().toISOString().split('T')[0], resolvedByAdminId: adminId }
+      ? {
+          resolvedAt: new Date().toISOString().split('T')[0],
+          resolvedByAdminId: adminId,
+        }
       : {}),
   };
+
   saveAll(all);
-  return all[idx];
+  return all[index];
 }
 
 export function addInternalNote(reportId: string, note: string): AdminReport | null {
   const all = initStorage();
-  const idx = all.findIndex(r => r.id === reportId);
-  if (idx < 0) return null;
-  all[idx] = { ...all[idx], internalNote: note };
+  const index = all.findIndex(report => report.id === reportId);
+
+  if (index < 0) return null;
+
+  all[index] = {
+    ...all[index],
+    internalNote: note,
+  };
+
   saveAll(all);
-  return all[idx];
+  return all[index];
 }
 
 export function addReport(report: Omit<AdminReport, 'id'>): AdminReport {
   const all = initStorage();
-  const newReport: AdminReport = { ...report, id: `rep-${Date.now()}` };
+
+  const newReport: AdminReport = {
+    ...report,
+    id: `rep-${Date.now()}`,
+  };
+
   all.push(newReport);
   saveAll(all);
+
   return newReport;
 }
 
@@ -238,28 +268,66 @@ export type AdminActionType =
 
 export function applyAdminAction(reportId: string, action: AdminActionType): AdminReport | null {
   const all = initStorage();
-  const idx = all.findIndex(r => r.id === reportId);
-  if (idx < 0) return null;
+  const index = all.findIndex(report => report.id === reportId);
+
+  if (index < 0) return null;
+
   switch (action) {
     case 'suspend_property':
-      all[idx] = { ...all[idx], propertySuspended: true, propertySuspensionLifted: false, status: 'em_analise' };
+      all[index] = {
+        ...all[index],
+        propertySuspended: true,
+        propertySuspensionLifted: false,
+        status: 'em_analise',
+      };
       break;
+
     case 'suspend_landlord':
-      all[idx] = { ...all[idx], landlordSuspended: true, landlordSuspensionLifted: false, status: 'em_analise' };
+      all[index] = {
+        ...all[index],
+        landlordSuspended: true,
+        landlordSuspensionLifted: false,
+        status: 'em_analise',
+      };
       break;
+
     case 'block_landlord':
-      all[idx] = { ...all[idx], landlordBlocked: true, landlordSuspended: true, landlordUnblocked: false, landlordSuspensionLifted: false, status: 'em_analise' };
+      all[index] = {
+        ...all[index],
+        landlordBlocked: true,
+        landlordSuspended: true,
+        landlordUnblocked: false,
+        landlordSuspensionLifted: false,
+        status: 'em_analise',
+      };
       break;
+
     case 'lift_property_suspension':
-      all[idx] = { ...all[idx], propertySuspended: false, propertySuspensionLifted: true };
+      all[index] = {
+        ...all[index],
+        propertySuspended: false,
+        propertySuspensionLifted: true,
+      };
       break;
+
     case 'lift_landlord_suspension':
-      all[idx] = { ...all[idx], landlordSuspended: false, landlordSuspensionLifted: true };
+      all[index] = {
+        ...all[index],
+        landlordSuspended: false,
+        landlordSuspensionLifted: true,
+      };
       break;
+
     case 'unblock_landlord':
-      all[idx] = { ...all[idx], landlordBlocked: false, landlordSuspended: false, landlordUnblocked: true };
+      all[index] = {
+        ...all[index],
+        landlordBlocked: false,
+        landlordSuspended: false,
+        landlordUnblocked: true,
+      };
       break;
   }
+
   saveAll(all);
-  return all[idx];
+  return all[index];
 }
