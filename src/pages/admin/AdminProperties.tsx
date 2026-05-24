@@ -1,30 +1,30 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Home,
-  Search,
-  MapPin,
-  ShieldCheck,
-  DoorOpen,
-  DoorClosed,
-  Eye,
-  CheckCircle,
-  X as XIcon,
-  Ban,
-  Archive,
   AlertTriangle,
-  Clock,
-  FileText,
-  User,
+  Archive,
   Calendar,
-  Euro
+  CheckCircle,
+  Clock,
+  DoorClosed,
+  DoorOpen,
+  Euro,
+  Eye,
+  FileText,
+  Home,
+  MapPin,
+  Search,
+  ShieldCheck,
+  User,
+  X as XIcon,
 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { getProperties, getRooms, getRoomsByProperty } from '../../data/mockProperties';
+import { getAllApplications } from '../../data/mockLandlordCandidates';
 import { mockUsers } from '../../data/mockUsers';
-import { Property, Room } from '../../types/property';
+import { Property } from '../../types/property';
 
 type AdminStatus = 'active' | 'pending' | 'draft' | 'suspicious' | 'rejected' | 'archived';
 
@@ -43,37 +43,41 @@ export function AdminProperties() {
     'prop-2': 'active',
   });
 
+  const rooms = getRooms();
+
   const properties = useMemo(() => {
     const baseProperties = getProperties();
     const allRooms = getRooms();
+    const applications = getAllApplications();
 
-    return baseProperties.map((prop): PropertyWithAdmin => {
-      const rooms = allRooms.filter(r => r.propertyId === prop.id);
-
-      // Mock applications count (em produção viria da base de dados)
-      const applicationsCount = Math.floor(Math.random() * 15);
+    return baseProperties.map((property): PropertyWithAdmin => {
+      const propertyRooms = allRooms.filter(room => room.propertyId === property.id);
+      const roomIds = new Set(propertyRooms.map(room => room.id));
+      const applicationsCount = applications.filter(application =>
+        application.propertyId === property.id || roomIds.has(application.roomId),
+      ).length;
 
       return {
-        ...prop,
-        adminStatus: propertyStatuses[prop.id] || 'pending',
+        ...property,
+        adminStatus: propertyStatuses[property.id] || 'pending',
         applicationsCount,
       };
     });
   }, [propertyStatuses]);
 
-  const rooms = getRooms();
-
   const cities = useMemo(() => {
-    const uniqueCities = new Set(properties.map(p => p.city));
+    const uniqueCities = new Set(properties.map(property => property.city));
     return Array.from(uniqueCities).sort();
   }, [properties]);
 
   const filteredProperties = useMemo(() => {
     return properties.filter(property => {
+      const query = searchQuery.toLowerCase();
+
       const matchesSearch =
-        property.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        property.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        property.city.toLowerCase().includes(searchQuery.toLowerCase());
+        property.title.toLowerCase().includes(query) ||
+        property.address.toLowerCase().includes(query) ||
+        property.city.toLowerCase().includes(query);
 
       const matchesStatus = filterStatus === 'all' || property.adminStatus === filterStatus;
       const matchesCity = filterCity === 'all' || property.city === filterCity;
@@ -83,37 +87,40 @@ export function AdminProperties() {
   }, [properties, searchQuery, filterStatus, filterCity]);
 
   const stats = useMemo(() => {
-    const propertyRooms = rooms.filter(r => properties.some(p => p.id === r.propertyId));
+    const propertyRooms = rooms.filter(room => properties.some(property => property.id === room.propertyId));
 
     return {
       total: properties.length,
-      active: properties.filter(p => p.adminStatus === 'active').length,
-      pending: properties.filter(p => p.adminStatus === 'pending').length,
-      suspicious: properties.filter(p => p.adminStatus === 'suspicious').length,
+      active: properties.filter(property => property.adminStatus === 'active').length,
+      pending: properties.filter(property => property.adminStatus === 'pending').length,
+      suspicious: properties.filter(property => property.adminStatus === 'suspicious').length,
       totalRooms: propertyRooms.length,
-      availableRooms: propertyRooms.filter(r => r.status === 'available').length,
-      occupiedRooms: propertyRooms.filter(r => r.status === 'occupied').length,
+      availableRooms: propertyRooms.filter(room => room.status === 'available').length,
+      occupiedRooms: propertyRooms.filter(room => room.status === 'occupied').length,
     };
   }, [properties, rooms]);
 
   const getLandlordName = (landlordId: string) => {
-    const landlord = mockUsers.find(u => u.id === landlordId);
+    const landlord = mockUsers.find(user => user.id === landlordId);
     return landlord?.name || 'Desconhecido';
   };
 
   const getRoomStats = (propertyId: string) => {
-    const propertyRooms = rooms.filter(r => r.propertyId === propertyId);
+    const propertyRooms = rooms.filter(room => room.propertyId === propertyId);
+
     return {
       total: propertyRooms.length,
-      available: propertyRooms.filter(r => r.status === 'available').length,
-      occupied: propertyRooms.filter(r => r.status === 'occupied').length,
+      available: propertyRooms.filter(room => room.status === 'available').length,
+      occupied: propertyRooms.filter(room => room.status === 'occupied').length,
     };
   };
 
   const getMinPrice = (propertyId: string) => {
-    const propertyRooms = rooms.filter(r => r.propertyId === propertyId);
+    const propertyRooms = rooms.filter(room => room.propertyId === propertyId);
+
     if (propertyRooms.length === 0) return 0;
-    return Math.min(...propertyRooms.map(r => r.price));
+
+    return Math.min(...propertyRooms.map(room => room.price));
   };
 
   const getStatusBadge = (status: AdminStatus) => {
@@ -164,32 +171,28 @@ export function AdminProperties() {
     }
   };
 
-  const handleApprove = (propertyId: string) => {
-    setPropertyStatuses(prev => ({ ...prev, [propertyId]: 'active' }));
+  const updateSelectedStatus = (propertyId: string, status: AdminStatus) => {
+    setPropertyStatuses(previous => ({ ...previous, [propertyId]: status }));
+
     if (selectedProperty?.id === propertyId) {
-      setSelectedProperty(prev => prev ? { ...prev, adminStatus: 'active' } : null);
+      setSelectedProperty(previous => previous ? { ...previous, adminStatus: status } : null);
     }
+  };
+
+  const handleApprove = (propertyId: string) => {
+    updateSelectedStatus(propertyId, 'active');
   };
 
   const handleReject = (propertyId: string) => {
-    setPropertyStatuses(prev => ({ ...prev, [propertyId]: 'rejected' }));
-    if (selectedProperty?.id === propertyId) {
-      setSelectedProperty(prev => prev ? { ...prev, adminStatus: 'rejected' } : null);
-    }
+    updateSelectedStatus(propertyId, 'rejected');
   };
 
   const handleSuspend = (propertyId: string) => {
-    setPropertyStatuses(prev => ({ ...prev, [propertyId]: 'suspicious' }));
-    if (selectedProperty?.id === propertyId) {
-      setSelectedProperty(prev => prev ? { ...prev, adminStatus: 'suspicious' } : null);
-    }
+    updateSelectedStatus(propertyId, 'suspicious');
   };
 
   const handleArchive = (propertyId: string) => {
-    setPropertyStatuses(prev => ({ ...prev, [propertyId]: 'archived' }));
-    if (selectedProperty?.id === propertyId) {
-      setSelectedProperty(prev => prev ? { ...prev, adminStatus: 'archived' } : null);
-    }
+    updateSelectedStatus(propertyId, 'archived');
   };
 
   return (
@@ -291,61 +294,37 @@ export function AdminProperties() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <Input
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Procurar por título, endereço ou cidade..."
               className="pl-10"
             />
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <div className="flex gap-2">
+            {([
+              { key: 'all', label: 'Todos' },
+              { key: 'active', label: 'Ativos' },
+              { key: 'pending', label: 'Pendentes' },
+              { key: 'suspicious', label: 'Suspeitos' },
+            ] as const).map(item => (
               <button
-                onClick={() => setFilterStatus('all')}
+                key={item.key}
+                onClick={() => setFilterStatus(item.key)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filterStatus === 'all'
+                  filterStatus === item.key
                     ? 'bg-primary text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Todos
+                {item.label}
               </button>
-              <button
-                onClick={() => setFilterStatus('active')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filterStatus === 'active'
-                    ? 'bg-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Ativos
-              </button>
-              <button
-                onClick={() => setFilterStatus('pending')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filterStatus === 'pending'
-                    ? 'bg-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Pendentes
-              </button>
-              <button
-                onClick={() => setFilterStatus('suspicious')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filterStatus === 'suspicious'
-                    ? 'bg-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Suspeitos
-              </button>
-            </div>
+            ))}
 
-            <div className="w-px bg-gray-300"></div>
+            <div className="w-px bg-gray-300" />
 
             <select
               value={filterCity}
-              onChange={(e) => setFilterCity(e.target.value)}
+              onChange={(event) => setFilterCity(event.target.value)}
               className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 border-0 cursor-pointer"
             >
               <option value="all">Todas as cidades</option>
@@ -370,8 +349,9 @@ export function AdminProperties() {
                 <th className="text-right py-3 px-4 font-semibold text-gray-700">Ações</th>
               </tr>
             </thead>
+
             <tbody>
-              {filteredProperties.map((property) => {
+              {filteredProperties.map(property => {
                 const roomStats = getRoomStats(property.id);
                 const minPrice = getMinPrice(property.id);
 
@@ -392,12 +372,14 @@ export function AdminProperties() {
                         </div>
                       </div>
                     </td>
+
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-gray-400" />
                         <span className="text-sm text-gray-900">{getLandlordName(property.landlordId)}</span>
                       </div>
                     </td>
+
                     <td className="py-4 px-4">
                       <div className="flex items-start gap-1.5">
                         <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
@@ -407,9 +389,11 @@ export function AdminProperties() {
                         </div>
                       </div>
                     </td>
+
                     <td className="py-4 px-4">
                       {getStatusBadge(property.adminStatus)}
                     </td>
+
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1 text-green-600">
@@ -424,6 +408,7 @@ export function AdminProperties() {
                         <span className="text-xs text-gray-500">de {roomStats.total}</span>
                       </div>
                     </td>
+
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-1">
                         <Euro className="w-4 h-4 text-gray-600" />
@@ -431,12 +416,14 @@ export function AdminProperties() {
                         <span className="text-xs text-gray-500">/mês</span>
                       </div>
                     </td>
+
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-1.5">
                         <FileText className="w-4 h-4 text-gray-400" />
                         <span className="text-sm font-medium text-gray-900">{property.applicationsCount}</span>
                       </div>
                     </td>
+
                     <td className="py-4 px-4">
                       <div className="flex items-center justify-end gap-2">
                         <Button
@@ -446,6 +433,7 @@ export function AdminProperties() {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
+
                         {property.adminStatus === 'pending' && (
                           <Button
                             variant="ghost"
@@ -491,10 +479,11 @@ export function AdminProperties() {
                     </div>
                     <div className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
-                      <span>{selectedProperty.createdAt.toLocaleDateString()}</span>
+                      <span>{selectedProperty.createdAt.toLocaleDateString('pt-PT')}</span>
                     </div>
                   </div>
                 </div>
+
                 <button
                   onClick={() => setSelectedProperty(null)}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -527,39 +516,43 @@ export function AdminProperties() {
               </div>
 
               <div className="mb-6">
-                <h3 className="font-bold text-gray-900 mb-3">Endereço Completo</h3>
+                <h3 className="font-bold text-gray-900 mb-3">Endereço completo</h3>
                 <p className="text-gray-600">{selectedProperty.address}, {selectedProperty.city}</p>
               </div>
 
               <div className="mb-6">
                 <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
                   <DoorOpen className="w-5 h-5" />
-                  Quartos da Propriedade ({getRoomStats(selectedProperty.id).total})
+                  Quartos da propriedade ({getRoomStats(selectedProperty.id).total})
                 </h3>
+
                 <div className="space-y-3">
-                  {getRoomsByProperty(selectedProperty.id).map((room) => (
+                  {getRoomsByProperty(selectedProperty.id).map(room => (
                     <div key={room.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h4 className="font-medium text-gray-900">{room.title}</h4>
                             <Badge variant={room.status === 'available' ? 'success' : 'outline'}>
-                              {room.status === 'available' ? 'Disponível' : 'Ocupado'}
+                              {room.status === 'available' ? 'Disponível' : 'Indisponível'}
                             </Badge>
                           </div>
+
                           <p className="text-sm text-gray-600 mb-2">{room.description}</p>
+
                           <div className="flex items-center gap-4 text-sm text-gray-600">
-                            <span>{room.size}m²</span>
+                            {room.size && <span>{room.size}m²</span>}
                             <span>•</span>
                             <span className="font-bold text-primary">{room.price}€/mês</span>
                             {room.privateBathroom && (
                               <>
                                 <span>•</span>
-                                <span>WC Privativo</span>
+                                <span>WC privativo</span>
                               </>
                             )}
                           </div>
                         </div>
+
                         {room.images && room.images.length > 0 && (
                           <img
                             src={room.images[0]}
@@ -579,61 +572,56 @@ export function AdminProperties() {
                     <Button
                       variant="default"
                       className="flex-1"
-                      onClick={() => {
-                        handleApprove(selectedProperty.id);
-                      }}
+                      onClick={() => handleApprove(selectedProperty.id)}
                     >
                       <CheckCircle className="w-4 h-4 mr-2" />
-                      Aprovar Anúncio
+                      Aprovar anúncio
                     </Button>
+
                     <Button
                       variant="outline"
                       className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
-                      onClick={() => {
-                        handleReject(selectedProperty.id);
-                      }}
+                      onClick={() => handleReject(selectedProperty.id)}
                     >
                       <XIcon className="w-4 h-4 mr-2" />
                       Rejeitar
                     </Button>
                   </>
                 )}
+
                 {selectedProperty.adminStatus === 'active' && (
                   <>
                     <Button
                       variant="outline"
                       className="flex-1 border-yellow-300 text-yellow-600 hover:bg-yellow-50"
-                      onClick={() => {
-                        handleSuspend(selectedProperty.id);
-                      }}
+                      onClick={() => handleSuspend(selectedProperty.id)}
                     >
                       <AlertTriangle className="w-4 h-4 mr-2" />
-                      Marcar como Suspeito
+                      Marcar como suspeito
                     </Button>
+
                     <Button
                       variant="outline"
                       className="flex-1 border-gray-300 text-gray-600 hover:bg-gray-50"
-                      onClick={() => {
-                        handleArchive(selectedProperty.id);
-                      }}
+                      onClick={() => handleArchive(selectedProperty.id)}
                     >
                       <Archive className="w-4 h-4 mr-2" />
                       Arquivar
                     </Button>
                   </>
                 )}
+
                 {(selectedProperty.adminStatus === 'suspicious' || selectedProperty.adminStatus === 'rejected') && (
                   <Button
                     variant="outline"
                     className="flex-1 border-green-300 text-green-600 hover:bg-green-50"
-                    onClick={() => {
-                      handleApprove(selectedProperty.id);
-                    }}
+                    onClick={() => handleApprove(selectedProperty.id)}
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
-                    Reativar como Ativo
+                    Reativar como ativo
                   </Button>
                 )}
+
                 <Button
                   variant="outline"
                   onClick={() => setSelectedProperty(null)}

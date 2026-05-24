@@ -1,13 +1,21 @@
 import { ReactNode } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
+import type { UserType } from '../types/auth';
 
 interface ProtectedRouteProps {
   children: ReactNode;
+  allowedTypes?: UserType[];
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, loading } = useAuth();
+function getDefaultRoute(type: UserType): string {
+  if (type === 'admin') return '/admin';
+  if (type === 'landlord') return '/landlord/dashboard';
+  return '/dashboard';
+}
+
+export function ProtectedRoute({ children, allowedTypes }: ProtectedRouteProps) {
+  const { isAuthenticated, loading, user } = useAuth();
 
   if (loading) {
     return (
@@ -19,6 +27,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (allowedTypes && user && !allowedTypes.includes(user.type)) {
+    return <Navigate to={getDefaultRoute(user.type)} replace />;
   }
 
   return <>{children}</>;

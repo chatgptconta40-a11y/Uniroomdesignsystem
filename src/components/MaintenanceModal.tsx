@@ -1,12 +1,26 @@
 import { useState } from 'react';
-import { X, Wrench, AlertCircle, CheckCircle, Upload } from 'lucide-react';
+import {
+  AlertCircle,
+  Droplets,
+  Flame,
+  KeyRound,
+  Plug,
+  Router,
+  Sparkles,
+  Upload,
+  Wrench,
+  Zap,
+} from 'lucide-react';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
-import { Badge } from './Badge';
 import { useAuth } from '../context/AuthContext';
 import { createMaintenanceRequest } from '../data/mockMaintenance';
-import { maintenanceCategoryLabels, maintenanceUrgencyLabels } from '../types/maintenance';
+import {
+  MaintenanceCategory,
+  MaintenanceUrgency,
+  maintenanceUrgencyLabels,
+} from '../types/maintenance';
 import { toast } from 'sonner';
 
 interface MaintenanceModalProps {
@@ -16,46 +30,62 @@ interface MaintenanceModalProps {
   landlordId: string;
 }
 
-export function MaintenanceModal({ isOpen, onClose, accommodationId, landlordId }: MaintenanceModalProps) {
+const categories: {
+  value: MaintenanceCategory;
+  label: string;
+  icon: React.ElementType;
+}[] = [
+  { value: 'plumbing', label: 'Canalização', icon: Droplets },
+  { value: 'electricity', label: 'Eletricidade', icon: Zap },
+  { value: 'heating', label: 'Água quente / Esquentador', icon: Flame },
+  { value: 'internet', label: 'Internet', icon: Router },
+  { value: 'appliances', label: 'Eletrodomésticos', icon: Plug },
+  { value: 'locks', label: 'Fechaduras / Portas', icon: KeyRound },
+  { value: 'cleaning', label: 'Limpeza / Espaços comuns', icon: Sparkles },
+  { value: 'other', label: 'Outro', icon: Wrench },
+];
+
+export function MaintenanceModal({
+  isOpen,
+  onClose,
+  accommodationId,
+  landlordId,
+}: MaintenanceModalProps) {
   const { user } = useAuth();
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState<MaintenanceCategory | ''>('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [urgency, setUrgency] = useState<'low' | 'medium' | 'high'>('medium');
+  const [urgency, setUrgency] = useState<MaintenanceUrgency>('medium');
   const [photoUrl, setPhotoUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const categories = [
-    { value: 'plumbing', label: 'Canalização', icon: '🚰' },
-    { value: 'electricity', label: 'Eletricidade', icon: '⚡' },
-    { value: 'heating', label: 'Água quente / Esquentador', icon: '🔥' },
-    { value: 'internet', label: 'Internet', icon: '📶' },
-    { value: 'appliances', label: 'Eletrodomésticos', icon: '🔌' },
-    { value: 'locks', label: 'Fechaduras / Portas', icon: '🔐' },
-    { value: 'cleaning', label: 'Limpeza / Espaços comuns', icon: '🧹' },
-    { value: 'other', label: 'Outro', icon: '🔧' },
-  ];
+  const resetForm = () => {
+    setCategory('');
+    setTitle('');
+    setDescription('');
+    setUrgency('medium');
+    setPhotoUrl('');
+  };
 
   const handleSubmit = async () => {
-    if (!category || !title || !description) {
+    if (!category || !title.trim() || !description.trim()) {
       toast.error('Preenche todos os campos obrigatórios');
       return;
     }
 
     setIsSubmitting(true);
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 700));
 
     createMaintenanceRequest(
       user?.id || '',
       accommodationId,
       landlordId,
       category,
-      title,
-      description,
+      title.trim(),
+      description.trim(),
       urgency,
-      photoUrl || undefined
+      photoUrl || undefined,
     );
 
     setIsSubmitting(false);
@@ -63,19 +93,14 @@ export function MaintenanceModal({ isOpen, onClose, accommodationId, landlordId 
       description: 'O senhorio foi notificado.',
     });
 
-    // Reset form
-    setCategory('');
-    setTitle('');
-    setDescription('');
-    setUrgency('medium');
-    setPhotoUrl('');
-
+    resetForm();
     onClose();
   };
 
   const handleFileUpload = () => {
-    // Mock file upload
-    toast.info('Funcionalidade de upload em desenvolvimento');
+    const demoPhotoUrl = 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=900&q=80';
+    setPhotoUrl(demoPhotoUrl);
+    toast.success('Foto de exemplo anexada ao pedido.');
   };
 
   return (
@@ -96,51 +121,55 @@ export function MaintenanceModal({ isOpen, onClose, accommodationId, landlordId 
       }
     >
       <div className="space-y-6">
-        {/* Category Selection */}
         <div>
           <label className="block text-sm font-semibold text-foreground mb-3">
-            Categoria do Problema *
+            Categoria do problema *
           </label>
+
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {categories.map(cat => (
-              <button
-                key={cat.value}
-                onClick={() => setCategory(cat.value)}
-                className={`p-4 rounded-xl border-2 transition-all text-left ${
-                  category === cat.value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/40 hover:bg-muted'
-                }`}
-              >
-                <div className="text-2xl mb-2">{cat.icon}</div>
-                <p className="text-sm font-medium text-foreground">{cat.label}</p>
-              </button>
-            ))}
+            {categories.map(cat => {
+              const Icon = cat.icon;
+              const selected = category === cat.value;
+
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => setCategory(cat.value)}
+                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                    selected
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/40 hover:bg-muted'
+                  }`}
+                >
+                  <Icon className={`w-6 h-6 mb-2 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <p className="text-sm font-medium text-foreground">{cat.label}</p>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Title */}
         <div>
           <label className="block text-sm font-semibold text-foreground mb-3">
-            Título do Problema *
+            Título do problema *
           </label>
           <Input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(event) => setTitle(event.target.value)}
             placeholder="Ex: Esquentador avariado"
             maxLength={100}
           />
           <p className="text-xs text-muted-foreground mt-1">{title.length}/100 caracteres</p>
         </div>
 
-        {/* Description */}
         <div>
           <label className="block text-sm font-semibold text-foreground mb-3">
             Descrição *
           </label>
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(event) => setDescription(event.target.value)}
             placeholder="Descreve o problema em detalhe..."
             rows={5}
             maxLength={500}
@@ -149,23 +178,24 @@ export function MaintenanceModal({ isOpen, onClose, accommodationId, landlordId 
           <p className="text-xs text-muted-foreground mt-1">{description.length}/500 caracteres</p>
         </div>
 
-        {/* Urgency */}
         <div>
           <label className="block text-sm font-semibold text-foreground mb-3">
             Urgência *
           </label>
+
           <div className="grid grid-cols-3 gap-3">
             {(['low', 'medium', 'high'] as const).map(level => (
               <button
                 key={level}
+                type="button"
                 onClick={() => setUrgency(level)}
                 className={`p-4 rounded-xl border-2 transition-all ${
                   urgency === level
                     ? level === 'high'
                       ? 'border-destructive bg-destructive/5'
                       : level === 'medium'
-                      ? 'border-accent bg-accent/5'
-                      : 'border-secondary bg-secondary/5'
+                        ? 'border-accent bg-accent/5'
+                        : 'border-secondary bg-secondary/5'
                     : 'border-border hover:border-muted-foreground hover:bg-muted'
                 }`}
               >
@@ -174,10 +204,11 @@ export function MaintenanceModal({ isOpen, onClose, accommodationId, landlordId 
                     ? level === 'high'
                       ? 'text-destructive'
                       : level === 'medium'
-                      ? 'text-accent'
-                      : 'text-secondary'
+                        ? 'text-accent'
+                        : 'text-secondary'
                     : 'text-foreground'
-                }`}>
+                }`}
+                >
                   {maintenanceUrgencyLabels[level]}
                 </p>
               </button>
@@ -185,22 +216,32 @@ export function MaintenanceModal({ isOpen, onClose, accommodationId, landlordId 
           </div>
         </div>
 
-        {/* Photo Upload (Mock) */}
         <div>
           <label className="block text-sm font-semibold text-foreground mb-3">
-            Foto (opcional)
+            Foto opcional
           </label>
+
           <button
+            type="button"
             onClick={handleFileUpload}
-            className="w-full p-6 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-all"
+            className={`w-full p-6 border-2 border-dashed rounded-xl transition-all ${
+              photoUrl
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-primary hover:bg-primary/5'
+            }`}
           >
             <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm font-medium text-foreground">Carregar foto</p>
-            <p className="text-xs text-muted-foreground mt-1">PNG, JPG até 5MB</p>
+            <p className="text-sm font-medium text-foreground">
+              {photoUrl ? 'Foto anexada' : 'Anexar foto'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {photoUrl
+                ? 'Podes enviar o pedido com esta fotografia.'
+                : 'Adiciona uma fotografia demonstrativa ao pedido.'}
+            </p>
           </button>
         </div>
 
-        {/* Info Box */}
         <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
           <div className="text-sm text-foreground">

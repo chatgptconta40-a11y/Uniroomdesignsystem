@@ -35,18 +35,18 @@ export function LandlordProperties() {
     );
   }
 
-  const landlordProperties = properties.filter(p => p.landlordId === user?.id);
+  const landlordProperties = properties.filter(property => property.landlordId === user.id);
 
   const filteredProperties = filter === 'all'
     ? landlordProperties
-    : landlordProperties.filter(p => p.status === filter);
+    : landlordProperties.filter(property => property.status === filter);
 
   const counts = {
     all: landlordProperties.length,
-    active: landlordProperties.filter(p => p.status === 'active').length,
-    paused: landlordProperties.filter(p => p.status === 'paused').length,
-    draft: landlordProperties.filter(p => p.status === 'draft').length,
-    archived: landlordProperties.filter(p => p.status === 'archived').length,
+    active: landlordProperties.filter(property => property.status === 'active').length,
+    paused: landlordProperties.filter(property => property.status === 'paused').length,
+    draft: landlordProperties.filter(property => property.status === 'draft').length,
+    archived: landlordProperties.filter(property => property.status === 'archived').length,
   };
 
   const handlePause = (id: string) => {
@@ -61,6 +61,14 @@ export function LandlordProperties() {
   };
 
   const handlePublish = (id: string) => {
+    const propertyRooms = getRoomsByProperty(id);
+    const hasAvailableRoom = propertyRooms.some(room => normalizeRoomStatus(room) === 'available');
+
+    if (!hasAvailableRoom) {
+      toast.error('Publica pelo menos um quarto disponível antes de ativar a propriedade.');
+      return;
+    }
+
     updatePropertyStatus(id, 'active');
     toast.success('Casa publicada com sucesso');
   };
@@ -75,8 +83,8 @@ export function LandlordProperties() {
     navigate(`/landlord/property/${id}`);
   };
 
-  const handleEdit = (_id: string) => {
-    toast.info('Edição da propriedade em desenvolvimento');
+  const handleEdit = (id: string) => {
+    navigate(`/landlord/property/${id}`);
   };
 
   return (
@@ -170,10 +178,10 @@ export function LandlordProperties() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProperties.map((property) => {
               const propertyRooms = getRoomsByProperty(property.id);
-              const availableRooms = propertyRooms.filter(r => normalizeRoomStatus(r) === 'available').length;
-              const reservedRooms = propertyRooms.filter(r => normalizeRoomStatus(r) === 'reserved').length;
-              const occupiedRooms = propertyRooms.filter(r => normalizeRoomStatus(r) === 'occupied').length;
-              const pausedRooms = propertyRooms.filter(r => normalizeRoomStatus(r) === 'paused').length;
+              const availableRooms = propertyRooms.filter(room => normalizeRoomStatus(room) === 'available').length;
+              const reservedRooms = propertyRooms.filter(room => normalizeRoomStatus(room) === 'reserved').length;
+              const occupiedRooms = propertyRooms.filter(room => normalizeRoomStatus(room) === 'occupied').length;
+              const pausedRooms = propertyRooms.filter(room => normalizeRoomStatus(room) === 'paused').length;
 
               return (
                 <PropertyCard

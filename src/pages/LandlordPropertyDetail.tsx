@@ -1730,12 +1730,17 @@ export function LandlordPropertyDetail() {
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {rooms.map(room => {
-                        const acceptedCandidate = candidates.find(c => c.roomId === room.id && c.status === 'accepted');
+                        const assignedStudentId = room.reservedBy ?? room.occupiedBy;
+                        const acceptedCandidate = candidates.find(c =>
+                          c.roomId === room.id &&
+                          c.status === 'accepted' &&
+                          c.studentId === assignedStudentId
+                        );
                         return (
                         <RoomCard
                           key={room.id}
                           room={room}
-                          reservedByName={(room.reservedBy || room.occupiedBy) ? (acceptedCandidate?.studentName ?? room.reservedBy ?? room.occupiedBy) : undefined}
+                          reservedByName={assignedStudentId ? (acceptedCandidate?.studentName ?? assignedStudentId) : undefined}
                           onEdit={() => setEditingRoom(room)}
                           onPause={!property.adminSuspended && (normalizeRoomStatus(room) === 'available' || normalizeRoomStatus(room) === 'reserved') ? () => handleRoomPause(room.id) : undefined}
                           onReactivate={!property.adminSuspended && !isAccountSuspended && normalizeRoomStatus(room) === 'paused' ? () => handleRoomReactivate(room.id) : undefined}
