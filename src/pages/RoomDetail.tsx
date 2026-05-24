@@ -17,7 +17,6 @@ import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
 import { getExistingApplicationForRoom } from '../data/mockApplications';
-import { getProfile } from '../data/mockProfiles';
 import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
@@ -54,12 +53,6 @@ export function RoomDetail() {
   const existingApplication = user?.type === 'student' && room
     ? getExistingApplicationForRoom(user.id, room.id)
     : null;
-  const studentProfile = user?.type === 'student' ? getProfile(user.id) : null;
-  const canShowCompatibility = Boolean(
-    user?.type === 'student' &&
-    studentProfile?.onboardingCompleted &&
-    room?.compatibilityScore
-  );
 
   if (!room || !property) {
     return (
@@ -517,7 +510,7 @@ export function RoomDetail() {
                     )}
                   </div>
 
-                  {canShowCompatibility && (
+                  {room.compatibilityScore && (
                     <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-green-50 rounded-lg border border-green-100">
                       <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
                       <span className="text-xs text-green-700">Compatibilidade</span>
