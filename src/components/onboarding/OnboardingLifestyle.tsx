@@ -1,7 +1,19 @@
 import { LifestyleProfile } from '../../types/profile';
 import { Slider } from '../Slider';
 import { OptionCard } from '../OptionCard';
-import { Users, Moon, Sun, Sparkles, Volume2, UserPlus, Cigarette, Dog, ChefHat, MessageCircle } from 'lucide-react';
+import {
+  Users,
+  Moon,
+  Clock3,
+  Sparkles,
+  Volume2,
+  UserPlus,
+  Cigarette,
+  Dog,
+  ChefHat,
+  MessageCircle,
+  Info,
+} from 'lucide-react';
 
 interface OnboardingLifestyleProps {
   data: Partial<LifestyleProfile>;
@@ -22,27 +34,54 @@ export function OnboardingLifestyle({ data, onChange }: OnboardingLifestyleProps
         <div>
           <h2>Perfil de Convivência</h2>
           <p className="text-muted-foreground">
-            Quanto mais completo, melhores serão as tuas sugestões de colegas de casa
+            Estas respostas ajudam a calcular compatibilidade com casas partilhadas e futuros colegas.
           </p>
         </div>
       </div>
 
       <div className="space-y-8">
-        {/* Horários */}
         <div className="p-5 bg-muted/30 rounded-xl">
           <div className="flex items-center gap-2 mb-4">
-            <Moon className="w-5 h-5 text-primary" />
-            <h3 className="text-lg">Horários</h3>
+            <Clock3 className="w-5 h-5 text-primary" />
+            <h3 className="text-lg">Rotina diária</h3>
           </div>
+
           <div className="space-y-5">
+            <div>
+              <label className="block mb-3 text-sm font-medium text-foreground">
+                Como é normalmente a tua rotina?
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <OptionCard
+                  selected={data.schedule === 'morning'}
+                  onClick={() => handleChange('schedule', 'morning')}
+                  title="Mais matinal"
+                  description="Funciono melhor cedo"
+                />
+                <OptionCard
+                  selected={data.schedule === 'flexible'}
+                  onClick={() => handleChange('schedule', 'flexible')}
+                  title="Flexível"
+                  description="Adapto-me bem"
+                />
+                <OptionCard
+                  selected={data.schedule === 'night'}
+                  onClick={() => handleChange('schedule', 'night')}
+                  title="Mais noturna"
+                  description="Estudo ou trabalho tarde"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block mb-3 text-sm font-medium text-foreground">
                 A que horas costumas deitar-te?
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <OptionCard
                   selected={data.bedtime === 'early'}
                   onClick={() => handleChange('bedtime', 'early')}
+                  icon={<Moon className="w-5 h-5 text-primary" />}
                   title="Cedo"
                   description="Antes das 22h"
                 />
@@ -65,7 +104,7 @@ export function OnboardingLifestyle({ data, onChange }: OnboardingLifestyleProps
               <label className="block mb-3 text-sm font-medium text-foreground">
                 A que horas costumas acordar?
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <OptionCard
                   selected={data.wakeupTime === 'early'}
                   onClick={() => handleChange('wakeupTime', 'early')}
@@ -89,94 +128,100 @@ export function OnboardingLifestyle({ data, onChange }: OnboardingLifestyleProps
           </div>
         </div>
 
-        {/* Limpeza */}
         <div className="p-5 bg-muted/30 rounded-xl">
           <div className="flex items-center gap-2 mb-4">
             <Sparkles className="w-5 h-5 text-primary" />
-            <h3 className="text-lg">Limpeza e Organização</h3>
+            <h3 className="text-lg">Limpeza e organização</h3>
           </div>
+
           <div className="space-y-5">
             <Slider
-              label="Quão organizado(a) és?"
+              label="Quão importante é para ti manter a casa organizada?"
               min={1}
               max={5}
               value={data.cleanliness || 3}
               onChange={(value) => handleChange('cleanliness', value)}
-              labels={{ min: 'Desorganizado', max: 'Muito organizado' }}
+              labels={{ min: 'Sou relaxado(a)', max: 'Muito importante' }}
             />
 
             <div>
               <label className="block mb-3 text-sm font-medium text-foreground">
-                Com que frequência limpas espaços comuns?
+                Com que frequência achas justo limpar espaços comuns?
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <OptionCard
                   selected={data.cleaningFrequency === 'daily'}
                   onClick={() => handleChange('cleaningFrequency', 'daily')}
-                  title="Diariamente"
+                  title="Todos os dias"
+                  description="Pequenas tarefas diárias"
                 />
                 <OptionCard
                   selected={data.cleaningFrequency === 'weekly'}
                   onClick={() => handleChange('cleaningFrequency', 'weekly')}
                   title="Semanalmente"
+                  description="Rotina combinada"
                 />
                 <OptionCard
                   selected={data.cleaningFrequency === 'monthly'}
                   onClick={() => handleChange('cleaningFrequency', 'monthly')}
-                  title="Mensalmente"
+                  title="Pontualmente"
+                  description="Quando for necessário"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Ruído */}
         <div className="p-5 bg-muted/30 rounded-xl">
           <div className="flex items-center gap-2 mb-4">
             <Volume2 className="w-5 h-5 text-primary" />
-            <h3 className="text-lg">Ruído</h3>
+            <h3 className="text-lg">Ruído e descanso</h3>
           </div>
+
           <div className="space-y-5">
             <Slider
-              label="Qual é a tua tolerância ao ruído?"
+              label="Quão tolerante és a ruído em casa?"
               min={1}
               max={5}
               value={data.noiseTolerance || 3}
               onChange={(value) => handleChange('noiseTolerance', value)}
-              labels={{ min: 'Baixa', max: 'Alta' }}
+              labels={{ min: 'Preciso de silêncio', max: 'Sou tolerante' }}
             />
 
             <div>
               <label className="block mb-3 text-sm font-medium text-foreground">
-                Com que volume costumas ouvir música?
+                Como costumas ouvir música ou ver conteúdos?
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <OptionCard
                   selected={data.musicVolume === 'quiet'}
                   onClick={() => handleChange('musicVolume', 'quiet')}
                   title="Baixo"
+                  description="Quase sempre discreto"
                 />
                 <OptionCard
                   selected={data.musicVolume === 'moderate'}
                   onClick={() => handleChange('musicVolume', 'moderate')}
                   title="Moderado"
+                  description="Volume normal"
                 />
                 <OptionCard
                   selected={data.musicVolume === 'loud'}
                   onClick={() => handleChange('musicVolume', 'loud')}
                   title="Alto"
+                  description="Gosto de som presente"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Visitas */}
         <div className="p-5 bg-muted/30 rounded-xl">
           <div className="flex items-center gap-2 mb-4">
             <UserPlus className="w-5 h-5 text-primary" />
             <h3 className="text-lg">Visitas</h3>
           </div>
+
           <div className="space-y-5">
             <div>
               <label className="block mb-3 text-sm font-medium text-foreground">
@@ -207,24 +252,24 @@ export function OnboardingLifestyle({ data, onChange }: OnboardingLifestyleProps
             </div>
 
             <Slider
-              label="Quão confortável és com visitas em casa?"
+              label="Quão confortável estás com visitas de colegas em casa?"
               min={1}
               max={5}
               value={data.guestsAcceptance || 3}
               onChange={(value) => handleChange('guestsAcceptance', value)}
-              labels={{ min: 'Pouco confortável', max: 'Muito confortável' }}
+              labels={{ min: 'Prefiro evitar', max: 'Totalmente confortável' }}
             />
           </div>
         </div>
 
-        {/* Hábitos */}
         <div className="p-5 bg-muted/30 rounded-xl">
           <div className="flex items-center gap-2 mb-4">
             <ChefHat className="w-5 h-5 text-primary" />
-            <h3 className="text-lg">Hábitos</h3>
+            <h3 className="text-lg">Hábitos do dia a dia</h3>
           </div>
+
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block mb-3 text-sm font-medium text-foreground">
                   Fumas?
@@ -246,7 +291,7 @@ export function OnboardingLifestyle({ data, onChange }: OnboardingLifestyleProps
 
               <div>
                 <label className="block mb-3 text-sm font-medium text-foreground">
-                  Tens animais de estimação?
+                  Tens animais de estimação contigo?
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <OptionCard
@@ -268,7 +313,7 @@ export function OnboardingLifestyle({ data, onChange }: OnboardingLifestyleProps
               <label className="block mb-3 text-sm font-medium text-foreground">
                 Com que frequência cozinhas em casa?
               </label>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <OptionCard
                   selected={data.cooking === 'never'}
                   onClick={() => handleChange('cooking', 'never')}
@@ -294,70 +339,72 @@ export function OnboardingLifestyle({ data, onChange }: OnboardingLifestyleProps
           </div>
         </div>
 
-        {/* Social */}
         <div className="p-5 bg-muted/30 rounded-xl">
           <div className="flex items-center gap-2 mb-4">
             <MessageCircle className="w-5 h-5 text-primary" />
-            <h3 className="text-lg">Personalidade e Ambiente Social</h3>
+            <h3 className="text-lg">Ambiente social</h3>
           </div>
+
           <div className="space-y-5">
             <div>
               <label className="block mb-3 text-sm font-medium text-foreground">
-                Como te descreves?
+                Como te descreves em casa?
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <OptionCard
                   selected={data.personality === 'introvert'}
                   onClick={() => handleChange('personality', 'introvert')}
-                  title="Introvertido"
-                  description="Prefiro tempo sozinho"
+                  title="Reservado(a)"
+                  description="Valorizo espaço pessoal"
                 />
                 <OptionCard
                   selected={data.personality === 'moderate'}
                   onClick={() => handleChange('personality', 'moderate')}
-                  title="Equilibrado"
-                  description="Depende do dia"
+                  title="Equilibrado(a)"
+                  description="Depende do contexto"
                 />
                 <OptionCard
                   selected={data.personality === 'extrovert'}
                   onClick={() => handleChange('personality', 'extrovert')}
-                  title="Extrovertido"
-                  description="Adoro socializar"
+                  title="Sociável"
+                  description="Gosto de convívio"
                 />
               </div>
             </div>
 
             <div>
               <label className="block mb-3 text-sm font-medium text-foreground">
-                Que tipo de ambiente preferes em casa?
+                Que ambiente preferes numa casa partilhada?
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <OptionCard
                   selected={data.socialPreference === 'quiet'}
                   onClick={() => handleChange('socialPreference', 'quiet')}
                   title="Tranquilo"
-                  description="Espaço calmo e privado"
+                  description="Casa calma e privada"
                 />
                 <OptionCard
                   selected={data.socialPreference === 'moderate'}
                   onClick={() => handleChange('socialPreference', 'moderate')}
                   title="Equilibrado"
-                  description="Mix de ambos"
+                  description="Respeito e algum convívio"
                 />
                 <OptionCard
                   selected={data.socialPreference === 'social'}
                   onClick={() => handleChange('socialPreference', 'social')}
                   title="Social"
-                  description="Convívio frequente"
+                  description="Ambiente mais próximo"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="p-6 bg-secondary/10 border border-secondary/20 rounded-xl">
-          <p className="text-sm text-secondary-foreground">
-            💡 <strong>Dica:</strong> Quanto mais completo o teu perfil de convivência, melhores serão os teus matches e menos conflitos terás com os teus colegas de casa.
+        <div className="p-5 bg-primary/5 border border-primary/20 rounded-xl flex gap-3">
+          <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Estas respostas não servem para excluir pessoas automaticamente. Servem para explicar melhor a compatibilidade,
+            reduzir conflitos e ajudar o estudante a escolher uma casa onde se sinta confortável.
           </p>
         </div>
       </div>
