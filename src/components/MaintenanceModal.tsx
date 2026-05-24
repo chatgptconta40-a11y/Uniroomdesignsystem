@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ElementType } from 'react';
 import {
   AlertCircle,
   Droplets,
@@ -11,17 +11,14 @@ import {
   Wrench,
   Zap,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
 import { useAuth } from '../context/AuthContext';
 import { createMaintenanceRequest } from '../data/mockMaintenance';
-import {
-  MaintenanceCategory,
-  MaintenanceUrgency,
-  maintenanceUrgencyLabels,
-} from '../types/maintenance';
-import { toast } from 'sonner';
+import { maintenanceUrgencyLabels } from '../types/maintenance';
+import type { MaintenanceCategory, MaintenanceUrgency } from '../types/maintenance';
 
 interface MaintenanceModalProps {
   isOpen: boolean;
@@ -33,7 +30,7 @@ interface MaintenanceModalProps {
 const categories: {
   value: MaintenanceCategory;
   label: string;
-  icon: React.ElementType;
+  icon: ElementType;
 }[] = [
   { value: 'plumbing', label: 'Canalização', icon: Droplets },
   { value: 'electricity', label: 'Eletricidade', icon: Zap },
@@ -52,6 +49,7 @@ export function MaintenanceModal({
   landlordId,
 }: MaintenanceModalProps) {
   const { user } = useAuth();
+
   const [category, setCategory] = useState<MaintenanceCategory | ''>('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -65,6 +63,12 @@ export function MaintenanceModal({
     setDescription('');
     setUrgency('medium');
     setPhotoUrl('');
+    setIsSubmitting(false);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
   };
 
   const handleSubmit = async () => {
@@ -88,13 +92,11 @@ export function MaintenanceModal({
       photoUrl || undefined,
     );
 
-    setIsSubmitting(false);
     toast.success('Pedido de manutenção enviado!', {
       description: 'O senhorio foi notificado.',
     });
 
-    resetForm();
-    onClose();
+    handleClose();
   };
 
   const handleFileUpload = () => {
@@ -106,16 +108,17 @@ export function MaintenanceModal({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
-      title="Reportar Problema"
+      onClose={handleClose}
+      title="Reportar problema"
       size="lg"
       footer={
         <div className="flex items-center gap-3 justify-end">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
             Cancelar
           </Button>
+
           <Button variant="primary" onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? 'A enviar...' : 'Enviar Pedido'}
+            {isSubmitting ? 'A enviar...' : 'Enviar pedido'}
           </Button>
         </div>
       }
@@ -156,7 +159,7 @@ export function MaintenanceModal({
           </label>
           <Input
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={event => setTitle(event.target.value)}
             placeholder="Ex: Esquentador avariado"
             maxLength={100}
           />
@@ -169,7 +172,7 @@ export function MaintenanceModal({
           </label>
           <textarea
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={event => setDescription(event.target.value)}
             placeholder="Descreve o problema em detalhe..."
             rows={5}
             maxLength={500}
@@ -184,35 +187,40 @@ export function MaintenanceModal({
           </label>
 
           <div className="grid grid-cols-3 gap-3">
-            {(['low', 'medium', 'high'] as const).map(level => (
-              <button
-                key={level}
-                type="button"
-                onClick={() => setUrgency(level)}
-                className={`p-4 rounded-xl border-2 transition-all ${
-                  urgency === level
-                    ? level === 'high'
-                      ? 'border-destructive bg-destructive/5'
-                      : level === 'medium'
-                        ? 'border-accent bg-accent/5'
-                        : 'border-secondary bg-secondary/5'
-                    : 'border-border hover:border-muted-foreground hover:bg-muted'
-                }`}
-              >
-                <p className={`text-sm font-semibold ${
-                  urgency === level
-                    ? level === 'high'
-                      ? 'text-destructive'
-                      : level === 'medium'
-                        ? 'text-accent'
-                        : 'text-secondary'
-                    : 'text-foreground'
-                }`}
+            {(['low', 'medium', 'high'] as const).map(level => {
+              const selected = urgency === level;
+
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setUrgency(level)}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    selected
+                      ? level === 'high'
+                        ? 'border-destructive bg-destructive/5'
+                        : level === 'medium'
+                          ? 'border-accent bg-accent/5'
+                          : 'border-secondary bg-secondary/5'
+                      : 'border-border hover:border-muted-foreground hover:bg-muted'
+                  }`}
                 >
-                  {maintenanceUrgencyLabels[level]}
-                </p>
-              </button>
-            ))}
+                  <p
+                    className={`text-sm font-semibold ${
+                      selected
+                        ? level === 'high'
+                          ? 'text-destructive'
+                          : level === 'medium'
+                            ? 'text-accent'
+                            : 'text-secondary'
+                        : 'text-foreground'
+                    }`}
+                  >
+                    {maintenanceUrgencyLabels[level]}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
 
