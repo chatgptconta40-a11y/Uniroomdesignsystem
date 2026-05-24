@@ -100,9 +100,9 @@ export function MaintenanceModal({
   };
 
   const handleFileUpload = () => {
-    const demoPhotoUrl = 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=900&q=80';
-    setPhotoUrl(demoPhotoUrl);
-    toast.success('Foto de exemplo anexada ao pedido.');
+    const samplePhotoUrl = 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=900&q=80';
+    setPhotoUrl(samplePhotoUrl);
+    toast.success('Fotografia anexada ao pedido.');
   };
 
   return (
@@ -226,7 +226,7 @@ export function MaintenanceModal({
 
         <div>
           <label className="block text-sm font-semibold text-foreground mb-3">
-            Foto opcional
+            Fotografia (opcional)
           </label>
 
           <button
@@ -240,12 +240,12 @@ export function MaintenanceModal({
           >
             <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm font-medium text-foreground">
-              {photoUrl ? 'Foto anexada' : 'Anexar foto'}
+              {photoUrl ? 'Fotografia anexada' : 'Anexar fotografia'}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {photoUrl
-                ? 'Podes enviar o pedido com esta fotografia.'
-                : 'Adiciona uma fotografia demonstrativa ao pedido.'}
+                ? 'A fotografia será enviada com o pedido.'
+                : 'Adiciona uma imagem para ajudar o senhorio a identificar o problema.'}
             </p>
           </button>
         </div>

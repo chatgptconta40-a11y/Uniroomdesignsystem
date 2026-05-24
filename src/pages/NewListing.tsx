@@ -383,7 +383,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                   <Camera className="w-5 h-5" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Seleciona uma foto de exemplo (upload real em breve)</p>
+              <p className="text-xs text-muted-foreground mt-1">Adiciona fotografias do quarto para aumentar as candidaturas</p>
             </div>
 
             {/* Publish now toggle */}

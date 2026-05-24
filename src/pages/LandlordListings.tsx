@@ -816,6 +816,7 @@ export function LandlordListings() {
         description="Este alojamento e os respetivos quartos deixam de aparecer na pesquisa até voltares a reativar."
         cancelLabel="Cancelar"
         confirmLabel="Pausar alojamento"
+        variant="neutral"
       />
 
       <ConfirmModal
@@ -826,6 +827,7 @@ export function LandlordListings() {
         description="O alojamento será removido da pesquisa, mas o histórico será mantido."
         cancelLabel="Cancelar"
         confirmLabel="Arquivar"
+        variant="destructive"
       />
     </div>
   );

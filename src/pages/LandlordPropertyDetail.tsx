@@ -1282,7 +1282,7 @@ export function LandlordPropertyDetail() {
           <Home className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-xl font-bold mb-2">Alojamento não encontrado</h2>
           <p className="text-muted-foreground mb-6">Este alojamento não existe ou não tens acesso.</p>
-          <Button onClick={() => navigate('/landlord/properties')}>Voltar aos Alojamentos</Button>
+          <Button onClick={() => navigate('/landlord/listings')}>Os meus anúncios</Button>
         </Card>
       </div>
     );
@@ -1294,7 +1294,7 @@ export function LandlordPropertyDetail() {
         <Card className="p-10 text-center max-w-md">
           <h2 className="text-xl font-bold mb-2">Acesso Restrito</h2>
           <p className="text-muted-foreground mb-6">Não tens permissão para ver este alojamento.</p>
-          <Button onClick={() => navigate('/landlord/properties')}>Voltar aos Alojamentos</Button>
+          <Button onClick={() => navigate('/landlord/listings')}>Os meus anúncios</Button>
         </Card>
       </div>
     );
@@ -1465,11 +1465,11 @@ export function LandlordPropertyDetail() {
 
         {/* Back button */}
         <button
-          onClick={() => navigate('/landlord/properties')}
+          onClick={() => navigate('/landlord/listings')}
           className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6 group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-          <span className="text-sm">Voltar aos Alojamentos</span>
+          <span className="text-sm">Os meus anúncios</span>
         </button>
 
         {/* Hero Section */}

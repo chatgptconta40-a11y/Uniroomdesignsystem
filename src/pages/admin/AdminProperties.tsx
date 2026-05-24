@@ -570,7 +570,7 @@ export function AdminProperties() {
                 {selectedProperty.adminStatus === 'pending' && (
                   <>
                     <Button
-                      variant="default"
+                      variant="primary"
                       className="flex-1"
                       onClick={() => handleApprove(selectedProperty.id)}
                     >

@@ -102,6 +102,7 @@ function ReportDetailModal({
     title: string;
     description: string;
     confirmLabel: string;
+    variant: 'destructive' | 'positive' | 'neutral';
   } | null>(null);
 
   const executeAction = (action: AdminActionType | 'resolve' | 'reject') => {
@@ -364,7 +365,7 @@ function ReportDetailModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                   {report.propertyId && !report.propertySuspended && (
                     <button
-                      onClick={() => setPendingAction({ action: 'suspend_property', title: 'Suspender anúncio?', description: `O anúncio de ${report.propertyTitle || report.landlordName} ficará invisível para estudantes imediatamente.`, confirmLabel: 'Suspender anúncio' })}
+                      onClick={() => setPendingAction({ action: 'suspend_property', title: 'Suspender anúncio?', description: `O anúncio de ${report.propertyTitle || report.landlordName} ficará invisível para estudantes imediatamente.`, confirmLabel: 'Suspender anúncio', variant: 'destructive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl text-xs font-medium hover:bg-orange-100 transition-colors"
                     >
                       <ShieldOff className="w-4 h-4" />
@@ -373,7 +374,7 @@ function ReportDetailModal({
                   )}
                   {!report.landlordSuspended && (
                     <button
-                      onClick={() => setPendingAction({ action: 'suspend_landlord', title: 'Suspender senhorio?', description: `A conta de ${report.landlordName} será suspensa. O senhorio não poderá publicar ou gerir anúncios.`, confirmLabel: 'Suspender senhorio' })}
+                      onClick={() => setPendingAction({ action: 'suspend_landlord', title: 'Suspender senhorio?', description: `A conta de ${report.landlordName} será suspensa. O senhorio não poderá publicar ou gerir anúncios.`, confirmLabel: 'Suspender senhorio', variant: 'destructive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium hover:bg-red-100 transition-colors"
                     >
                       <UserX className="w-4 h-4" />
@@ -382,7 +383,7 @@ function ReportDetailModal({
                   )}
                   {!report.landlordBlocked && (
                     <button
-                      onClick={() => setPendingAction({ action: 'block_landlord', title: 'Bloquear novos anúncios?', description: `${report.landlordName} ficará impedido de publicar novos anúncios. Os anúncios existentes mantêm-se.`, confirmLabel: 'Bloquear publicação' })}
+                      onClick={() => setPendingAction({ action: 'block_landlord', title: 'Bloquear novos anúncios?', description: `${report.landlordName} ficará impedido de publicar novos anúncios. Os anúncios existentes mantêm-se.`, confirmLabel: 'Bloquear publicação', variant: 'destructive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 text-red-900 rounded-xl text-xs font-medium hover:bg-red-100 transition-colors"
                     >
                       <Ban className="w-4 h-4" />
@@ -393,14 +394,14 @@ function ReportDetailModal({
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setPendingAction({ action: 'reject', title: 'Rejeitar denúncia?', description: 'Esta denúncia será marcada como rejeitada. O processo de moderação será encerrado.', confirmLabel: 'Rejeitar denúncia' })}
+                    onClick={() => setPendingAction({ action: 'reject', title: 'Rejeitar denúncia?', description: 'Esta denúncia será marcada como rejeitada. O processo de moderação será encerrado.', confirmLabel: 'Rejeitar denúncia', variant: 'neutral' })}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 border border-border text-muted-foreground rounded-xl text-xs font-medium hover:bg-muted transition-colors"
                   >
                     <XSquare className="w-4 h-4" />
                     Rejeitar denúncia
                   </button>
                   <button
-                    onClick={() => setPendingAction({ action: 'resolve', title: 'Resolver denúncia?', description: 'Esta denúncia será marcada como resolvida. Confirma que o problema foi tratado adequadamente.', confirmLabel: 'Marcar como resolvida' })}
+                    onClick={() => setPendingAction({ action: 'resolve', title: 'Resolver denúncia?', description: 'Esta denúncia será marcada como resolvida. Confirma que o problema foi tratado adequadamente.', confirmLabel: 'Marcar como resolvida', variant: 'positive' })}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-600 text-white rounded-xl text-xs font-medium hover:bg-green-700 transition-colors"
                   >
                     <CheckSquare className="w-4 h-4" />
@@ -417,7 +418,7 @@ function ReportDetailModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {report.propertySuspended && report.propertyId && (
                     <button
-                      onClick={() => applyAction('lift_property_suspension')}
+                      onClick={() => setPendingAction({ action: 'lift_property_suspension', title: 'Levantar suspensão do anúncio?', description: 'A suspensão do anúncio será removida. O anúncio voltará a ficar visível para os estudantes.', confirmLabel: 'Levantar suspensão', variant: 'positive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 text-green-700 rounded-xl text-xs font-medium hover:bg-green-100 transition-colors"
                     >
                       <ShieldCheck className="w-4 h-4" />
@@ -426,7 +427,7 @@ function ReportDetailModal({
                   )}
                   {report.landlordSuspended && (
                     <button
-                      onClick={() => applyAction('lift_landlord_suspension')}
+                      onClick={() => setPendingAction({ action: 'lift_landlord_suspension', title: 'Levantar suspensão do senhorio?', description: 'A suspensão da conta do senhorio será removida. O senhorio voltará a poder gerir os seus anúncios.', confirmLabel: 'Levantar suspensão', variant: 'positive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 text-green-700 rounded-xl text-xs font-medium hover:bg-green-100 transition-colors"
                     >
                       <UserCheck className="w-4 h-4" />
@@ -435,7 +436,7 @@ function ReportDetailModal({
                   )}
                   {report.landlordBlocked && (
                     <button
-                      onClick={() => applyAction('unblock_landlord')}
+                      onClick={() => setPendingAction({ action: 'unblock_landlord', title: 'Permitir publicação novamente?', description: 'O bloqueio de publicação será removido. O senhorio poderá voltar a publicar novos anúncios.', confirmLabel: 'Permitir publicação', variant: 'positive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl text-xs font-medium hover:bg-blue-100 transition-colors"
                     >
                       <Unlock className="w-4 h-4" />
@@ -471,6 +472,7 @@ function ReportDetailModal({
         description={pendingAction?.description || ''}
         cancelLabel="Cancelar"
         confirmLabel={pendingAction?.confirmLabel || 'Confirmar'}
+        variant={pendingAction?.variant || 'destructive'}
       />
     </>
   );

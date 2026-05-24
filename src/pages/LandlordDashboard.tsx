@@ -270,7 +270,7 @@ export function LandlordDashboard() {
                 </div>
                 {maintenanceStats.highUrgency > 0 && (
                   <div>
-                    <Badge variant="destructive" className="text-lg px-3 py-1">
+                    <Badge variant="outline" className="text-lg px-3 py-1 bg-red-50 text-red-700 border-red-300">
                       {maintenanceStats.highUrgency} urgentes
                     </Badge>
                   </div>
