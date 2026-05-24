@@ -76,8 +76,10 @@ export function Navbar() {
                 {user?.type !== 'admin' && (
                   <div className="relative">
                     <button
+                      type="button"
                       onClick={() => setShowNotifications(!showNotifications)}
                       className="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-all"
+                      aria-label="Abrir notificações"
                     >
                       <Bell className="w-5 h-5 text-muted-foreground" />
                       {unreadCount > 0 && (
@@ -93,13 +95,14 @@ export function Navbar() {
                         className="fixed inset-0 z-10"
                         onClick={() => setShowNotifications(false)}
                       />
-                      <div className="absolute right-0 mt-2 w-96 bg-card border border-border rounded-xl shadow-lg z-20 max-h-96 overflow-y-auto">
-                        <div className="sticky top-0 bg-card px-4 py-3 border-b border-border flex items-center justify-between">
+                      <div className="fixed left-3 right-3 top-[72px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 bg-card border border-border rounded-xl shadow-lg z-20 max-h-[calc(100dvh-5rem)] sm:max-h-96 overflow-y-auto">
+                        <div className="sticky top-0 bg-card px-4 py-3 border-b border-border flex items-center justify-between gap-3">
                           <h3 className="font-semibold text-foreground">Notificações</h3>
                           {unreadCount > 0 && (
                             <button
+                              type="button"
                               onClick={handleMarkAllRead}
-                              className="text-xs text-primary hover:underline"
+                              className="text-xs text-primary hover:underline text-right"
                             >
                               Marcar todas como lidas
                             </button>
@@ -155,7 +158,11 @@ export function Navbar() {
 
                 {user?.type !== 'admin' && (
                   <Link to="/messages" className="relative">
-                    <button className="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-all">
+                    <button
+                      type="button"
+                      className="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-muted transition-all"
+                      aria-label="Abrir mensagens"
+                    >
                       <MessageCircle className="w-5 h-5 text-muted-foreground" />
                       {unreadMessagesCount > 0 && (
                         <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-xs font-semibold rounded-full flex items-center justify-center">
