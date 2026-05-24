@@ -28,7 +28,9 @@ import { Checkbox } from '../components/Checkbox';
 import { Card } from '../components/Card';
 import { useProperties } from '../context/PropertiesContext';
 import { useCompare } from '../context/CompareContext';
+import { useAuth } from '../context/AuthContext';
 import { getVerificationStatus } from '../data/mockTrust';
+import { getProfile } from '../data/mockProfiles';
 import { Room, Property } from '../types/property';
 
 const walkMinutes = (km: number) => Math.round(km * 13);
@@ -216,9 +218,10 @@ interface EmptyStateProps {
   filters: SearchFilters;
   onClear: () => void;
   onUpdate: (updates: Partial<SearchFilters>) => void;
+  canShowCompatibility: boolean;
 }
 
-function EmptyState({ filters, onClear, onUpdate }: EmptyStateProps) {
+function EmptyState({ filters, onClear, onUpdate, canShowCompatibility }: EmptyStateProps) {
   const suggestions: { text: string; action: () => void }[] = [];
 
   if (filters.maxPrice < 400) {
@@ -240,7 +243,7 @@ function EmptyState({ filters, onClear, onUpdate }: EmptyStateProps) {
     suggestions.push({ text: 'Remove o filtro de anúncio verificado', action: () => onUpdate({ verifiedListing: false }) });
   }
 
-  if (filters.minCompatibility > 0) {
+  if (canShowCompatibility && filters.minCompatibility > 0) {
     suggestions.push({ text: 'Remove o mínimo de compatibilidade', action: () => onUpdate({ minCompatibility: 0 }) });
   }
 
@@ -293,9 +296,10 @@ interface MapRoomCardProps {
   isInCompare: (id: string) => boolean;
   toggleCompare: (room: Room, property: Property) => void;
   canAdd: boolean;
+  canShowCompatibility: boolean;
 }
 
-function MapRoomCard({ room, property, selected, isInCompare, toggleCompare, canAdd }: MapRoomCardProps) {
+function MapRoomCard({ room, property, selected, isInCompare, toggleCompare, canAdd, canShowCompatibility }: MapRoomCardProps) {
   const navigate = useNavigate();
   const walk = walkMinutes(property.distanceToUniversity);
   const totalPrice = room.price + (room.utilities || 0);
@@ -321,7 +325,7 @@ function MapRoomCard({ room, property, selected, isInCompare, toggleCompare, can
               className="w-full h-full object-cover"
             />
 
-            {room.compatibilityScore && (
+            {canShowCompatibility && room.compatibilityScore && (
               <span className="absolute left-1.5 bottom-1.5 px-1.5 py-0.5 rounded-full bg-white/95 text-[10px] font-bold text-primary shadow-sm">
                 {room.compatibilityScore}%
               </span>
@@ -435,6 +439,7 @@ interface GeneralMapViewProps {
   isInCompare: (id: string) => boolean;
   toggleCompare: (room: Room, property: Property) => void;
   canAdd: boolean;
+  canShowCompatibility: boolean;
 }
 
 function GeneralMapView({
@@ -444,6 +449,7 @@ function GeneralMapView({
   isInCompare,
   toggleCompare,
   canAdd,
+  canShowCompatibility,
 }: GeneralMapViewProps) {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
 
@@ -639,6 +645,7 @@ function GeneralMapView({
                 isInCompare={isInCompare}
                 toggleCompare={toggleCompare}
                 canAdd={canAdd}
+                canShowCompatibility={canShowCompatibility}
               />
             ))}
           </div>
@@ -651,13 +658,40 @@ function GeneralMapView({
 export function SearchRooms() {
   const { rooms, properties } = useProperties();
   const { isInCompare, toggleCompare, canAdd } = useCompare();
+  const { user } = useAuth();
   const [showFilters, setShowFilters] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [results, setResults] = useState<ResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
 
+  const studentProfile = useMemo(() => {
+    if (!user || user.type !== 'student') return null;
+    return getProfile(user.id);
+  }, [user]);
+
+  const canShowCompatibility = Boolean(
+    user?.type === 'student' &&
+    studentProfile?.onboardingCompleted
+  );
+
   const set = (updates: Partial<SearchFilters>) => setFilters(current => ({ ...current, ...updates }));
+
+  useEffect(() => {
+    if (canShowCompatibility) return;
+
+    setFilters(current => {
+      if (current.sortBy !== 'compatibility' && current.minCompatibility === 0) {
+        return current;
+      }
+
+      return {
+        ...current,
+        sortBy: current.sortBy === 'compatibility' ? 'distance' : current.sortBy,
+        minCompatibility: 0,
+      };
+    });
+  }, [canShowCompatibility]);
 
   useEffect(() => {
     setLoading(true);
@@ -709,7 +743,7 @@ export function SearchRooms() {
         });
       }
 
-      if (filters.minCompatibility > 0) {
+      if (canShowCompatibility && filters.minCompatibility > 0) {
         filtered = filtered.filter(room => (room.compatibilityScore || 0) >= filters.minCompatibility);
       }
 
@@ -766,7 +800,9 @@ export function SearchRooms() {
           case 'recent':
             return new Date(b.room.createdAt).getTime() - new Date(a.room.createdAt).getTime();
           default:
-            return (b.room.compatibilityScore || 0) - (a.room.compatibilityScore || 0);
+            return canShowCompatibility
+              ? (b.room.compatibilityScore || 0) - (a.room.compatibilityScore || 0)
+              : a.property.distanceToUniversity - b.property.distanceToUniversity;
         }
       });
 
@@ -775,7 +811,7 @@ export function SearchRooms() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [rooms, properties, filters]);
+  }, [rooms, properties, filters, canShowCompatibility]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -784,7 +820,7 @@ export function SearchRooms() {
     if (filters.roomTypes.length > 0) count++;
     if (filters.minPrice > 150 || filters.maxPrice < 600) count++;
     if (filters.maxWalkMinutes < 60) count++;
-    if (filters.minCompatibility > 0) count++;
+    if (canShowCompatibility && filters.minCompatibility > 0) count++;
     if (filters.entryMonth) count++;
     if (filters.verifiedListing) count++;
     if (filters.verifiedLandlord) count++;
@@ -799,7 +835,7 @@ export function SearchRooms() {
     if (filters.includeUtilitiesInPrice) count++;
 
     return count;
-  }, [filters]);
+  }, [filters, canShowCompatibility]);
 
   const handleClearFilters = () => setFilters(DEFAULT_FILTERS);
   const universityLabel = UNIVERSITIES.find(university => university.value === filters.university)?.label ?? filters.university;
@@ -1135,30 +1171,32 @@ export function SearchRooms() {
                     </div>
                   </section>
 
-                  <section>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Compatibilidade mínima
-                      </p>
+                  {canShowCompatibility && (
+                    <section>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Compatibilidade mínima
+                        </p>
 
-                      <span className="text-sm font-bold text-primary">
-                        {filters.minCompatibility > 0 ? `${filters.minCompatibility}%` : 'Todas'}
-                      </span>
-                    </div>
+                        <span className="text-sm font-bold text-primary">
+                          {filters.minCompatibility > 0 ? `${filters.minCompatibility}%` : 'Todas'}
+                        </span>
+                      </div>
 
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={filters.minCompatibility}
-                      onChange={event => set({ minCompatibility: Number(event.target.value) })}
-                      className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer"
-                      style={{
-                        background: `linear-gradient(to right, var(--primary) 0%, var(--primary) ${filters.minCompatibility}%, var(--muted) ${filters.minCompatibility}%, var(--muted) 100%)`,
-                      }}
-                    />
-                  </section>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={filters.minCompatibility}
+                        onChange={event => set({ minCompatibility: Number(event.target.value) })}
+                        className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer"
+                        style={{
+                          background: `linear-gradient(to right, var(--primary) 0%, var(--primary) ${filters.minCompatibility}%, var(--muted) ${filters.minCompatibility}%, var(--muted) 100%)`,
+                        }}
+                      />
+                    </section>
+                  )}
 
                   <section>
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
@@ -1170,7 +1208,9 @@ export function SearchRooms() {
                       onChange={event => set({ sortBy: event.target.value as SearchFilters['sortBy'] })}
                       className="w-full px-3 py-2.5 bg-input-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
                     >
-                      <option value="compatibility">Compatibilidade</option>
+                      {canShowCompatibility && (
+                        <option value="compatibility">Compatibilidade</option>
+                      )}
                       <option value="price_asc">Preço crescente</option>
                       <option value="price_desc">Preço decrescente</option>
                       <option value="distance">Mais próximo</option>
@@ -1232,7 +1272,12 @@ export function SearchRooms() {
                 ))}
               </div>
             ) : results.length === 0 ? (
-              <EmptyState filters={filters} onClear={handleClearFilters} onUpdate={set} />
+              <EmptyState
+                filters={filters}
+                onClear={handleClearFilters}
+                onUpdate={set}
+                canShowCompatibility={canShowCompatibility}
+              />
             ) : viewMode === 'map' ? (
               <GeneralMapView
                 results={results}
@@ -1241,6 +1286,7 @@ export function SearchRooms() {
                 isInCompare={isInCompare}
                 toggleCompare={toggleCompare}
                 canAdd={canAdd}
+                canShowCompatibility={canShowCompatibility}
               />
             ) : viewMode === 'list' ? (
               <div className="space-y-3">
