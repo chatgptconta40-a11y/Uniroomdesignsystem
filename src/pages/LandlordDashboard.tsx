@@ -388,7 +388,13 @@ export function LandlordDashboard() {
 
         {/* Quick actions */}
         <div className="mb-10 flex flex-wrap gap-4">
-          <Button size="lg" variant="primary" onClick={() => navigate('/landlord/new-listing')} disabled={isAccountSuspended || isBlockedFromPublishing}>
+          <Button
+            size="lg"
+            variant="primary"
+            onClick={() => navigate('/landlord/new-listing')}
+            disabled={isAccountSuspended || isBlockedFromPublishing}
+            title={isAccountSuspended ? 'Conta suspensa — não é possível publicar' : isBlockedFromPublishing ? 'Publicação bloqueada — contacta o suporte' : undefined}
+          >
             <PlusCircle className="w-5 h-5" />
             Publicar Novo Alojamento
           </Button>
