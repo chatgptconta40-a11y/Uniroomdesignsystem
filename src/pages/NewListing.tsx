@@ -358,7 +358,6 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
               </div>
             </div>
 
-            {/* Mock photo selection */}
             <div>
               <FieldLabel>Foto do quarto</FieldLabel>
               <div className="flex gap-3">

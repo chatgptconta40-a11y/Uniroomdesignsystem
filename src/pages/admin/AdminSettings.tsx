@@ -79,7 +79,6 @@ export function AdminSettings() {
       return;
     }
 
-    // Mock invite - in real app would send email
     toast.success(`Convite enviado com sucesso para ${inviteEmail}!`);
 
     // Reset form and close modal

@@ -1,6 +1,6 @@
 import { User, StudentProfile, LandlordProfile } from '../types/auth';
 
-// Mock users database - will be replaced with Supabase in Phase 10
+// User records
 export const mockUsers: User[] = [
   {
     id: '1',

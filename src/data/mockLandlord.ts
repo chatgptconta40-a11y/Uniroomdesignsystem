@@ -167,7 +167,6 @@ export function getLandlordMetrics(landlordId: string): LandlordMetrics | null {
 }
 
 export function getLandlordListings(landlordId: string, status?: ListingStatus): LandlordListing[] {
-  // For demo, return all listings since we're using static landlordId
   let listings = mockLandlordListings;
 
   if (status) {

@@ -13,7 +13,7 @@ const AccommodationsContext = createContext<AccommodationsContextType | undefine
 
 export function AccommodationsProvider({ children }: { children: ReactNode }) {
   const [accommodations, setAccommodations] = useState<Accommodation[]>(() => {
-    // Load from localStorage or use mock data
+    // Load from localStorage or use defaults
     const stored = localStorage.getItem('uniroom_accommodations');
     if (stored) {
       try {

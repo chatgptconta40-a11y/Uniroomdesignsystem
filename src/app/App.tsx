@@ -47,7 +47,7 @@ function AppShell() {
 
   return (
     <>
-      <div className="min-h-screen flex flex-col">
+      <div className={`min-h-screen flex flex-col${compareItems.length > 0 ? ' pb-20' : ''}`}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />

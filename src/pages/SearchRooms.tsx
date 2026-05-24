@@ -116,11 +116,49 @@ const ENTRY_MONTHS = [
   { value: '2027-02', label: 'Fevereiro 2027' },
 ];
 
-// ─── Mock positions relative to ESTGV (pixels at scale 100px/km) ────────────
+// ─── Positions relative to ESTGV (pixels at scale 100px/km) ─────────────────
 const PROP_POSITIONS: Record<string, { x: number; y: number }> = {
   'prop-1': { x: -72, y: -44 }, // 0.8km NW – Centro Histórico
   'prop-2': { x: 12, y: -26 },  // 0.3km N  – Zona Universitária
 };
+
+const SORT_LABELS: Record<SearchFilters['sortBy'], string> = {
+  compatibility: 'Compatibilidade',
+  price_asc: 'Preço crescente',
+  price_desc: 'Preço decrescente',
+  distance: 'Mais próximo',
+  recent: 'Mais recentes',
+};
+
+function getFilterChips(filters: SearchFilters, set: (u: Partial<SearchFilters>) => void) {
+  const chips: { key: string; label: string; onRemove: () => void }[] = [];
+  const typeLabels: Record<string, string> = { private: 'Privado', shared: 'Partilhado', studio: 'Estúdio', apartment: 'Apartamento' };
+
+  filters.cities.forEach(city => chips.push({ key: `city-${city}`, label: city, onRemove: () => set({ cities: filters.cities.filter(c => c !== city) }) }));
+  filters.roomTypes.forEach(rt => chips.push({ key: `type-${rt}`, label: typeLabels[rt] || rt, onRemove: () => set({ roomTypes: filters.roomTypes.filter(r => r !== rt) }) }));
+  if (filters.minPrice > DEFAULT_FILTERS.minPrice || filters.maxPrice < DEFAULT_FILTERS.maxPrice)
+    chips.push({ key: 'price', label: `€${filters.minPrice}–€${filters.maxPrice}`, onRemove: () => set({ minPrice: DEFAULT_FILTERS.minPrice, maxPrice: DEFAULT_FILTERS.maxPrice }) });
+  if (filters.maxWalkMinutes < 60)
+    chips.push({ key: 'walk', label: `≤${filters.maxWalkMinutes}min a pé`, onRemove: () => set({ maxWalkMinutes: 60 }) });
+  if (filters.entryMonth) {
+    const label = ENTRY_MONTHS.find(m => m.value === filters.entryMonth)?.label || filters.entryMonth;
+    chips.push({ key: 'entry', label: `Entrada: ${label}`, onRemove: () => set({ entryMonth: '' }) });
+  }
+  if (filters.minCompatibility > 0)
+    chips.push({ key: 'compat', label: `≥${filters.minCompatibility}% compat.`, onRemove: () => set({ minCompatibility: 0 }) });
+  if (filters.verifiedListing) chips.push({ key: 'verified', label: 'Anúncio verificado', onRemove: () => set({ verifiedListing: false }) });
+  if (filters.verifiedLandlord) chips.push({ key: 'vlandlord', label: 'Senhorio verificado', onRemove: () => set({ verifiedLandlord: false }) });
+  if (filters.privateBathroom) chips.push({ key: 'bath', label: 'WC privativo', onRemove: () => set({ privateBathroom: false }) });
+  if (filters.wifi) chips.push({ key: 'wifi', label: 'Wi-Fi', onRemove: () => set({ wifi: false }) });
+  if (filters.laundry) chips.push({ key: 'laundry', label: 'Lavar roupa', onRemove: () => set({ laundry: false }) });
+  if (filters.kitchen) chips.push({ key: 'kitchen', label: 'Cozinha', onRemove: () => set({ kitchen: false }) });
+  if (filters.noParties) chips.push({ key: 'noparties', label: 'Sem festas', onRemove: () => set({ noParties: false }) });
+  if (filters.quietHours) chips.push({ key: 'quiet', label: 'Horário de silêncio', onRemove: () => set({ quietHours: false }) });
+  if (filters.nearSupermarket) chips.push({ key: 'super', label: 'Supermercado', onRemove: () => set({ nearSupermarket: false }) });
+  if (filters.nearBusStop) chips.push({ key: 'bus', label: 'Autocarro', onRemove: () => set({ nearBusStop: false }) });
+  if (filters.includeUtilitiesInPrice) chips.push({ key: 'util', label: 'c/ despesas', onRemove: () => set({ includeUtilitiesInPrice: false }) });
+  return chips;
+}
 
 // ─── EmptyState ──────────────────────────────────────────────────────────────
 
@@ -532,6 +570,33 @@ export function SearchRooms() {
               )}
             </button>
           </div>
+
+          {/* Active filter chips */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border/50">
+              {getFilterChips(filters, set).map(chip => (
+                <span
+                  key={chip.key}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-xs font-medium"
+                >
+                  {chip.label}
+                  <button
+                    onClick={chip.onRemove}
+                    className="ml-0.5 rounded-full hover:bg-primary/20 p-0.5 transition-colors"
+                    aria-label={`Remover filtro ${chip.label}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <button
+                onClick={handleClearFilters}
+                className="text-xs text-muted-foreground hover:text-primary transition-colors underline underline-offset-2 ml-0.5"
+              >
+                Limpar tudo
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -759,11 +824,12 @@ export function SearchRooms() {
                   )}
                 </h2>
                 {!loading && results.length > 0 && (
-                  <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <ShieldCheck className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                     Perto da {universityLabel}
                     {filters.cities.length > 0 ? ` · ${filters.cities.join(', ')}` : ' · Viseu'}
                     {filters.maxWalkMinutes < 60 ? ` · ≤${filters.maxWalkMinutes}min a pé` : ''}
+                    {` · ${SORT_LABELS[filters.sortBy]}`}
                   </p>
                 )}
               </div>
@@ -787,11 +853,51 @@ export function SearchRooms() {
             </div>
 
             {loading ? (
-              <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4' : 'space-y-3'}>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className={`bg-card rounded-xl animate-pulse ${viewMode === 'list' ? 'h-32' : 'h-80'}`} />
-                ))}
-              </div>
+              viewMode === 'list' || viewMode === 'map' ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="bg-card rounded-xl overflow-hidden animate-pulse flex border border-border">
+                      <div className="w-36 sm:w-44 flex-shrink-0 bg-muted" style={{ minHeight: '120px' }} />
+                      <div className="flex-1 p-4 space-y-2.5">
+                        <div className="h-4 bg-muted rounded w-2/3" />
+                        <div className="h-3 bg-muted rounded w-1/2" />
+                        <div className="flex gap-1.5 pt-1">
+                          <div className="h-4 bg-muted rounded-full w-10" />
+                          <div className="h-4 bg-muted rounded-full w-14" />
+                          <div className="h-4 bg-muted rounded-full w-12" />
+                        </div>
+                        <div className="h-3 bg-muted rounded w-1/3" />
+                      </div>
+                      <div className="w-28 p-4 flex flex-col gap-2 justify-center flex-shrink-0">
+                        <div className="h-5 bg-muted rounded w-full" />
+                        <div className="h-3 bg-muted rounded w-3/4 mx-auto" />
+                        <div className="h-8 bg-muted rounded-lg w-full mt-1" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="bg-card rounded-xl overflow-hidden animate-pulse border border-border">
+                      <div className="h-52 bg-muted" />
+                      <div className="p-5 space-y-3">
+                        <div className="h-4 bg-muted rounded w-3/4" />
+                        <div className="h-3 bg-muted rounded w-1/2" />
+                        <div className="h-3 bg-muted rounded w-2/3" />
+                        <div className="flex gap-1.5">
+                          <div className="h-5 bg-muted rounded-full w-12" />
+                          <div className="h-5 bg-muted rounded-full w-14" />
+                        </div>
+                        <div className="flex items-center justify-between pt-3 border-t border-muted">
+                          <div className="h-6 bg-muted rounded w-16" />
+                          <div className="h-8 bg-muted rounded-lg w-24" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : results.length === 0 ? (
               <EmptyState filters={filters} onClear={handleClearFilters} onUpdate={set} />
             ) : viewMode === 'map' ? (

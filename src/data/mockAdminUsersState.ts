@@ -1,5 +1,5 @@
 // Admin-controlled user state — suspension, blocking, verification flags.
-// Persisted in localStorage, structured for future Supabase migration.
+// Persisted in localStorage.
 // Each flag is independent: suspension ≠ blocking ≠ verification requirement.
 
 export interface AdminUserState {

@@ -8,7 +8,6 @@ interface LocationMapProps {
 
 export function LocationMap({ address, zone, city }: LocationMapProps) {
   const handleOpenMaps = () => {
-    // Mock action - in real app would open Google Maps
     window.open(`https://www.google.com/maps/search/${encodeURIComponent(address)}`, '_blank');
   };
 

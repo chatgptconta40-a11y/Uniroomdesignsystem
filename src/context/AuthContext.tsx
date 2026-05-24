@@ -8,7 +8,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const STORAGE_KEY = 'uniroom_user';
 const USERS_KEY = 'uniroom_all_users';
 
-// Initialize localStorage with mock users if not exists
+// Initialize localStorage if not exists
 const initializeStorage = () => {
   if (!localStorage.getItem(USERS_KEY)) {
     localStorage.setItem(USERS_KEY, JSON.stringify(mockUsers));
@@ -33,7 +33,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
 
-    // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
     const allUsers: User[] = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
@@ -53,7 +52,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
 
-    // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
     const allUsers: User[] = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');

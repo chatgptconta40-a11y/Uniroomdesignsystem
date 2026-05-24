@@ -3,7 +3,7 @@ import { StudentProfile } from '../types/profile';
 // Storage key
 export const PROFILES_STORAGE_KEY = 'uniroom_student_profiles';
 
-// Mock profiles - will be replaced with Supabase in Phase 10
+// Student profile records
 export const mockProfiles: StudentProfile[] = [
   {
     personal: {

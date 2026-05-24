@@ -1,5 +1,4 @@
 // Landlord-side application data, persisted in localStorage.
-// Structured to support future Supabase migration.
 // Bidirectional sync with mockApplications via linkedStudentAppId / linkedCandidateId.
 
 import { updateApplicationStatus, syncVisitData } from './mockApplications';

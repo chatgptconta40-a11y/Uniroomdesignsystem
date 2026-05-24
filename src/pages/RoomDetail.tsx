@@ -16,6 +16,7 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
+import { getExistingApplicationForRoom } from '../data/mockApplications';
 import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
@@ -49,6 +50,9 @@ export function RoomDetail() {
   const ratingBreakdown = room ? getAverageRatingBreakdown(room.id) : null;
 
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
+  const existingApplication = user?.type === 'student' && room
+    ? getExistingApplicationForRoom(user.id, room.id)
+    : null;
 
   if (!room || !property) {
     return (
@@ -115,6 +119,13 @@ export function RoomDetail() {
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
     views: room.views,
+  };
+
+  const APP_STATUS_LABELS: Record<string, { label: string; description: string; bgCls: string; textCls: string }> = {
+    pending: { label: 'Candidatura enviada', description: 'A aguardar análise pelo senhorio', bgCls: 'bg-blue-50 border-blue-200', textCls: 'text-blue-700' },
+    under_review: { label: 'Em análise', description: 'O senhorio está a rever a tua candidatura', bgCls: 'bg-amber-50 border-amber-200', textCls: 'text-amber-700' },
+    accepted: { label: 'Candidatura aceite', description: 'O senhorio aceitou a tua candidatura', bgCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
+    confirmed: { label: 'Entrada confirmada', description: 'A tua entrada neste quarto foi confirmada', bgCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
   };
 
   const requestAuthentication = () => {
@@ -484,13 +495,18 @@ export function RoomDetail() {
             <div className="sticky top-24 space-y-4">
               {!isLandlordOwner && (
                 <Card className="p-6 shadow-lg">
-                  <div className="mb-6">
-                    <div className="flex items-baseline gap-2 mb-3">
+                  <div className="mb-5 pb-4 border-b border-border">
+                    <div className="flex items-baseline gap-1">
                       <span className="text-3xl font-bold text-foreground">€{room.price}</span>
-                      <span className="text-muted-foreground">/mês</span>
+                      <span className="text-muted-foreground text-sm">/mês</span>
                     </div>
-                    {room.utilities && (
-                      <p className="text-sm text-muted-foreground">+ Despesas: €{room.utilities}/mês</p>
+                    {room.utilities && room.utilities > 0 ? (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        + €{room.utilities} despesas
+                        <span className="ml-1 font-semibold text-foreground">= €{room.price + room.utilities} total</span>
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-green-600 font-medium">Despesas incluídas</p>
                     )}
                   </div>
 
@@ -506,12 +522,32 @@ export function RoomDetail() {
                   )}
 
                   <div className="space-y-3">
-                    <Button variant="primary" className="w-full" onClick={handleApply}>
-                      Candidatar-me
-                    </Button>
+                    {existingApplication ? (
+                      <div className={`rounded-xl border p-3.5 ${APP_STATUS_LABELS[existingApplication.status]?.bgCls || 'bg-muted border-border'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Clock className={`w-4 h-4 flex-shrink-0 ${APP_STATUS_LABELS[existingApplication.status]?.textCls || 'text-foreground'}`} />
+                          <span className={`text-sm font-semibold ${APP_STATUS_LABELS[existingApplication.status]?.textCls || 'text-foreground'}`}>
+                            {APP_STATUS_LABELS[existingApplication.status]?.label || 'Candidatura submetida'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {APP_STATUS_LABELS[existingApplication.status]?.description}
+                        </p>
+                        <button
+                          onClick={() => navigate('/applications')}
+                          className="mt-2 text-xs text-primary hover:underline font-medium"
+                        >
+                          Ver as minhas candidaturas →
+                        </button>
+                      </div>
+                    ) : (
+                      <Button variant="primary" className="w-full" onClick={handleApply}>
+                        Candidatar-me
+                      </Button>
+                    )}
                     <Button variant="outline" className="w-full" onClick={handleContact}>
                       <MessageCircle className="w-4 h-4 mr-2" />
-                      Contactar responsável
+                      Enviar mensagem
                     </Button>
                     <Button variant="outline" className="w-full" onClick={handleToggleFavorite}>
                       <Heart className={`w-4 h-4 mr-2 ${isFavorite(room.id) ? 'fill-red-500 text-red-500' : ''}`} />

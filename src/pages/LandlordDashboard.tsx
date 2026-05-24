@@ -20,7 +20,7 @@ export function LandlordDashboard() {
   const navigate = useNavigate();
   const { properties, rooms } = useProperties();
 
-  // ── Data from mock services (messages, chart, maintenance, activities) ──────
+  // ── Data (messages, chart, maintenance, activities) ─────────────────────────
   const mockMetrics = getLandlordMetrics(user?.id || '');
   const activities = getDashboardActivity(user?.id || '');
   const performanceData = getPerformanceData(user?.id || '', 30);
@@ -192,7 +192,7 @@ export function LandlordDashboard() {
           </div>
         )}
 
-        {/* Top metric cards — derived from PropertiesContext + mock for messages/rating */}
+        {/* Top metric cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/listings')}>
             <div className="flex items-center justify-between mb-4">
@@ -402,7 +402,7 @@ export function LandlordDashboard() {
           </Button>
         </div>
 
-        {/* Ações Importantes — all derived from PropertiesContext + mock for messages/applications */}
+        {/* Ações Importantes */}
         {(() => {
           const pending = pendingApplicationsCount;
           const unread = mockMetrics?.unreadMessages ?? 0;
