@@ -1,3 +1,5 @@
+import type { StudentProfile as FullStudentProfile } from './profile';
+
 export type UserType = 'student' | 'landlord' | 'admin';
 
 export interface User {
@@ -7,7 +9,14 @@ export interface User {
   password?: string;
   type: UserType;
   verified: boolean;
+  status?: 'active' | 'suspended' | 'blocked';
   onboardingCompleted?: boolean;
+  profileCompleteness?: {
+    personal: number;
+    lifestyle: number;
+    preferences: number;
+    overall: number;
+  };
   createdAt: Date;
 }
 
@@ -27,11 +36,18 @@ export interface LandlordProfile {
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
-  register: (data: RegisterData) => Promise<{ success: boolean; user?: User; error?: string }>;
-  logout: () => void;
+  login: (
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; error?: string; user?: User }>;
+  register: (
+    data: RegisterData
+  ) => Promise<{ success: boolean; error?: string; user?: User }>;
+  logout: () => Promise<void>;
+  saveStudentProfile: (
+    profile: FullStudentProfile
+  ) => Promise<{ success: boolean; error?: string }>;
   isAuthenticated: boolean;
-  saveStudentProfile: (profile: object, completeness: object) => Promise<void>;
 }
 
 export interface RegisterData {
