@@ -70,7 +70,7 @@ function getStepMissingFields(
 }
 
 export function Onboarding() {
-  const { user } = useAuth();
+  const { user, saveStudentProfile } = useAuth();
   const navigate = useNavigate();
   const storageKey = getStorageKey(user?.id || '');
 
@@ -151,7 +151,7 @@ export function Onboarding() {
     navigate('/dashboard');
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     const profile: StudentProfile = {
       personal: {
         userId: user?.id || personalData.userId || '',
@@ -171,6 +171,7 @@ export function Onboarding() {
     };
     saveProfile(profile);
     localStorage.removeItem(storageKey);
+    await saveStudentProfile(profile, completeness);
     toast.success('Perfil criado com sucesso.');
     navigate('/dashboard');
   };

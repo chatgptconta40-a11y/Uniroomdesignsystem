@@ -1,5 +1,11 @@
-import { Message, Conversation } from '../types/message';
+// Conversations & messages — backed by Supabase
+// (tables: conversations, conversation_participants, messages, profiles).
+// Preserves the original synchronous API via in-memory caches hydrated on import.
 
+import { Message, Conversation } from '../types/message';
+import { supabase } from '../lib/supabase';
+
+// Aliases preserved for legacy demo IDs in some pages
 const USER_ID_ALIASES: Record<string, string> = {
   estudante: '1',
   student: '1',
@@ -19,365 +25,191 @@ export function isSameMessageUser(leftId: string, rightId: string): boolean {
   return normalizeMessageUserId(leftId) === normalizeMessageUserId(rightId);
 }
 
-export const mockMessages: Message[] = [
-  {
-    id: 'msg1',
-    conversationId: 'conv1',
-    senderId: '1',
-    senderName: 'João Silva',
-    content: 'Boa tarde! Tenho interesse no quarto em Viseu Centro. Ainda está disponível?',
-    createdAt: new Date('2026-04-18T10:30:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg2',
-    conversationId: 'conv1',
-    senderId: '2',
-    senderName: 'Maria Santos',
-    content: 'Olá, João. Sim, o quarto ainda está disponível. Está a procurar entrada para setembro?',
-    createdAt: new Date('2026-04-18T11:15:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg3',
-    conversationId: 'conv1',
-    senderId: '1',
-    senderName: 'João Silva',
-    content: 'Sim, pretendo mudar-me no início de setembro para o ano letivo. É possível visitar o quarto?',
-    createdAt: new Date('2026-04-18T14:20:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg4',
-    conversationId: 'conv1',
-    senderId: '2',
-    senderName: 'Maria Santos',
-    content: 'Claro. Tenho disponibilidade na terça-feira à tarde ou na quarta de manhã.',
-    createdAt: new Date('2026-04-18T15:45:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg5',
-    conversationId: 'conv1',
-    senderId: '1',
-    senderName: 'João Silva',
-    content: 'Terça-feira às 15h seria perfeito. Obrigado.',
-    createdAt: new Date('2026-04-19T09:00:00'),
-    read: false,
-    type: 'text',
-  },
-  {
-    id: 'msg6',
-    conversationId: 'conv2',
-    senderId: '1',
-    senderName: 'João Silva',
-    content: 'Bom dia. Vi o anúncio do quarto perto da ESTGV. As despesas estão incluídas no preço?',
-    createdAt: new Date('2026-04-17T09:00:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg7',
-    conversationId: 'conv2',
-    senderId: '2',
-    senderName: 'Maria Santos',
-    content: 'Bom dia. Sim, água, luz e internet já estão incluídas no valor mensal.',
-    createdAt: new Date('2026-04-17T10:30:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg8',
-    conversationId: 'conv2',
-    senderId: '2',
-    senderName: 'Maria Santos',
-    content: 'Se quiser, posso enviar mais fotografias da cozinha e da zona de estudo.',
-    createdAt: new Date('2026-04-17T10:31:00'),
-    read: false,
-    type: 'text',
-  },
-  {
-    id: 'msg9',
-    conversationId: 'conv3',
-    senderId: '4',
-    senderName: 'Ana Costa',
-    content: 'Olá. Vi que te candidataste ao nosso apartamento. Bem-vindo.',
-    createdAt: new Date('2026-04-16T16:00:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg10',
-    conversationId: 'conv3',
-    senderId: '1',
-    senderName: 'João Silva',
-    content: 'Olá, Ana. Obrigado pela mensagem. Como é o ambiente na casa?',
-    createdAt: new Date('2026-04-16T17:30:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg11',
-    conversationId: 'conv3',
-    senderId: '4',
-    senderName: 'Ana Costa',
-    content: 'É tranquilo durante a semana. Somos estudantes, respeitamos horários de estudo e combinamos limpezas ao domingo.',
-    createdAt: new Date('2026-04-16T18:00:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg12',
-    conversationId: 'conv4',
-    senderId: '4',
-    senderName: 'Ana Costa',
-    content: 'Bom dia, pessoal. Vou fazer compras hoje. Alguém precisa de alguma coisa?',
-    createdAt: new Date('2026-05-20T10:00:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg13',
-    conversationId: 'conv4',
-    senderId: '5',
-    senderName: 'Pedro Oliveira',
-    content: 'Se puderes trazer leite e café, agradeço.',
-    createdAt: new Date('2026-05-20T10:15:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg14',
-    conversationId: 'conv4',
-    senderId: '1',
-    senderName: 'João Silva',
-    content: 'Podes trazer pão e manteiga? Deixo o dinheiro na mesa.',
-    createdAt: new Date('2026-05-20T10:20:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg15',
-    conversationId: 'conv4',
-    senderId: '4',
-    senderName: 'Ana Costa',
-    content: 'Perfeito. Já anotei tudo. Chego por volta das 15h.',
-    createdAt: new Date('2026-05-20T10:25:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg16',
-    conversationId: 'conv4',
-    senderId: '5',
-    senderName: 'Pedro Oliveira',
-    content: 'Hoje à noite vou fazer jantar para todos. Quem se junta?',
-    createdAt: new Date('2026-05-21T16:30:00'),
-    read: true,
-    type: 'text',
-  },
-  {
-    id: 'msg17',
-    conversationId: 'conv4',
-    senderId: '5',
-    senderName: 'Pedro Oliveira',
-    content: 'Fica combinado às 20h.',
-    createdAt: new Date('2026-05-21T16:45:00'),
-    read: false,
-    type: 'text',
-  },
-];
+// ─── Caches ────────────────────────────────────────────────────────────────
+const conversationsCache = new Map<string, Conversation>();
+const messagesCache = new Map<string, Message>();
+const profilesCache = new Map<string, { name: string; type: 'student' | 'landlord'; avatar?: string }>();
 
-export const mockConversations: Conversation[] = [
-  {
-    id: 'conv1',
-    participants: [
-      {
-        id: '1',
-        name: 'João Silva',
-        type: 'student',
-        online: true,
-      },
-      {
-        id: '2',
-        name: 'Maria Santos',
-        type: 'landlord',
-        online: true,
-      },
-    ],
-    lastMessage: mockMessages.find(message => message.id === 'msg5'),
-    unreadCount: 0,
-    accommodationId: '1',
-    accommodationTitle: 'Quarto privado em Viseu Centro',
-    accommodationPrice: 280,
-    accommodationImage: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=800',
-    createdAt: new Date('2026-04-18T10:30:00'),
-    updatedAt: new Date('2026-04-19T09:00:00'),
-  },
-  {
-    id: 'conv2',
-    participants: [
-      {
-        id: '1',
-        name: 'João Silva',
-        type: 'student',
-        online: true,
-      },
-      {
-        id: '2',
-        name: 'Maria Santos',
-        type: 'landlord',
-        online: true,
-      },
-    ],
-    lastMessage: mockMessages.find(message => message.id === 'msg8'),
-    unreadCount: 1,
-    accommodationId: '3',
-    accommodationTitle: 'Quarto perto da ESTGV',
-    accommodationPrice: 320,
-    accommodationImage: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800',
-    createdAt: new Date('2026-04-17T09:00:00'),
-    updatedAt: new Date('2026-04-17T10:31:00'),
-  },
-  {
-    id: 'conv3',
-    participants: [
-      {
-        id: '1',
-        name: 'João Silva',
-        type: 'student',
-        online: true,
-      },
-      {
-        id: '4',
-        name: 'Ana Costa',
-        type: 'student',
-        online: false,
-      },
-    ],
-    lastMessage: mockMessages.find(message => message.id === 'msg11'),
-    unreadCount: 0,
-    createdAt: new Date('2026-04-16T16:00:00'),
-    updatedAt: new Date('2026-04-16T18:00:00'),
-  },
-  {
-    id: 'conv4',
-    participants: [
-      {
-        id: '1',
-        name: 'João Silva',
-        type: 'student',
-        online: true,
-      },
-      {
-        id: '4',
-        name: 'Ana Costa',
-        type: 'student',
-        online: false,
-      },
-      {
-        id: '5',
-        name: 'Pedro Oliveira',
-        type: 'student',
-        online: true,
-      },
-    ],
-    lastMessage: mockMessages.find(message => message.id === 'msg17'),
-    unreadCount: 1,
-    propertyId: 'prop-1',
-    isGroup: true,
-    groupName: 'Apartamento T3 Centro de Viseu',
-    createdAt: new Date('2026-05-20T10:00:00'),
-    updatedAt: new Date('2026-05-21T16:45:00'),
-  },
-];
+export const mockMessages: Message[] = [];
+export const mockConversations: Conversation[] = [];
+
+let hydrated = false;
+let hydratePromise: Promise<void> | null = null;
+
+function rowToMessage(row: any, senderName: string): Message {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    senderId: row.sender_id,
+    senderName,
+    content: row.content,
+    createdAt: new Date(row.created_at),
+    read: !!row.read,
+    type: row.type ?? 'text',
+    imageUrl: row.image_url ?? undefined,
+  };
+}
+
+function syncMirrors(): void {
+  mockMessages.length = 0;
+  for (const m of messagesCache.values()) mockMessages.push(m);
+  mockConversations.length = 0;
+  for (const c of conversationsCache.values()) mockConversations.push(c);
+}
+
+async function hydrate(): Promise<void> {
+  if (hydrated) return;
+  if (hydratePromise) return hydratePromise;
+  hydratePromise = (async () => {
+    const [convsRes, partsRes, msgsRes, profsRes] = await Promise.all([
+      supabase.from('conversations').select('*'),
+      supabase.from('conversation_participants').select('*'),
+      supabase.from('messages').select('*').order('created_at', { ascending: true }),
+      supabase.from('profiles').select('id, full_name, type, avatar_url'),
+    ]);
+    if (convsRes.error) console.error('Messages hydrate convs:', convsRes.error.message);
+    if (msgsRes.error) console.error('Messages hydrate msgs:', msgsRes.error.message);
+
+    profilesCache.clear();
+    (profsRes.data ?? []).forEach(p => profilesCache.set(p.id, {
+      name: p.full_name ?? 'Utilizador',
+      type: (p.type === 'landlord' ? 'landlord' : 'student'),
+      avatar: p.avatar_url ?? undefined,
+    }));
+
+    messagesCache.clear();
+    (msgsRes.data ?? []).forEach(m => {
+      const senderName = profilesCache.get(m.sender_id)?.name ?? 'Utilizador';
+      messagesCache.set(m.id, rowToMessage(m, senderName));
+    });
+
+    conversationsCache.clear();
+    const parts = partsRes.data ?? [];
+    (convsRes.data ?? []).forEach(c => {
+      const cParts = parts.filter(p => p.conversation_id === c.id);
+      const participants = cParts.map(p => {
+        const prof = profilesCache.get(p.user_id);
+        return {
+          id: p.user_id,
+          name: prof?.name ?? 'Utilizador',
+          type: prof?.type ?? 'student',
+          online: false,
+        };
+      });
+      const convMsgs = Array.from(messagesCache.values())
+        .filter(m => m.conversationId === c.id)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      const last = convMsgs[convMsgs.length - 1];
+      conversationsCache.set(c.id, {
+        id: c.id,
+        participants,
+        lastMessage: last,
+        unreadCount: convMsgs.filter(m => !m.read).length,
+        accommodationId: c.property_id ?? undefined,
+        accommodationTitle: undefined,
+        accommodationPrice: undefined,
+        accommodationImage: undefined,
+        roomId: c.room_id ?? undefined,
+        propertyId: c.property_id ?? undefined,
+        isGroup: !!c.is_group,
+        createdAt: new Date(c.created_at),
+        updatedAt: new Date(c.updated_at),
+      });
+    });
+
+    syncMirrors();
+    hydrated = true;
+  })();
+  return hydratePromise;
+}
+
+void hydrate();
+
+// ─── Read API ─────────────────────────────────────────────────────────────
 
 export function getConversationsForUser(userId: string): Conversation[] {
-  const normalizedUserId = normalizeMessageUserId(userId);
-
-  return mockConversations
-    .filter(conversation => conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedUserId)))
+  const norm = normalizeMessageUserId(userId);
+  return Array.from(conversationsCache.values())
+    .filter(c => c.participants.some(p => isSameMessageUser(p.id, norm)))
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
 export function getConversationById(id: string): Conversation | undefined {
-  return mockConversations.find(conversation => conversation.id === id);
+  return conversationsCache.get(id);
 }
 
 export function getMessagesForConversation(conversationId: string): Message[] {
-  return mockMessages
-    .filter(message => message.conversationId === conversationId)
+  return Array.from(messagesCache.values())
+    .filter(m => m.conversationId === conversationId)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
 export function getUnreadCountForConversation(conversationId: string, userId: string): number {
-  const normalizedUserId = normalizeMessageUserId(userId);
-
-  return mockMessages.filter(message =>
-    message.conversationId === conversationId &&
-    !isSameMessageUser(message.senderId, normalizedUserId) &&
-    !message.read
+  const norm = normalizeMessageUserId(userId);
+  return Array.from(messagesCache.values()).filter(m =>
+    m.conversationId === conversationId &&
+    !isSameMessageUser(m.senderId, norm) &&
+    !m.read,
   ).length;
 }
 
 export function getTotalUnreadCount(userId: string): number {
-  const userConversations = getConversationsForUser(userId);
-  return userConversations.reduce(
-    (total, conversation) => total + getUnreadCountForConversation(conversation.id, userId),
-    0
-  );
+  return getConversationsForUser(userId).reduce(
+    (total, c) => total + getUnreadCountForConversation(c.id, userId), 0);
 }
+
+// ─── Write API ────────────────────────────────────────────────────────────
 
 export function sendMessage(
   conversationId: string,
   senderId: string,
   senderName: string,
-  content: string
+  content: string,
 ): Message {
-  const normalizedSenderId = normalizeMessageUserId(senderId);
-
-  const newMessage: Message = {
-    id: `msg${mockMessages.length + 1}`,
-    conversationId,
-    senderId: normalizedSenderId,
-    senderName,
-    content,
-    createdAt: new Date(),
-    read: false,
-    type: 'text',
+  const norm = normalizeMessageUserId(senderId);
+  const id = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const msg: Message = {
+    id, conversationId, senderId: norm, senderName,
+    content, createdAt: new Date(), read: false, type: 'text',
   };
+  messagesCache.set(id, msg);
+  mockMessages.push(msg);
 
-  mockMessages.push(newMessage);
-
-  const conversation = mockConversations.find(item => item.id === conversationId);
-  if (conversation) {
-    conversation.lastMessage = newMessage;
-    conversation.updatedAt = new Date();
-
-    if (conversation.participants.some(participant => !isSameMessageUser(participant.id, normalizedSenderId))) {
-      conversation.unreadCount += 1;
+  const conv = conversationsCache.get(conversationId);
+  if (conv) {
+    conv.lastMessage = msg;
+    conv.updatedAt = new Date();
+    if (conv.participants.some(p => !isSameMessageUser(p.id, norm))) {
+      conv.unreadCount += 1;
     }
+    void supabase.from('conversations').update({ updated_at: conv.updatedAt.toISOString() }).eq('id', conversationId);
   }
 
-  return newMessage;
+  void supabase.from('messages').insert({
+    id, conversation_id: conversationId, sender_id: norm,
+    content, type: 'text', read: false,
+  }).then(({ error }) => {
+    if (error) console.error('Message insert error:', error.message);
+  });
+
+  return msg;
 }
 
 export function markConversationAsRead(conversationId: string, userId: string): void {
-  const normalizedUserId = normalizeMessageUserId(userId);
-  const conversation = mockConversations.find(item => item.id === conversationId);
-  if (!conversation) return;
-
-  conversation.unreadCount = 0;
-
-  mockMessages
-    .filter(message => message.conversationId === conversationId && !isSameMessageUser(message.senderId, normalizedUserId))
-    .forEach(message => {
-      message.read = true;
-    });
+  const norm = normalizeMessageUserId(userId);
+  const conv = conversationsCache.get(conversationId);
+  if (!conv) return;
+  conv.unreadCount = 0;
+  const toMark: string[] = [];
+  for (const m of messagesCache.values()) {
+    if (m.conversationId === conversationId && !isSameMessageUser(m.senderId, norm) && !m.read) {
+      m.read = true;
+      toMark.push(m.id);
+    }
+  }
+  if (toMark.length > 0) {
+    void supabase.from('messages').update({ read: true }).in('id', toMark);
+  }
 }
 
 export function createConversation(
@@ -393,44 +225,44 @@ export function createConversation(
   accommodationPrice?: number,
   accommodationImage?: string,
   roomId?: string,
-  propertyId?: string
+  propertyId?: string,
 ): Conversation {
-  const normalizedCurrentUserId = normalizeMessageUserId(currentUserId);
-  const normalizedOtherUserId = normalizeMessageUserId(otherUserId);
+  const normCurrent = normalizeMessageUserId(currentUserId);
+  const normOther = normalizeMessageUserId(otherUserId);
+  const id = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const now = new Date();
 
-  const newConversation: Conversation = {
-    id: `conv${mockConversations.length + 1}`,
+  const conv: Conversation = {
+    id,
     participants: [
-      {
-        id: normalizedCurrentUserId,
-        name: currentUserName,
-        type: currentUserType,
-        online: true,
-      },
-      {
-        id: normalizedOtherUserId,
-        name: otherUserName,
-        type: otherUserType,
-        online: false,
-      },
+      { id: normCurrent, name: currentUserName, type: currentUserType, online: true },
+      { id: normOther, name: otherUserName, type: otherUserType, online: false },
     ],
     unreadCount: 0,
-    accommodationId,
-    accommodationTitle,
-    accommodationPrice,
-    accommodationImage,
-    roomId,
-    propertyId,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    accommodationId, accommodationTitle, accommodationPrice, accommodationImage,
+    roomId, propertyId,
+    createdAt: now, updatedAt: now,
   };
+  conversationsCache.set(id, conv);
+  mockConversations.push(conv);
 
-  mockConversations.push(newConversation);
+  void supabase.from('conversations').insert({
+    id, property_id: propertyId ?? null, room_id: roomId ?? null,
+    is_group: false,
+  }).then(({ error }) => {
+    if (error) console.error('Conversation insert error:', error.message);
+  });
+  void supabase.from('conversation_participants').insert([
+    { conversation_id: id, user_id: normCurrent },
+    { conversation_id: id, user_id: normOther },
+  ]).then(({ error }) => {
+    if (error) console.error('Conversation participants insert error:', error.message);
+  });
 
-  const message = sendMessage(newConversation.id, normalizedCurrentUserId, currentUserName, initialMessage);
-  newConversation.lastMessage = message;
+  const msg = sendMessage(id, normCurrent, currentUserName, initialMessage);
+  conv.lastMessage = msg;
 
-  return newConversation;
+  return conv;
 }
 
 export function findOrCreateRoomConversation(
@@ -444,50 +276,43 @@ export function findOrCreateRoomConversation(
   roomTitle: string,
   roomPrice: number,
   roomImage: string,
-  customMessage?: string
+  customMessage?: string,
 ): Conversation {
-  const normalizedCurrentUserId = normalizeMessageUserId(currentUserId);
-  const normalizedLandlordId = normalizeMessageUserId(landlordId);
+  const normCurrent = normalizeMessageUserId(currentUserId);
+  const normLandlord = normalizeMessageUserId(landlordId);
 
-  const existingConversation = mockConversations.find(conversation =>
-    conversation.roomId === roomId &&
-    conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedCurrentUserId)) &&
-    conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedLandlordId))
+  const existing = Array.from(conversationsCache.values()).find(c =>
+    c.roomId === roomId &&
+    c.participants.some(p => isSameMessageUser(p.id, normCurrent)) &&
+    c.participants.some(p => isSameMessageUser(p.id, normLandlord)),
   );
 
-  if (existingConversation) {
+  if (existing) {
     if (customMessage && customMessage.trim()) {
-      sendMessage(existingConversation.id, normalizedCurrentUserId, currentUserName, customMessage.trim());
+      sendMessage(existing.id, normCurrent, currentUserName, customMessage.trim());
     }
-
-    return existingConversation;
+    return existing;
   }
 
-  const initialMessage = customMessage || 'Olá, tenho interesse neste quarto. Ainda está disponível?';
-
+  const initial = customMessage || 'Olá, tenho interesse neste quarto. Ainda está disponível?';
   return createConversation(
-    normalizedCurrentUserId,
-    currentUserName,
-    currentUserType,
-    normalizedLandlordId,
-    landlordName,
-    'landlord',
-    initialMessage,
-    undefined,
-    roomTitle,
-    roomPrice,
-    roomImage,
-    roomId,
-    propertyId
+    normCurrent, currentUserName, currentUserType,
+    normLandlord, landlordName, 'landlord',
+    initial, undefined, roomTitle, roomPrice, roomImage, roomId, propertyId,
   );
 }
 
 export function getHouseGroupConversation(propertyId: string, userId: string): Conversation | undefined {
-  const normalizedUserId = normalizeMessageUserId(userId);
-
-  return mockConversations.find(conversation =>
-    conversation.isGroup &&
-    conversation.propertyId === propertyId &&
-    conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedUserId))
+  const norm = normalizeMessageUserId(userId);
+  return Array.from(conversationsCache.values()).find(c =>
+    c.isGroup &&
+    c.propertyId === propertyId &&
+    c.participants.some(p => isSameMessageUser(p.id, norm)),
   );
+}
+
+export async function refreshMessagesState(): Promise<void> {
+  hydrated = false;
+  hydratePromise = null;
+  await hydrate();
 }

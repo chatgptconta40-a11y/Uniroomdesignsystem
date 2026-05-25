@@ -8,7 +8,7 @@ import { Button } from '../components/Button';
 import { toast } from 'sonner';
 import type { User } from '../types/auth';
 
-function getPostLoginPath(user: User | null) {
+function getPostLoginPath(user: User | null | undefined) {
   if (user?.type === 'landlord') return '/landlord/dashboard';
   if (user?.type === 'admin') return '/admin';
   return '/dashboard';
@@ -52,9 +52,7 @@ export function Login() {
 
     if (result.success) {
       toast.success('Login efetuado com sucesso!');
-      const storedUser = localStorage.getItem('uniroom_user');
-      const loggedUser = storedUser ? JSON.parse(storedUser) as User : null;
-      navigate(getPostLoginPath(loggedUser));
+      navigate(getPostLoginPath(result.user));
     } else {
       toast.error(result.error || 'Erro ao efetuar login');
     }

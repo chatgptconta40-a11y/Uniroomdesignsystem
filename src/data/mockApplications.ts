@@ -1,167 +1,118 @@
+// Applications, Notifications & ActiveHomes — backed by Supabase.
+// Preserves the original synchronous API via in-memory caches that hydrate
+// on first import. Writes update the cache immediately and persist async.
+
 import { Application, Notification, ActiveHome } from '../types/accommodation';
+import { supabase } from '../lib/supabase';
 import { getProperty, getRoom } from './mockProperties';
 
-const APPLICATIONS_KEY = 'uniroom_applications';
-const NOTIFICATIONS_KEY = 'uniroom_notifications';
-const ACTIVE_HOMES_KEY = 'uniroom_active_homes';
-const DATA_VERSION_KEY = 'uniroom_applications_version';
-const CURRENT_VERSION = '2026-05-v5';
-
-const LANDLORD_APPLICATIONS_KEY = 'uniroom_landlord_applications';
-const ROOMS_KEY = 'uniroom_rooms';
 const PROPERTIES_REFRESH_EVENT = 'uniroom:properties-updated';
 
-const INITIAL_APPLICATIONS: Application[] = [
-  {
-    id: 'app1',
-    userId: '1',
-    accommodationId: 'room-estgv-2',
-    roomId: 'room-estgv-2',
-    propertyId: 'prop-estgv',
-    landlordId: '2',
-    landlordName: 'Maria Santos',
-    status: 'under_review',
-    linkedCandidateId: 'lapp-demo-a',
-    visitDate: '2026-05-28T15:00:00',
-    visitFormat: 'presencial',
-    visitNote: 'Encontremo-nos na entrada do edifício.',
-    message: 'Olá! Sou estudante de Engenharia Informática no 2º ano na Universidade de Lisboa. Procuro um quarto tranquilo perto da faculdade. Sou organizado, respeitador e gosto de manter a casa limpa.',
-    moveInDate: new Date('2026-09-01'),
-    createdAt: new Date('2026-05-18'),
-    updatedAt: new Date('2026-05-19'),
-  },
-  {
-    id: 'app2',
-    userId: '1',
-    accommodationId: 'room-estgv-1',
-    roomId: 'room-estgv-1',
-    propertyId: 'prop-estgv',
-    landlordId: '2',
-    landlordName: 'Maria Santos',
-    status: 'accepted',
-    linkedCandidateId: 'lapp-demo-b',
-    message: 'Boa tarde! Sou estudante de Informática e procuro alojamento a partir de setembro. Tenho horários flexíveis e gosto de um ambiente calmo para estudar.',
-    moveInDate: new Date('2026-09-01'),
-    createdAt: new Date('2026-04-10'),
-    updatedAt: new Date('2026-05-22'),
-    reviewedAt: new Date('2026-05-22'),
-  },
-  {
-    id: 'app3',
-    userId: '1',
-    accommodationId: 'room-1',
-    roomId: 'room-1',
-    propertyId: 'prop-1',
-    landlordId: '2',
-    landlordName: 'Maria Santos',
-    status: 'rejected',
-    linkedCandidateId: 'lapp-demo-c',
-    message: 'Olá! Interessado no quarto. Sou estudante responsável e procuro alojamento de longa duração.',
-    moveInDate: new Date('2026-09-01'),
-    createdAt: new Date('2026-04-08'),
-    updatedAt: new Date('2026-04-09'),
-    reviewedAt: new Date('2026-04-09'),
-  },
-];
+// ─── Caches ────────────────────────────────────────────────────────────────
+const applicationsCache = new Map<string, Application>();
+const notificationsCache = new Map<string, Notification>();
+const activeHomesCache = new Map<string, ActiveHome>();
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: 'notif1',
-    userId: '1',
-    type: 'application_update',
-    title: 'Candidatura aceite!',
-    message: 'O senhorio aceitou a tua candidatura! Confirma a estadia em "As Minhas Candidaturas".',
-    link: '/applications',
-    read: false,
-    createdAt: new Date('2026-05-22'),
-  },
-  {
-    id: 'notif2',
-    userId: '1',
-    type: 'application_update',
-    title: 'Visita agendada',
-    message: 'O senhorio agendou uma visita para 28 de maio às 15h.',
-    link: '/applications',
-    read: false,
-    createdAt: new Date('2026-05-19'),
-  },
-  {
-    id: 'notif3',
-    userId: '1',
-    type: 'message',
-    title: 'Nova mensagem',
-    message: 'Recebeste uma mensagem do senhorio.',
-    link: '/messages',
-    read: true,
-    createdAt: new Date('2026-04-14'),
-  },
-];
+let hydrated = false;
+let hydratePromise: Promise<void> | null = null;
 
-const INITIAL_ACTIVE_HOMES: ActiveHome[] = [];
-
-function initStorage() {
-  const version = localStorage.getItem(DATA_VERSION_KEY);
-
-  if (version !== CURRENT_VERSION) {
-    localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(INITIAL_APPLICATIONS));
-    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(INITIAL_NOTIFICATIONS));
-    localStorage.setItem(ACTIVE_HOMES_KEY, JSON.stringify(INITIAL_ACTIVE_HOMES));
-    localStorage.setItem(DATA_VERSION_KEY, CURRENT_VERSION);
-  }
+function rowToApplication(row: any): Application {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    accommodationId: row.property_id ?? '',
+    propertyId: row.property_id ?? undefined,
+    roomId: row.room_id ?? undefined,
+    landlordId: row.landlord_id,
+    landlordName: row.landlord_name ?? undefined,
+    status: row.status,
+    message: row.message ?? '',
+    moveInDate: row.move_in_date ? new Date(row.move_in_date) : undefined,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at) : undefined,
+    confirmedAt: row.confirmed_at ? new Date(row.confirmed_at) : undefined,
+    linkedCandidateId: row.linked_candidate_id ?? undefined,
+    visitDate: row.visit_date ?? undefined,
+    visitFormat: row.visit_format ?? undefined,
+    visitNote: row.visit_note ?? undefined,
+  };
 }
 
-initStorage();
+function rowToNotification(row: any): Notification {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    type: row.type,
+    title: row.title,
+    message: row.message ?? '',
+    link: row.link ?? undefined,
+    read: !!row.read,
+    createdAt: new Date(row.created_at),
+  };
+}
+
+function rowToActiveHome(row: any): ActiveHome {
+  return {
+    id: row.id,
+    studentId: row.student_id,
+    propertyId: row.property_id,
+    roomId: row.room_id,
+    applicationId: row.application_id ?? '',
+    landlordId: row.landlord_id,
+    landlordName: '',
+    moveInDate: new Date(row.move_in_date),
+    contractEndDate: row.contract_end_date ? new Date(row.contract_end_date) : new Date(),
+    paymentDay: row.payment_day ?? 1,
+    createdAt: new Date(row.created_at),
+    monthlyRent: row.monthly_rent ? Number(row.monthly_rent) : undefined,
+    utilities: row.utilities ? Number(row.utilities) : undefined,
+  };
+}
+
+async function hydrate(): Promise<void> {
+  if (hydrated) return;
+  if (hydratePromise) return hydratePromise;
+  hydratePromise = (async () => {
+    const [appsRes, notifsRes, homesRes] = await Promise.all([
+      supabase.from('applications').select('*'),
+      supabase.from('notifications').select('*'),
+      supabase.from('active_homes').select('*'),
+    ]);
+    if (appsRes.error) console.error('mockApplications hydrate apps:', appsRes.error.message);
+    if (notifsRes.error) console.error('mockApplications hydrate notifs:', notifsRes.error.message);
+    if (homesRes.error) console.error('mockApplications hydrate homes:', homesRes.error.message);
+
+    applicationsCache.clear();
+    (appsRes.data ?? []).forEach(r => applicationsCache.set(r.id, rowToApplication(r)));
+    notificationsCache.clear();
+    (notifsRes.data ?? []).forEach(r => notificationsCache.set(r.id, rowToNotification(r)));
+    activeHomesCache.clear();
+    (homesRes.data ?? []).forEach(r => activeHomesCache.set(r.id, rowToActiveHome(r)));
+    hydrated = true;
+  })();
+  return hydratePromise;
+}
+
+void hydrate();
 
 function notifyPropertiesUpdated(): void {
   window.dispatchEvent(new CustomEvent(PROPERTIES_REFRESH_EVENT));
 }
 
-function readApplications(): Application[] {
-  const stored = localStorage.getItem(APPLICATIONS_KEY);
-
-  if (!stored) return [];
-
-  try {
-    const parsed = JSON.parse(stored);
-
-    return parsed.map((app: any) => ({
-      ...app,
-      moveInDate: app.moveInDate ? new Date(app.moveInDate) : undefined,
-      createdAt: new Date(app.createdAt),
-      updatedAt: new Date(app.updatedAt),
-      reviewedAt: app.reviewedAt ? new Date(app.reviewedAt) : undefined,
-      confirmedAt: app.confirmedAt ? new Date(app.confirmedAt) : undefined,
-    }));
-  } catch {
-    return [];
-  }
+function persistApp(id: string, patch: Record<string, unknown>): void {
+  void supabase.from('applications').update(patch).eq('id', id).then(({ error }) => {
+    if (error) console.error('Application persist error:', error.message);
+  });
 }
 
-function saveApplications(apps: Application[]): void {
-  localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(apps));
-}
-
-function readActiveHomes(): ActiveHome[] {
-  const stored = localStorage.getItem(ACTIVE_HOMES_KEY);
-
-  if (!stored) return [];
-
-  try {
-    const parsed = JSON.parse(stored);
-
-    return parsed.map((home: any) => ({
-      ...home,
-      moveInDate: new Date(home.moveInDate),
-      contractEndDate: new Date(home.contractEndDate),
-      createdAt: new Date(home.createdAt),
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function saveActiveHomes(homes: ActiveHome[]): void {
-  localStorage.setItem(ACTIVE_HOMES_KEY, JSON.stringify(homes));
+function insertNotification(notif: Notification): void {
+  void supabase.from('notifications').insert({
+    id: notif.id, user_id: notif.userId, type: notif.type,
+    title: notif.title, message: notif.message, link: notif.link ?? null, read: notif.read,
+  }).then(({ error }) => {
+    if (error) console.error('Notification insert error:', error.message);
+  });
 }
 
 function addNotification(
@@ -171,120 +122,32 @@ function addNotification(
   message: string,
   link?: string,
 ): void {
-  const stored = localStorage.getItem(NOTIFICATIONS_KEY);
-  const all: Notification[] = stored ? JSON.parse(stored) : [];
-
-  all.push({
+  const notif: Notification = {
     id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    userId,
-    type,
-    title,
-    message,
-    link,
-    read: false,
-    createdAt: new Date(),
+    userId, type, title, message, link, read: false, createdAt: new Date(),
+  };
+  notificationsCache.set(notif.id, notif);
+  insertNotification(notif);
+}
+
+function updateRoomInDb(roomId: string, patch: Record<string, unknown>): void {
+  void supabase.from('rooms').update(patch).eq('id', roomId).then(({ error }) => {
+    if (error) console.error('Room update error:', error.message);
+    else notifyPropertiesUpdated();
   });
-
-  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(all));
 }
 
-function updateRoomStatusInStorage(
-  roomId: string,
-  updates: Record<string, unknown>,
-): void {
-  const stored = localStorage.getItem(ROOMS_KEY);
-
-  if (!stored) return;
-
-  try {
-    const rooms = JSON.parse(stored);
-    const idx = rooms.findIndex((room: any) => room.id === roomId);
-
-    if (idx < 0) return;
-
-    rooms[idx] = {
-      ...rooms[idx],
-      ...updates,
-      updatedAt: new Date(),
-    };
-
-    localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
-    notifyPropertiesUpdated();
-  } catch {
-    // Ignore invalid persisted mock data.
-  }
-}
-
-function syncLandlordCandidatesFromApplication(
-  application: Application,
-  status: Application['status'],
-): void {
-  const stored = localStorage.getItem(LANDLORD_APPLICATIONS_KEY);
-
-  if (!stored) return;
-
-  try {
-    const candidates = JSON.parse(stored);
-
-    const updated = candidates.map((candidate: any) => {
-      const sameStudentApplication =
-        candidate.linkedStudentAppId === application.id ||
-        (
-          candidate.studentId === application.userId &&
-          candidate.roomId === application.roomId &&
-          candidate.propertyId === application.propertyId
-        );
-
-      if (sameStudentApplication) {
-        if (status === 'withdrawn') {
-          return { ...candidate, status: 'rejected' };
-        }
-
-        if (status === 'confirmed') {
-          return { ...candidate, status: 'accepted' };
-        }
-
-        if (
-          status === 'pending' ||
-          status === 'under_review' ||
-          status === 'accepted' ||
-          status === 'rejected'
-        ) {
-          return { ...candidate, status };
-        }
-      }
-
-      if (
-        status === 'accepted' &&
-        candidate.id !== application.linkedCandidateId &&
-        candidate.roomId === application.roomId &&
-        candidate.propertyId === application.propertyId &&
-        (candidate.status === 'pending' || candidate.status === 'under_review')
-      ) {
-        return { ...candidate, status: 'rejected' };
-      }
-
-      return candidate;
-    });
-
-    localStorage.setItem(LANDLORD_APPLICATIONS_KEY, JSON.stringify(updated));
-  } catch {
-    // Ignore invalid persisted mock data.
-  }
-}
-
-function rejectCompetingApplications(acceptedApplication: Application): Application[] {
-  const all = readApplications();
-
-  const updated = all.map(app => {
-    const isCompeting =
-      app.id !== acceptedApplication.id &&
-      app.roomId === acceptedApplication.roomId &&
-      app.propertyId === acceptedApplication.propertyId &&
-      (app.status === 'pending' || app.status === 'under_review');
-
-    if (!isCompeting) return app;
-
+function rejectCompetingApplications(accepted: Application): void {
+  const competing = Array.from(applicationsCache.values()).filter(app =>
+    app.id !== accepted.id &&
+    app.roomId === accepted.roomId &&
+    app.propertyId === accepted.propertyId &&
+    (app.status === 'pending' || app.status === 'under_review'),
+  );
+  competing.forEach(app => {
+    const next: Application = { ...app, status: 'rejected', reviewedAt: new Date(), updatedAt: new Date() };
+    applicationsCache.set(app.id, next);
+    persistApp(app.id, { status: 'rejected', reviewed_at: next.reviewedAt!.toISOString() });
     addNotification(
       app.userId,
       'application_update',
@@ -292,39 +155,33 @@ function rejectCompetingApplications(acceptedApplication: Application): Applicat
       'A tua candidatura foi encerrada porque o quarto foi reservado por outro candidato.',
       '/applications',
     );
-
-    return {
-      ...app,
-      status: 'rejected' as const,
-      reviewedAt: new Date(),
-      updatedAt: new Date(),
-    };
   });
-
-  saveApplications(updated);
-  return updated;
 }
 
+// ─── Read API ─────────────────────────────────────────────────────────────
+
 export function getApplicationsForUser(userId: string): Application[] {
-  return readApplications().filter(app => app.userId === userId);
+  return Array.from(applicationsCache.values()).filter(a => a.userId === userId);
 }
 
 export function getApplicationsForLandlord(landlordId: string): Application[] {
-  return readApplications().filter(app => app.landlordId === landlordId);
+  return Array.from(applicationsCache.values()).filter(a => a.landlordId === landlordId);
 }
 
 export function getApplicationById(id: string): Application | undefined {
-  return readApplications().find(app => app.id === id);
+  return applicationsCache.get(id);
 }
 
 export function getExistingApplicationForRoom(userId: string, roomId: string): Application | null {
-  return readApplications().find(app =>
+  return Array.from(applicationsCache.values()).find(app =>
     app.userId === userId &&
     app.roomId === roomId &&
     app.status !== 'withdrawn' &&
     app.status !== 'rejected',
   ) ?? null;
 }
+
+// ─── Write API ────────────────────────────────────────────────────────────
 
 export function createApplication(
   userId: string,
@@ -339,63 +196,48 @@ export function createApplication(
     linkedCandidateId?: string;
   },
 ): Application {
-  const all = readApplications();
-
-  const duplicate = all.find(app =>
+  const dup = Array.from(applicationsCache.values()).find(app =>
     app.userId === userId &&
     app.roomId === metadata?.roomId &&
     app.status !== 'withdrawn' &&
     app.status !== 'rejected',
   );
+  if (dup) return dup;
 
-  if (duplicate) return duplicate;
-
+  const id = `app_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const newApp: Application = {
-    id: `app_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    userId,
-    accommodationId,
-    roomId: metadata?.roomId,
-    propertyId: metadata?.propertyId,
-    landlordId,
-    landlordName: metadata?.landlordName,
+    id, userId, accommodationId,
+    roomId: metadata?.roomId, propertyId: metadata?.propertyId,
+    landlordId, landlordName: metadata?.landlordName,
     linkedCandidateId: metadata?.linkedCandidateId,
-    status: 'pending',
-    message,
-    moveInDate,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    status: 'pending', message, moveInDate,
+    createdAt: new Date(), updatedAt: new Date(),
   };
+  applicationsCache.set(id, newApp);
 
-  all.push(newApp);
-  saveApplications(all);
+  void supabase.from('applications').insert({
+    id, user_id: userId,
+    property_id: metadata?.propertyId ?? null,
+    room_id: metadata?.roomId ?? null,
+    landlord_id: landlordId, status: 'pending', message,
+    move_in_date: moveInDate ? moveInDate.toISOString().slice(0, 10) : null,
+    linked_candidate_id: metadata?.linkedCandidateId ?? null,
+  }).then(({ error }) => {
+    if (error) console.error('Application insert error:', error.message);
+  });
 
-  addNotification(
-    userId,
-    'application_update',
-    'Candidatura enviada!',
-    'A tua candidatura foi enviada ao senhorio.',
-    '/applications',
-  );
+  addNotification(userId, 'application_update', 'Candidatura enviada!',
+    'A tua candidatura foi enviada ao senhorio.', '/applications');
 
   return newApp;
 }
 
-export function updateApplicationLinkCandidateId(
-  applicationId: string,
-  linkedCandidateId: string,
-): void {
-  const all = readApplications();
-  const idx = all.findIndex(app => app.id === applicationId);
-
-  if (idx < 0) return;
-
-  all[idx] = {
-    ...all[idx],
-    linkedCandidateId,
-    updatedAt: new Date(),
-  };
-
-  saveApplications(all);
+export function updateApplicationLinkCandidateId(applicationId: string, linkedCandidateId: string): void {
+  const app = applicationsCache.get(applicationId);
+  if (!app) return;
+  const next = { ...app, linkedCandidateId, updatedAt: new Date() };
+  applicationsCache.set(applicationId, next);
+  persistApp(applicationId, { linked_candidate_id: linkedCandidateId });
 }
 
 export function updateApplicationStatus(
@@ -403,70 +245,44 @@ export function updateApplicationStatus(
   status: Application['status'],
   note?: string,
 ): boolean {
-  let all = readApplications();
-  const idx = all.findIndex(app => app.id === applicationId);
+  const app = applicationsCache.get(applicationId);
+  if (!app) return false;
+  const previous = app.status;
+  const shouldReview = status === 'accepted' || status === 'rejected' || status === 'under_review';
+  const reviewedAt = shouldReview ? new Date() : app.reviewedAt;
+  const next: Application = { ...app, status, updatedAt: new Date(), reviewedAt };
+  applicationsCache.set(applicationId, next);
 
-  if (idx < 0) return false;
-
-  const previousStatus = all[idx].status;
-  const shouldReview =
-    status === 'accepted' ||
-    status === 'rejected' ||
-    status === 'under_review';
-
-  all[idx] = {
-    ...all[idx],
-    status,
-    updatedAt: new Date(),
-    ...(shouldReview ? { reviewedAt: new Date() } : {}),
-  };
-
-  saveApplications(all);
+  const patch: Record<string, unknown> = { status };
+  if (shouldReview) patch.reviewed_at = reviewedAt!.toISOString();
+  persistApp(applicationId, patch);
 
   if (status === 'accepted') {
-    const acceptedApp = all[idx];
+    if (next.roomId) updateRoomInDb(next.roomId, { status: 'reserved', reserved_by: next.userId });
+    rejectCompetingApplications(next);
+  }
 
-    if (acceptedApp.roomId) {
-      updateRoomStatusInStorage(acceptedApp.roomId, {
-        status: 'reserved',
-        reservedBy: acceptedApp.userId,
-      });
+  if (previous !== status) {
+    const statusMessages: Record<string, string> = {
+      accepted: 'O senhorio aceitou a tua candidatura! Confirma a estadia em "As Minhas Candidaturas".',
+      rejected: 'A tua candidatura foi recusada pelo senhorio.',
+      under_review: 'O senhorio está a analisar a tua candidatura.',
+      withdrawn: 'A tua candidatura foi cancelada.',
+      confirmed: 'A tua estadia foi confirmada com sucesso.',
+    };
+    const titles: Record<string, string> = {
+      accepted: 'Candidatura aceite!',
+      rejected: 'Candidatura recusada',
+      under_review: 'Candidatura em análise',
+      withdrawn: 'Candidatura cancelada',
+      confirmed: 'Estadia confirmada!',
+    };
+    if (statusMessages[status]) {
+      addNotification(next.userId, 'application_update', titles[status],
+        note || statusMessages[status],
+        status === 'confirmed' ? '/my-home' : '/applications');
     }
-
-    all = rejectCompetingApplications(acceptedApp);
-    syncLandlordCandidatesFromApplication(acceptedApp, 'accepted');
-  } else {
-    syncLandlordCandidatesFromApplication(all[idx], status);
   }
-
-  if (previousStatus === status) return true;
-
-  const statusMessages: Record<string, string> = {
-    accepted: 'O senhorio aceitou a tua candidatura! Confirma a estadia em "As Minhas Candidaturas".',
-    rejected: 'A tua candidatura foi recusada pelo senhorio.',
-    under_review: 'O senhorio está a analisar a tua candidatura.',
-    withdrawn: 'A tua candidatura foi cancelada.',
-    confirmed: 'A tua estadia foi confirmada com sucesso.',
-  };
-
-  const titles: Record<string, string> = {
-    accepted: 'Candidatura aceite!',
-    rejected: 'Candidatura recusada',
-    under_review: 'Candidatura em análise',
-    withdrawn: 'Candidatura cancelada',
-    confirmed: 'Estadia confirmada!',
-  };
-
-  if (statusMessages[status]) {
-    addNotification(
-      all[idx].userId,
-      'application_update',
-      titles[status],
-      note || statusMessages[status],
-      status === 'confirmed' ? '/my-home' : '/applications',
-    );
-  }
-
   return true;
 }
 
@@ -476,55 +292,38 @@ export function syncVisitData(
   visitFormat: 'presencial' | 'videochamada',
   visitNote?: string,
 ): void {
-  const all = readApplications();
-  const idx = all.findIndex(app => app.id === applicationId);
-
-  if (idx < 0) return;
-
-  const shouldMoveToReview = all[idx].status === 'pending';
-
-  all[idx] = {
-    ...all[idx],
-    visitDate,
-    visitFormat,
-    visitNote: visitNote || undefined,
+  const app = applicationsCache.get(applicationId);
+  if (!app) return;
+  const shouldMoveToReview = app.status === 'pending';
+  const next: Application = {
+    ...app, visitDate, visitFormat, visitNote: visitNote || undefined,
     updatedAt: new Date(),
-    ...(shouldMoveToReview ? { status: 'under_review' as const, reviewedAt: new Date() } : {}),
+    ...(shouldMoveToReview ? { status: 'under_review', reviewedAt: new Date() } : {}),
   };
+  applicationsCache.set(applicationId, next);
 
-  saveApplications(all);
+  const patch: Record<string, unknown> = {
+    visit_date: visitDate, visit_format: visitFormat,
+    visit_note: visitNote ?? null,
+  };
+  if (shouldMoveToReview) {
+    patch.status = 'under_review';
+    patch.reviewed_at = next.reviewedAt!.toISOString();
+  }
+  persistApp(applicationId, patch);
 
-  const visitDateObj = new Date(visitDate);
-  const dateStr = visitDateObj.toLocaleDateString('pt-PT', {
-    day: 'numeric',
-    month: 'long',
-  });
-  const timeStr = visitDateObj.toLocaleTimeString('pt-PT', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  addNotification(
-    all[idx].userId,
-    'application_update',
-    'Visita agendada',
+  const d = new Date(visitDate);
+  const dateStr = d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' });
+  const timeStr = d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+  addNotification(next.userId, 'application_update', 'Visita agendada',
     `O senhorio agendou uma visita para ${dateStr} às ${timeStr} (${visitFormat === 'videochamada' ? 'videochamada' : 'presencial'}).`,
-    '/applications',
-  );
+    '/applications');
 }
 
 export function confirmStay(applicationId: string): ActiveHome | null {
-  const all = readApplications();
-  const idx = all.findIndex(app => app.id === applicationId);
-
-  if (idx < 0) return null;
-
-  const app = all[idx];
-
-  if (app.status === 'confirmed') {
-    return getActiveHomeForStudent(app.userId);
-  }
-
+  const app = applicationsCache.get(applicationId);
+  if (!app) return null;
+  if (app.status === 'confirmed') return getActiveHomeForStudent(app.userId);
   if (app.status !== 'accepted') return null;
   if (!app.roomId || !app.propertyId) return null;
 
@@ -535,128 +334,107 @@ export function confirmStay(applicationId: string): ActiveHome | null {
   const contractEndDate = new Date(moveInDate);
   contractEndDate.setMonth(contractEndDate.getMonth() + 10);
 
-  all[idx] = {
-    ...app,
-    status: 'confirmed',
-    confirmedAt: new Date(),
-    updatedAt: new Date(),
+  const confirmedAt = new Date();
+  const next: Application = { ...app, status: 'confirmed', confirmedAt, updatedAt: new Date() };
+  applicationsCache.set(applicationId, next);
+  persistApp(applicationId, { status: 'confirmed', confirmed_at: confirmedAt.toISOString() });
+
+  updateRoomInDb(app.roomId, { status: 'occupied', occupied_by: app.userId, reserved_by: null });
+
+  const home: ActiveHome = {
+    id: `home_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    studentId: app.userId, propertyId: app.propertyId, roomId: app.roomId,
+    applicationId: app.id, landlordId: app.landlordId,
+    landlordName: app.landlordName || 'Senhorio',
+    moveInDate, contractEndDate, paymentDay: 5, createdAt: new Date(),
+    propertyTitle: property?.title, roomTitle: room?.title,
+    monthlyRent: room?.price, utilities: room?.utilities,
   };
 
-  saveApplications(all);
-
-  updateRoomStatusInStorage(app.roomId, {
-    status: 'occupied',
-    occupiedBy: app.userId,
-    reservedBy: undefined,
+  // Replace existing home for this student if any
+  for (const h of Array.from(activeHomesCache.values())) {
+    if (h.studentId === app.userId) {
+      activeHomesCache.delete(h.id);
+      void supabase.from('active_homes').delete().eq('id', h.id);
+    }
+  }
+  activeHomesCache.set(home.id, home);
+  void supabase.from('active_homes').insert({
+    id: home.id, student_id: home.studentId, property_id: home.propertyId,
+    room_id: home.roomId, application_id: home.applicationId,
+    landlord_id: home.landlordId,
+    move_in_date: home.moveInDate.toISOString().slice(0, 10),
+    contract_end_date: home.contractEndDate.toISOString().slice(0, 10),
+    payment_day: home.paymentDay,
+    monthly_rent: home.monthlyRent ?? null,
+    utilities: home.utilities ?? null,
+  }).then(({ error }) => {
+    if (error) console.error('ActiveHome insert error:', error.message);
   });
 
-  const activeHome: ActiveHome = {
-    id: `home_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    studentId: app.userId,
-    propertyId: app.propertyId,
-    roomId: app.roomId,
-    applicationId: app.id,
-    landlordId: app.landlordId,
-    landlordName: app.landlordName || 'Senhorio',
-    moveInDate,
-    contractEndDate,
-    paymentDay: 5,
-    createdAt: new Date(),
-    propertyTitle: property?.title,
-    roomTitle: room?.title,
-    monthlyRent: room?.price,
-    utilities: room?.utilities,
-  };
+  addNotification(app.userId, 'application_update', 'Estadia confirmada!',
+    'Bem-vindo/a! A tua estadia foi confirmada com sucesso.', '/my-home');
 
-  const homes = readActiveHomes();
-  const existingIdx = homes.findIndex(home => home.studentId === app.userId);
-
-  if (existingIdx >= 0) {
-    homes[existingIdx] = activeHome;
-  } else {
-    homes.push(activeHome);
-  }
-
-  saveActiveHomes(homes);
-  syncLandlordCandidatesFromApplication(all[idx], 'confirmed');
-
-  addNotification(
-    app.userId,
-    'application_update',
-    'Estadia confirmada!',
-    'Bem-vindo/a! A tua estadia foi confirmada com sucesso.',
-    '/my-home',
-  );
-
-  return activeHome;
+  return home;
 }
 
 export function withdrawApplication(applicationId: string): boolean {
   return updateApplicationStatus(applicationId, 'withdrawn');
 }
 
-export function getNotificationsForUser(userId: string): Notification[] {
-  const stored = localStorage.getItem(NOTIFICATIONS_KEY);
-  const all: Notification[] = stored ? JSON.parse(stored) : [];
+// ─── Notifications ─────────────────────────────────────────────────────────
 
-  return all
-    .filter(notification => notification.userId === userId)
-    .map(notification => ({
-      ...notification,
-      createdAt: new Date(notification.createdAt),
-    }))
+export function getNotificationsForUser(userId: string): Notification[] {
+  return Array.from(notificationsCache.values())
+    .filter(n => n.userId === userId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 export function getUnreadCount(userId: string): number {
-  const stored = localStorage.getItem(NOTIFICATIONS_KEY);
-  const all: Notification[] = stored ? JSON.parse(stored) : [];
-
-  return all.filter(notification => notification.userId === userId && !notification.read).length;
+  return Array.from(notificationsCache.values()).filter(n => n.userId === userId && !n.read).length;
 }
 
 export function markNotificationAsRead(notificationId: string): boolean {
-  const stored = localStorage.getItem(NOTIFICATIONS_KEY);
-  const all: Notification[] = stored ? JSON.parse(stored) : [];
-  const idx = all.findIndex(notification => notification.id === notificationId);
-
-  if (idx < 0) return false;
-
-  all[idx].read = true;
-  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(all));
-
+  const n = notificationsCache.get(notificationId);
+  if (!n) return false;
+  notificationsCache.set(notificationId, { ...n, read: true });
+  void supabase.from('notifications').update({ read: true }).eq('id', notificationId);
   return true;
 }
 
 export function markAllNotificationsAsRead(userId: string): void {
-  const stored = localStorage.getItem(NOTIFICATIONS_KEY);
-  const all: Notification[] = stored ? JSON.parse(stored) : [];
-
-  all.forEach(notification => {
-    if (notification.userId === userId) {
-      notification.read = true;
+  const ids: string[] = [];
+  for (const [id, n] of notificationsCache) {
+    if (n.userId === userId && !n.read) {
+      notificationsCache.set(id, { ...n, read: true });
+      ids.push(id);
     }
-  });
-
-  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(all));
+  }
+  if (ids.length > 0) {
+    void supabase.from('notifications').update({ read: true }).in('id', ids);
+  }
 }
+
+// ─── Active homes ──────────────────────────────────────────────────────────
 
 export function getActiveHomeForStudent(studentId: string): ActiveHome | null {
-  return readActiveHomes().find(home => home.studentId === studentId) ?? null;
+  return Array.from(activeHomesCache.values()).find(h => h.studentId === studentId) ?? null;
 }
 
-export function removeActiveHome(
-  studentId: string,
-  propertyId: string,
-  roomId: string,
-): boolean {
-  const homes = readActiveHomes();
-  const filtered = homes.filter(home =>
-    !(home.studentId === studentId && home.propertyId === propertyId && home.roomId === roomId),
-  );
+export function removeActiveHome(studentId: string, propertyId: string, roomId: string): boolean {
+  let removed = false;
+  for (const [id, h] of activeHomesCache) {
+    if (h.studentId === studentId && h.propertyId === propertyId && h.roomId === roomId) {
+      activeHomesCache.delete(id);
+      void supabase.from('active_homes').delete().eq('id', id);
+      removed = true;
+    }
+  }
+  return removed;
+}
 
-  if (filtered.length === homes.length) return false;
-
-  saveActiveHomes(filtered);
-  return true;
+export async function refreshApplicationsState(): Promise<void> {
+  hydrated = false;
+  hydratePromise = null;
+  await hydrate();
 }

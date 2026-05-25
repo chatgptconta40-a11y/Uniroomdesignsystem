@@ -1,0 +1,323 @@
+import { Hono } from "npm:hono";
+import { cors } from "npm:hono/cors";
+import { logger } from "npm:hono/logger";
+import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
+
+const app = new Hono();
+
+app.use("*", logger(console.log));
+app.use("/*", cors({
+  origin: "*",
+  allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info"],
+  allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  exposeHeaders: ["Content-Length"],
+  maxAge: 600,
+}));
+
+function adminClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+}
+
+async function getAuthedUser(authHeader: string | null) {
+  if (!authHeader) return null;
+  const token = authHeader.split(" ")[1];
+  if (!token) return null;
+  const supabase = adminClient();
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+  return { user, token };
+}
+
+async function ensureProfile(userId: string, fallback: { email?: string; name?: string; type?: string; verified?: boolean; onboarding_completed?: boolean }) {
+  const supabase = adminClient();
+  const { data: existing } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+  if (existing) return existing;
+  const profile = {
+    id: userId,
+    email: fallback.email ?? "",
+    full_name: fallback.name ?? "Utilizador",
+    type: (fallback.type ?? "student") as "student" | "landlord" | "admin",
+    verified: fallback.verified ?? false,
+    onboarding_completed: fallback.onboarding_completed ?? false,
+  };
+  const { data, error } = await supabase.from("profiles").insert(profile).select().single();
+  if (error) {
+    console.log(`ensureProfile insert error for ${userId}: ${error.message}`);
+    return profile;
+  }
+  return data;
+}
+
+app.get("/make-server-08c694dc/health", (c) => c.json({ status: "ok" }));
+
+app.post("/make-server-08c694dc/auth/register", async (c) => {
+  try {
+    const { email, password, name, type } = await c.req.json();
+    if (!email || !password || !name || !type) return c.json({ error: "Missing required fields" }, 400);
+    const supabase = adminClient();
+    const { data, error } = await supabase.auth.admin.createUser({
+      email, password,
+      user_metadata: { name, full_name: name, type },
+      email_confirm: true,
+    });
+    if (error) return c.json({ error: error.message }, 400);
+    const userId = data.user.id;
+    const profile = await ensureProfile(userId, { email, name, type });
+    if (type === "student") {
+      await supabase.from("personal_profiles").upsert({ user_id: userId, full_name: name }, { onConflict: "user_id" });
+    }
+    return c.json({ success: true, profile });
+  } catch (err) {
+    console.log(`Registration error: ${err}`);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+app.get("/make-server-08c694dc/auth/profile", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+    const profile = await ensureProfile(authed.user.id, {
+      email: authed.user.email,
+      name: authed.user.user_metadata?.full_name || authed.user.user_metadata?.name,
+      type: authed.user.user_metadata?.type,
+    });
+    return c.json({ profile });
+  } catch (err) {
+    console.log(`Profile error: ${err}`);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+app.put("/make-server-08c694dc/auth/onboarding", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+    const body = await c.req.json();
+    const supabase = adminClient();
+    const sp = body.studentProfile || {};
+    if (sp.personal) await supabase.from("personal_profiles").upsert({ user_id: authed.user.id, ...sp.personal }, { onConflict: "user_id" });
+    if (sp.lifestyle) await supabase.from("lifestyle_profiles").upsert({ user_id: authed.user.id, ...sp.lifestyle }, { onConflict: "user_id" });
+    if (sp.preferences) await supabase.from("accommodation_preferences").upsert({ user_id: authed.user.id, ...sp.preferences }, { onConflict: "user_id" });
+    await supabase.from("profiles").update({ onboarding_completed: true }).eq("id", authed.user.id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`Onboarding error: ${err}`);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// =========================================================
+// DEMO SEED
+// =========================================================
+const DEMO_IMG_PROPERTY = "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800";
+const DEMO_IMG_ROOM = "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800";
+
+async function seedDemoUsers() {
+  const supabase = adminClient();
+  const { data: listData, error: listError } = await supabase.auth.admin.listUsers();
+  if (listError) { console.log(`Seed list error: ${listError.message}`); return null; }
+  const existingByEmail = new Map(listData.users.map((u: { id: string; email: string }) => [u.email, u.id]));
+
+  const demoUsers = [
+    { email: "estudante@uniroom.pt", password: "password123", name: "João Silva", type: "student", verified: true, onboarding_completed: true },
+    { email: "senhorio@uniroom.pt", password: "password123", name: "Maria Santos", type: "landlord", verified: true, onboarding_completed: true },
+    { email: "admin@uniroom.pt", password: "password123", name: "Admin UniRoom", type: "admin", verified: true, onboarding_completed: true },
+  ];
+
+  const ids: Record<string, string> = {};
+  for (const u of demoUsers) {
+    let userId = existingByEmail.get(u.email) as string | undefined;
+    if (!userId) {
+      const { data, error } = await supabase.auth.admin.createUser({
+        email: u.email, password: u.password,
+        user_metadata: { name: u.name, full_name: u.name, type: u.type },
+        email_confirm: true,
+      });
+      if (error) { console.log(`Seed create ${u.email}: ${error.message}`); continue; }
+      userId = data.user.id;
+    }
+    await supabase.from("profiles").upsert({
+      id: userId, email: u.email, full_name: u.name, type: u.type,
+      verified: u.verified, onboarding_completed: u.onboarding_completed,
+    }, { onConflict: "id" });
+    if (u.type === "student") await supabase.from("personal_profiles").upsert({ user_id: userId, full_name: u.name }, { onConflict: "user_id" });
+    ids[u.type] = userId;
+  }
+  return ids;
+}
+
+async function seedDemoContent(ids: Record<string, string>) {
+  const supabase = adminClient();
+  const landlordId = ids.landlord;
+  const studentId = ids.student;
+  if (!landlordId || !studentId) return;
+
+  const { data: existing } = await supabase.from("properties").select("id").eq("landlord_id", landlordId).limit(1);
+  if (existing && existing.length > 0) { console.log("Demo content already seeded"); return; }
+
+  const baseAmen = { wifi: true, parking: false, gym: false, laundry: true, kitchen: true, livingRoom: true, backyard: false, airConditioning: true, heating: true, dishwasher: true, microwave: true, elevator: false };
+
+  const properties = [
+    { id: "prop-1", title: "Apartamento T3 - Marquês de Pombal", city: "Lisboa", zone: "Marquês de Pombal", address: "Av. da Liberdade 200", distance: 1.5, totalRooms: 3, status: "active" },
+    { id: "prop-2", title: "Casa em Benfica - Perto da FCUL", city: "Lisboa", zone: "Benfica", address: "Rua da Universidade 45", distance: 0.8, totalRooms: 4, status: "active" },
+    { id: "prop-3", title: "T2 moderno no Porto - Boavista", city: "Porto", zone: "Boavista", address: "Av. da Boavista 1500", distance: 2.0, totalRooms: 2, status: "active" },
+    { id: "prop-4", title: "Casa partilhada - Coimbra Centro", city: "Coimbra", zone: "Sé Velha", address: "Rua Larga 10", distance: 0.5, totalRooms: 4, status: "active" },
+    { id: "prop-5", title: "Apartamento renovado - Aveiro", city: "Aveiro", zone: "Glicínias", address: "Rua das Glicínias 20", distance: 1.2, totalRooms: 3, status: "draft" },
+    { id: "prop-6", title: "Estúdio em Braga", city: "Braga", zone: "Centro", address: "Rua do Souto 88", distance: 0.7, totalRooms: 1, status: "paused" },
+  ];
+
+  for (const p of properties) {
+    await supabase.from("properties").insert({
+      id: p.id, landlord_id: landlordId, title: p.title,
+      description: `Excelente ${p.title.toLowerCase()}, totalmente mobilado, ideal para estudantes universitários. Próximo de transportes públicos e supermercados.`,
+      address: p.address, city: p.city, zone: p.zone, distance_to_university: p.distance,
+      coordinates: { lat: 38.7223, lng: -9.1393 }, images: [DEMO_IMG_PROPERTY],
+      amenities: baseAmen,
+      house_rules: { smoking: false, pets: false, parties: false, studentsOnly: true, quietHours: "22h-08h", preferredGender: "any" },
+      total_rooms: p.totalRooms, whole_property_available: false,
+      status: p.status, verified: p.status === "active", views: Math.floor(Math.random() * 200) + 50,
+    });
+  }
+
+  const rooms = [
+    { id: "room-1", prop: "prop-1", num: "Quarto 1", title: "Quarto com vista para o jardim", price: 380, status: "available" },
+    { id: "room-2", prop: "prop-1", num: "Quarto 2", title: "Quarto interior tranquilo", price: 340, status: "available" },
+    { id: "room-3", prop: "prop-1", num: "Quarto 3", title: "Quarto suite com WC privado", price: 450, status: "occupied", occupiedBy: studentId },
+    { id: "room-4", prop: "prop-2", num: "Quarto 1", title: "Quarto duplo amplo", price: 360, status: "available" },
+    { id: "room-5", prop: "prop-2", num: "Quarto 2", title: "Quarto individual com varanda", price: 400, status: "reserved", reservedBy: studentId },
+    { id: "room-6", prop: "prop-2", num: "Quarto 3", title: "Quarto pequeno acolhedor", price: 290, status: "available" },
+    { id: "room-7", prop: "prop-2", num: "Quarto 4", title: "Quarto com escritório", price: 420, status: "available" },
+    { id: "room-8", prop: "prop-3", num: "Quarto 1", title: "Quarto luminoso", price: 350, status: "available" },
+    { id: "room-9", prop: "prop-3", num: "Quarto 2", title: "Quarto suite premium", price: 480, status: "available" },
+    { id: "room-10", prop: "prop-4", num: "Quarto 1", title: "Quarto histórico no centro", price: 280, status: "available" },
+    { id: "room-11", prop: "prop-4", num: "Quarto 2", title: "Quarto com vista para a Sé", price: 320, status: "available" },
+    { id: "room-12", prop: "prop-4", num: "Quarto 3", title: "Quarto duplo partilhado", price: 220, status: "available" },
+  ];
+
+  for (const r of rooms) {
+    await supabase.from("rooms").insert({
+      id: r.id, property_id: r.prop, landlord_id: landlordId,
+      room_number: r.num, title: r.title,
+      description: `${r.title}. Mobilado, com secretária, roupeiro e cama de casal. Pronto a habitar.`,
+      images: [DEMO_IMG_ROOM], size: 12 + Math.floor(Math.random() * 8),
+      room_type: "private", max_occupants: 1,
+      private_bathroom: r.title.includes("suite"), balcony: r.title.includes("varanda"),
+      desk: true, wardrobe: true, air_conditioning: true,
+      price: r.price, utilities: 30,
+      available_from: "2026-09-01", minimum_stay: 6,
+      status: r.status,
+      reserved_by: (r as any).reservedBy ?? null,
+      occupied_by: (r as any).occupiedBy ?? null,
+      move_in_date: (r as any).occupiedBy ? "2026-02-01" : null,
+      views: Math.floor(Math.random() * 100) + 10,
+    });
+  }
+
+  // Active home for student (room-3)
+  await supabase.from("active_homes").insert({
+    id: "home-1", student_id: studentId, property_id: "prop-1", room_id: "room-3",
+    landlord_id: landlordId, move_in_date: "2026-02-01", contract_end_date: "2026-08-31",
+    payment_day: 5, monthly_rent: 450, utilities: 30,
+  });
+
+  // Applications
+  const applications = [
+    { id: "app-1", room: "room-1", prop: "prop-1", status: "pending", message: "Olá! Estou muito interessado neste quarto." },
+    { id: "app-2", room: "room-5", prop: "prop-2", status: "accepted", message: "Gostava muito de marcar uma visita." },
+    { id: "app-3", room: "room-8", prop: "prop-3", status: "under_review", message: "Disponível para me mudar em setembro." },
+  ];
+  for (const a of applications) {
+    await supabase.from("applications").insert({
+      id: a.id, user_id: studentId, room_id: a.room, property_id: a.prop,
+      landlord_id: landlordId, status: a.status, message: a.message,
+      move_in_date: "2026-09-01",
+    });
+  }
+
+  // Conversation + messages
+  await supabase.from("conversations").insert({ id: "conv-1", property_id: "prop-1", room_id: "room-1" });
+  await supabase.from("conversation_participants").insert([
+    { conversation_id: "conv-1", user_id: studentId },
+    { conversation_id: "conv-1", user_id: landlordId },
+  ]);
+  await supabase.from("messages").insert([
+    { id: "msg-1", conversation_id: "conv-1", sender_id: studentId, content: "Olá Maria, ainda está disponível o quarto?", read: true },
+    { id: "msg-2", conversation_id: "conv-1", sender_id: landlordId, content: "Olá João, sim ainda está! Quando gostaria de visitar?", read: true },
+    { id: "msg-3", conversation_id: "conv-1", sender_id: studentId, content: "Que tal na próxima quinta-feira às 18h?", read: false },
+  ]);
+
+  // Maintenance
+  await supabase.from("maintenance_requests").insert([
+    { id: "maint-1", user_id: studentId, property_id: "prop-1", room_id: "room-3", landlord_id: landlordId,
+      category: "plumbing", title: "Torneira da cozinha a pingar", description: "A torneira está a pingar há dois dias.",
+      urgency: "medium", status: "pending" },
+    { id: "maint-2", user_id: studentId, property_id: "prop-1", room_id: "room-3", landlord_id: landlordId,
+      category: "internet", title: "Wi-Fi muito lento", description: "Internet a falhar à noite.",
+      urgency: "low", status: "in_progress" },
+  ]);
+
+  // Notifications
+  await supabase.from("notifications").insert([
+    { id: "notif-1", user_id: studentId, type: "application_update", title: "Candidatura aceite", message: "A tua candidatura foi aceite!", read: false },
+    { id: "notif-2", user_id: studentId, type: "message", title: "Nova mensagem de Maria Santos", message: "Quando gostaria de visitar?", read: false },
+    { id: "notif-3", user_id: landlordId, type: "application_update", title: "Nova candidatura", message: "João Silva candidatou-se a um quarto.", read: false },
+  ]);
+
+  // Verification + trust for landlord and student
+  await supabase.from("verification_status").upsert([
+    { user_id: landlordId, level: "gold", email_verified: true, university_email_verified: false, document_verified: true, photo_verified: true, verified_at: new Date().toISOString() },
+    { user_id: studentId, level: "silver", email_verified: true, university_email_verified: true, document_verified: false, photo_verified: true },
+  ]);
+  await supabase.from("trust_scores").upsert([
+    { user_id: landlordId, level: "trusted", score: 92, verification_level: "gold", reviews_count: 18, average_rating: 4.7, response_rate: 95, response_time: 2, resolved_reports: 0, total_reports: 0, member_since: "2024-09-01" },
+    { user_id: studentId, level: "confirmed", score: 78, verification_level: "silver", reviews_count: 3, average_rating: 4.5, response_rate: 90, response_time: 4, resolved_reports: 0, total_reports: 0, member_since: "2025-09-01" },
+  ]);
+
+  // Reviews
+  await supabase.from("reviews").insert([
+    { id: "rev-1", property_id: "prop-1", reviewed_user_id: landlordId, reviewer_id: studentId,
+      rating: 5, criteria: { quality: 5, coexistence: 5, landlordResponse: 5, location: 4, valueForMoney: 5 },
+      comment: "Excelente experiência. Maria é muito atenciosa.", recommend: true, verified: true },
+  ]);
+
+  // Audit log entries (only if admin exists)
+  if (ids.admin) {
+    await supabase.from("audit_logs").insert([
+      { actor_id: ids.admin, actor_name: "Admin UniRoom", action: "user.verified",
+        target_type: "user", target_id: landlordId, target_name: "Maria Santos", severity: "low" },
+      { actor_id: ids.admin, actor_name: "Admin UniRoom", action: "property.approved",
+        target_type: "property", target_id: "prop-1", target_name: "Apartamento T3 - Marquês de Pombal", severity: "low" },
+    ]);
+  }
+
+  // Analytics snapshots
+  for (const p of properties.filter(x => x.status === "active")) {
+    await supabase.from("listing_analytics").insert({
+      property_id: p.id, period: "month",
+      views: Math.floor(Math.random() * 300) + 100,
+      favorites: Math.floor(Math.random() * 30) + 5,
+      applications: Math.floor(Math.random() * 10) + 1,
+      messages: Math.floor(Math.random() * 20) + 3,
+      conversion_rate: 3.5, favorite_rate: 12.4, view_trend: 8.2, application_trend: 5.1,
+    });
+  }
+
+  console.log("Demo content seeded successfully");
+}
+
+(async () => {
+  try {
+    const ids = await seedDemoUsers();
+    if (ids) await seedDemoContent(ids);
+  } catch (e) {
+    console.log(`Seed pipeline error: ${e}`);
+  }
+})();
+
+Deno.serve(app.fetch);
+
+Deno.serve(app.fetch);

@@ -4,9 +4,10 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  password: string;
+  password?: string;
   type: UserType;
   verified: boolean;
+  onboardingCompleted?: boolean;
   createdAt: Date;
 }
 
@@ -26,10 +27,11 @@ export interface LandlordProfile {
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
+  register: (data: RegisterData) => Promise<{ success: boolean; user?: User; error?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
+  saveStudentProfile: (profile: object, completeness: object) => Promise<void>;
 }
 
 export interface RegisterData {
