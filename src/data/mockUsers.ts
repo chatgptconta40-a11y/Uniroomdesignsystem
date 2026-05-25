@@ -49,10 +49,12 @@ export const mockUsers: User[] = [
   },
 ];
 
+
+// Credentials for authentication
 export const mockCredentials = mockUsers.map(user => ({
   id: user.id,
   email: user.email,
-  password: user.password || 'password123',
+  password: user.password!,
 }));
 
 export const mockStudentProfiles: StudentProfile[] = [
