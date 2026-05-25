@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Shield, Mail, GraduationCap, FileText, Camera, Check } from 'lucide-react';
+import { Shield, Mail, GraduationCap, FileText, Camera, Check, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getVerificationStatus, updateVerificationStatus, getVerificationBadge } from '../data/mockTrust';
 import { Button } from '../components/Button';
@@ -13,17 +13,74 @@ export function Verification() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
   const [email, setEmail] = useState('');
-  const [universityEmail, setUniversityEmail] = useState('');
+  const [secondaryEmail, setSecondaryEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const isLandlord = user?.type === 'landlord';
   const verification = getVerificationStatus(user?.id || '');
 
   const steps = [
     { number: 1, title: 'Email pessoal', icon: Mail, completed: verification?.emailVerified },
-    { number: 2, title: 'Email universitário', icon: GraduationCap, completed: verification?.universityEmailVerified },
-    { number: 3, title: 'Documento', icon: FileText, completed: verification?.documentVerified },
+    {
+      number: 2,
+      title: isLandlord ? 'Dados profissionais' : 'Email universitário',
+      icon: isLandlord ? Building2 : GraduationCap,
+      completed: verification?.universityEmailVerified,
+    },
+    {
+      number: 3,
+      title: isLandlord ? 'Identificação' : 'Documento',
+      icon: FileText,
+      completed: verification?.documentVerified,
+    },
     { number: 4, title: 'Selfie', icon: Camera, completed: verification?.photoVerified },
   ];
+
+  const copy = isLandlord
+    ? {
+        pageTitle: 'Verificação de senhorio',
+        intro: 'Confirma a tua identidade e aumenta a confiança dos estudantes nos teus anúncios.',
+        secondTitle: 'Dados profissionais',
+        secondDescription: 'Confirma um email profissional ou de contacto associado à gestão dos teus alojamentos.',
+        secondPlaceholder: 'contacto@alojamento.pt',
+        secondHelp: 'Usa um email que possas associar à tua atividade como senhorio.',
+        secondToast: 'Dados profissionais verificados!',
+        documentTitle: 'Documento de identificação',
+        documentDescription: 'Faz upload de um documento de identificação ou comprovativo de titularidade/gestão do alojamento.',
+        documentNote: 'Este passo ajuda a reduzir fraude, anúncios falsos e pedidos de pagamento suspeitos.',
+        photoDescription: 'Tira uma selfie para confirmar que és a pessoa responsável pela conta.',
+        goldDescription: 'Nível Ouro: senhorio verificado, mais confiança e maior destaque nos sinais de segurança.',
+        completeDestination: '/landlord/dashboard',
+        completeToastDescription: 'O teu perfil de senhorio ficou mais confiável para estudantes.',
+        benefits: [
+          ['Mais confiança', 'Os estudantes reconhecem perfis de senhorio verificados.'],
+          ['Mais respostas qualificadas', 'Candidatos sentem-se mais seguros ao contactar-te.'],
+          ['Sinais de segurança', 'Os teus anúncios ganham contexto de confiança.'],
+          ['Menos fricção', 'A verificação reduz dúvidas antes da visita.'],
+        ],
+      }
+    : {
+        pageTitle: 'Verificação de conta',
+        intro: 'Aumenta a tua credibilidade e acede a mais funcionalidades.',
+        secondTitle: 'Email universitário',
+        secondDescription: 'Verifica o teu email institucional para confirmar que és estudante.',
+        secondPlaceholder: 'estudante@universidade.pt',
+        secondHelp: 'Usa o email fornecido pela tua universidade.',
+        secondToast: 'Email universitário verificado!',
+        documentTitle: 'Upload de documento',
+        documentDescription: 'Faz upload do cartão de estudante ou documento de identificação.',
+        documentNote: 'Este passo é opcional, mas aumenta significativamente a tua credibilidade na plataforma.',
+        photoDescription: 'Tira uma selfie para completar a verificação total.',
+        goldDescription: 'Nível Ouro: verificação completa e máxima credibilidade na plataforma.',
+        completeDestination: '/profile',
+        completeToastDescription: 'Parabéns! Atingiste o nível Ouro.',
+        benefits: [
+          ['Maior credibilidade', 'Senhorios confiam mais em perfis verificados.'],
+          ['Prioridade nas candidaturas', 'O teu perfil fica mais forte quando te candidatas.'],
+          ['Mais segurança', 'A plataforma consegue reduzir perfis falsos.'],
+          ['Badge de confiança', 'Destaque visual no teu perfil.'],
+        ],
+      };
 
   const handleVerifyEmail = async () => {
     if (!email.includes('@')) {
@@ -32,7 +89,7 @@ export function Verification() {
     }
 
     setIsProcessing(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(resolve => setTimeout(resolve, 1200));
 
     updateVerificationStatus(user?.id || '', { emailVerified: true });
     toast.success('Email verificado com sucesso!');
@@ -40,24 +97,29 @@ export function Verification() {
     setCurrentStep(2);
   };
 
-  const handleVerifyUniversityEmail = async () => {
-    if (!universityEmail.includes('@') || (!universityEmail.includes('.edu') && !universityEmail.includes('.pt'))) {
+  const handleVerifySecondaryStep = async () => {
+    if (!secondaryEmail.includes('@') || !secondaryEmail.includes('.')) {
+      toast.error(isLandlord ? 'Insere um email de contacto válido' : 'Por favor, usa um email universitário válido');
+      return;
+    }
+
+    if (!isLandlord && !secondaryEmail.includes('.edu') && !secondaryEmail.includes('.pt')) {
       toast.error('Por favor, usa um email universitário válido');
       return;
     }
 
     setIsProcessing(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1600));
 
     updateVerificationStatus(user?.id || '', { universityEmailVerified: true });
-    toast.success('Email universitário verificado!');
+    toast.success(copy.secondToast);
     setIsProcessing(false);
     setCurrentStep(3);
   };
 
   const handleUploadDocument = async () => {
     setIsProcessing(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1600));
 
     updateVerificationStatus(user?.id || '', { documentVerified: true });
     toast.success('Documento verificado com sucesso!');
@@ -67,7 +129,7 @@ export function Verification() {
 
   const handleUploadPhoto = async () => {
     setIsProcessing(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1600));
 
     updateVerificationStatus(user?.id || '', {
       photoVerified: true,
@@ -75,14 +137,14 @@ export function Verification() {
     });
 
     toast.success('Verificação completa!', {
-      description: 'Parabéns! Atingiste o nível Ouro.',
+      description: copy.completeToastDescription,
     });
 
     setIsProcessing(false);
 
     setTimeout(() => {
-      navigate('/profile');
-    }, 2000);
+      navigate(copy.completeDestination);
+    }, 1200);
   };
 
   const currentVerification = getVerificationStatus(user?.id || '');
@@ -96,10 +158,10 @@ export function Verification() {
             <Shield className="w-10 h-10 text-white" />
           </div>
 
-          <h1 className="text-3xl font-bold text-foreground mb-3">Verificação de conta</h1>
+          <h1 className="text-3xl font-bold text-foreground mb-3">{copy.pageTitle}</h1>
 
           <p className="text-muted-foreground">
-            Aumenta a tua credibilidade e acede a mais funcionalidades.
+            {copy.intro}
           </p>
         </div>
 
@@ -203,38 +265,42 @@ export function Verification() {
           {currentStep === 2 && (
             <div className="space-y-6">
               <div className="text-center">
-                <GraduationCap className="w-12 h-12 text-primary mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-foreground mb-3">Email universitário</h2>
+                {isLandlord ? (
+                  <Building2 className="w-12 h-12 text-primary mx-auto mb-4" />
+                ) : (
+                  <GraduationCap className="w-12 h-12 text-primary mx-auto mb-4" />
+                )}
+                <h2 className="text-2xl font-bold text-foreground mb-3">{copy.secondTitle}</h2>
                 <p className="text-muted-foreground">
-                  Verifica o teu email institucional para confirmar que és estudante.
+                  {copy.secondDescription}
                 </p>
               </div>
 
               <div>
                 <Input
                   type="email"
-                  value={universityEmail}
-                  onChange={(event) => setUniversityEmail(event.target.value)}
-                  placeholder="estudante@universidade.pt"
+                  value={secondaryEmail}
+                  onChange={(event) => setSecondaryEmail(event.target.value)}
+                  placeholder={copy.secondPlaceholder}
                   disabled={verification?.universityEmailVerified}
                 />
                 <p className="text-xs text-muted-foreground mt-2">
-                  Usa o email fornecido pela tua universidade.
+                  {copy.secondHelp}
                 </p>
               </div>
 
               <div className="flex items-center gap-2 p-4 bg-muted/50 rounded-lg">
                 <div className="text-sm text-foreground">
-                  <strong>Nível Prata:</strong> estudante verificado.
+                  <strong>Nível Prata:</strong> {isLandlord ? 'senhorio com contacto profissional confirmado.' : 'estudante verificado.'}
                 </div>
               </div>
 
               <Button
-                onClick={handleVerifyUniversityEmail}
+                onClick={handleVerifySecondaryStep}
                 className="w-full"
                 disabled={isProcessing || verification?.universityEmailVerified}
               >
-                {isProcessing ? 'A verificar...' : verification?.universityEmailVerified ? 'Verificado' : 'Verificar email universitário'}
+                {isProcessing ? 'A verificar...' : verification?.universityEmailVerified ? 'Verificado' : `Verificar ${isLandlord ? 'dados profissionais' : 'email universitário'}`}
               </Button>
             </div>
           )}
@@ -243,9 +309,9 @@ export function Verification() {
             <div className="space-y-6">
               <div className="text-center">
                 <FileText className="w-12 h-12 text-primary mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-foreground mb-3">Upload de documento</h2>
+                <h2 className="text-2xl font-bold text-foreground mb-3">{copy.documentTitle}</h2>
                 <p className="text-muted-foreground">
-                  Faz upload do cartão de estudante ou documento de identificação.
+                  {copy.documentDescription}
                 </p>
               </div>
 
@@ -259,7 +325,7 @@ export function Verification() {
 
               <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
                 <p className="text-sm text-foreground">
-                  Este passo é opcional, mas aumenta significativamente a tua credibilidade na plataforma.
+                  {copy.documentNote}
                 </p>
               </div>
 
@@ -281,7 +347,7 @@ export function Verification() {
                 <Camera className="w-12 h-12 text-primary mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-foreground mb-3">Selfie de verificação</h2>
                 <p className="text-muted-foreground">
-                  Tira uma selfie para completar a verificação total.
+                  {copy.photoDescription}
                 </p>
               </div>
 
@@ -295,12 +361,12 @@ export function Verification() {
 
               <div className="flex items-center gap-2 p-4 bg-yellow-50 rounded-lg">
                 <div className="text-sm text-foreground">
-                  <strong>Nível Ouro:</strong> verificação completa e máxima credibilidade na plataforma.
+                  <strong>{copy.goldDescription}</strong>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <Button onClick={() => navigate('/profile')} variant="outline" className="flex-1">
+                <Button onClick={() => navigate(copy.completeDestination)} variant="outline" className="flex-1">
                   Concluir mais tarde
                 </Button>
 
@@ -316,12 +382,7 @@ export function Verification() {
           <h3 className="font-semibold text-foreground mb-4">Vantagens da verificação</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
-              ['Maior credibilidade', 'Senhorios confiam mais em perfis verificados.'],
-              ['Prioridade nas candidaturas', 'Aparecer em destaque nas pesquisas.'],
-              ['Acesso antecipado', 'Novos alojamentos antes de outros.'],
-              ['Badge de confiança', 'Destaque visual no teu perfil.'],
-            ].map(([title, description]) => (
+            {copy.benefits.map(([title, description]) => (
               <div key={title} className="flex items-start gap-4">
                 <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
                 <div>

@@ -283,6 +283,7 @@ export function Navbar() {
                               <LayoutDashboard className="w-4 h-4" />
                               <span className="text-sm">Dashboard Senhorio</span>
                             </Link>
+
                             <Link
                               to="/landlord/listings"
                               className={navLinkClass('/landlord/listings')}

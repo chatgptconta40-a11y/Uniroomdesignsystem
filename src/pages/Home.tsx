@@ -9,9 +9,11 @@ export function Home() {
     <main className="flex-1">
       <Hero />
 
-      <FeaturedRoomsSection />
+      <section id="quartos">
+        <FeaturedRoomsSection />
+      </section>
 
-      <section className="py-16 md:py-24 px-4 md:px-6 lg:px-8 bg-card">
+      <section id="como-funciona" className="py-16 md:py-24 px-4 md:px-6 lg:px-8 bg-card scroll-mt-24">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12 md:mb-16">
             <h2 className="heading-2 mb-4">Como funciona o UniRoom</h2>

@@ -152,15 +152,15 @@ function AppShell() {
             }
           />
 
-          <Route
-            path="/verification"
-            element={
-              <ProtectedRoute allowedTypes={['student']}>
-                <Navbar />
-                <Verification />
-              </ProtectedRoute>
-            }
-          />
+        <Route
+  path="/verification"
+  element={
+    <ProtectedRoute allowedTypes={['student', 'landlord']}>
+      <Navbar />
+      <Verification />
+    </ProtectedRoute>
+  }
+/>
 
           <Route
             path="/my-home"
