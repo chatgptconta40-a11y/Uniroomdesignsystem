@@ -216,6 +216,26 @@ function groupResults(results: ResultItem[]): PropertyGroup[] {
   return Object.values(grouped);
 }
 
+function getSortLabel(sortBy: SearchFilters['sortBy'], canShowCompatibility: boolean) {
+  if (sortBy === 'compatibility' && canShowCompatibility) return 'compatibilidade';
+  if (sortBy === 'price_asc') return 'preço mais baixo';
+  if (sortBy === 'price_desc') return 'preço mais alto';
+  if (sortBy === 'distance') return 'proximidade à universidade';
+  if (sortBy === 'recent') return 'mais recentes';
+  return 'proximidade à universidade';
+}
+
+function getRoomTypeLabels(types: SearchFilters['roomTypes']) {
+  return types
+    .map(type => ROOM_TYPES.find(option => option.value === type)?.label)
+    .filter(Boolean)
+    .join(', ');
+}
+
+function getEntryMonthLabel(value: string) {
+  return ENTRY_MONTHS.find(month => month.value === value)?.label ?? value;
+}
+
 interface EmptyStateProps {
   filters: SearchFilters;
   onClear: () => void;
@@ -609,7 +629,7 @@ function GeneralMapView({
           </div>
 
           <div className="absolute right-4 bottom-4 z-20 rounded-xl bg-white/95 backdrop-blur px-3 py-2 shadow-sm border border-white/70 text-[11px] text-muted-foreground">
-            Posições indicativas para protótipo
+            Localização aproximada
           </div>
         </div>
 
@@ -844,6 +864,86 @@ export function SearchRooms() {
   const handleClearFilters = () => setFilters(DEFAULT_FILTERS);
   const universityLabel = UNIVERSITIES.find(university => university.value === filters.university)?.label ?? filters.university;
   const showSidebar = showFilters && viewMode !== 'map';
+  const sortLabel = getSortLabel(filters.sortBy, canShowCompatibility);
+
+  const resultStats = useMemo(() => {
+    const propertyCount = new Set(results.map(item => item.property.id)).size;
+    const prices = results.map(item => (
+      filters.includeUtilitiesInPrice
+        ? item.room.price + (item.room.utilities || 0)
+        : item.room.price
+    ));
+    const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+    const closestWalk = results.length > 0
+      ? Math.min(...results.map(item => walkMinutes(item.property.distanceToUniversity)))
+      : 0;
+    const verifiedCount = results.filter(item => item.property.verified || hasVerifiedLandlord(item.property)).length;
+
+    return {
+      propertyCount,
+      minPrice,
+      closestWalk,
+      verifiedCount,
+    };
+  }, [results, filters.includeUtilitiesInPrice]);
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; clear: Partial<SearchFilters> }[] = [];
+
+    if (filters.cities.length > 0) {
+      chips.push({ key: 'cities', label: filters.cities.join(', '), clear: { cities: [] } });
+    }
+    if (filters.roomTypes.length > 0) {
+      chips.push({ key: 'roomTypes', label: getRoomTypeLabels(filters.roomTypes), clear: { roomTypes: [] } });
+    }
+    if (filters.minPrice > 150 || filters.maxPrice < 600) {
+      chips.push({ key: 'price', label: `€${filters.minPrice} - €${filters.maxPrice}`, clear: { minPrice: 150, maxPrice: 600 } });
+    }
+    if (filters.includeUtilitiesInPrice) {
+      chips.push({ key: 'utilities', label: 'Despesas incluídas no limite', clear: { includeUtilitiesInPrice: false } });
+    }
+    if (filters.maxWalkMinutes < 60) {
+      chips.push({ key: 'walk', label: `Até ${filters.maxWalkMinutes}min a pé`, clear: { maxWalkMinutes: 60 } });
+    }
+    if (filters.entryMonth) {
+      chips.push({ key: 'entry', label: getEntryMonthLabel(filters.entryMonth), clear: { entryMonth: '' } });
+    }
+    if (filters.verifiedListing) {
+      chips.push({ key: 'verifiedListing', label: 'Anúncio verificado', clear: { verifiedListing: false } });
+    }
+    if (filters.verifiedLandlord) {
+      chips.push({ key: 'verifiedLandlord', label: 'Senhorio verificado', clear: { verifiedLandlord: false } });
+    }
+    if (filters.privateBathroom) {
+      chips.push({ key: 'privateBathroom', label: 'WC privativo', clear: { privateBathroom: false } });
+    }
+    if (filters.wifi) {
+      chips.push({ key: 'wifi', label: 'Wi-Fi', clear: { wifi: false } });
+    }
+    if (filters.laundry) {
+      chips.push({ key: 'laundry', label: 'Máquina de lavar', clear: { laundry: false } });
+    }
+    if (filters.kitchen) {
+      chips.push({ key: 'kitchen', label: 'Cozinha equipada', clear: { kitchen: false } });
+    }
+    if (filters.noParties) {
+      chips.push({ key: 'noParties', label: 'Sem festas', clear: { noParties: false } });
+    }
+    if (filters.quietHours) {
+      chips.push({ key: 'quietHours', label: 'Horário de silêncio', clear: { quietHours: false } });
+    }
+    if (filters.nearSupermarket) {
+      chips.push({ key: 'nearSupermarket', label: 'Perto de supermercado', clear: { nearSupermarket: false } });
+    }
+    if (filters.nearBusStop) {
+      chips.push({ key: 'nearBusStop', label: 'Perto de autocarro', clear: { nearBusStop: false } });
+    }
+    if (canShowCompatibility && filters.minCompatibility > 0) {
+      chips.push({ key: 'compatibility', label: `Compatibilidade ≥ ${filters.minCompatibility}%`, clear: { minCompatibility: 0 } });
+    }
+
+    return chips;
+  }, [filters, canShowCompatibility]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -991,6 +1091,75 @@ export function SearchRooms() {
                 Completar perfil
               </Button>
             </div>
+          </Card>
+        )}
+
+        {!loading && results.length > 0 && (
+          <Card className="p-4 md:p-5 mb-5 border-border/80 bg-card">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-full px-2.5 py-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Ordenado por {sortLabel}
+                  </span>
+
+                  {activeFilterCount > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {activeFilterCount} filtro{activeFilterCount > 1 ? 's' : ''} ativo{activeFilterCount > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="text-lg font-bold text-foreground">
+                  {results.length} quarto{results.length !== 1 ? 's' : ''} em {resultStats.propertyCount} casa{resultStats.propertyCount !== 1 ? 's' : ''}
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Pesquisa perto da {universityLabel}
+                  {filters.cities.length > 0 ? ` em ${filters.cities.join(', ')}` : ''}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 sm:min-w-[420px]">
+                <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
+                  <p className="text-[11px] text-muted-foreground">Desde</p>
+                  <p className="text-sm font-bold text-foreground">€{resultStats.minPrice}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
+                  <p className="text-[11px] text-muted-foreground">Mais perto</p>
+                  <p className="text-sm font-bold text-foreground">{resultStats.closestWalk}min</p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
+                  <p className="text-[11px] text-muted-foreground">Confiança</p>
+                  <p className="text-sm font-bold text-foreground">{resultStats.verifiedCount} verif.</p>
+                </div>
+              </div>
+            </div>
+
+            {activeFilterChips.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border">
+                {activeFilterChips.map(chip => (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    onClick={() => set(chip.clear)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary px-3 py-1.5 text-xs font-medium transition-colors"
+                    title="Remover filtro"
+                  >
+                    {chip.label}
+                    <X className="w-3 h-3" />
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="text-xs font-semibold text-primary hover:underline px-1"
+                >
+                  Limpar tudo
+                </button>
+              </div>
+            )}
           </Card>
         )}
 
@@ -1278,6 +1447,7 @@ export function SearchRooms() {
                     Perto da {universityLabel}
                     {filters.cities.length > 0 ? ` · ${filters.cities.join(', ')}` : ' · Viseu'}
                     {filters.maxWalkMinutes < 60 ? ` · até ${filters.maxWalkMinutes}min a pé` : ''}
+                    {` · ${sortLabel}`}
                   </p>
                 )}
               </div>
