@@ -286,16 +286,26 @@ export function Navbar() {
 
     <Link
       to="/verification"
-      className={navLinkClass('/verification')}
+      className="mx-2 my-2 flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/80 px-3 py-3 transition-colors hover:bg-blue-50"
       onClick={() => setShowMenu(false)}
     >
-      <Shield className="w-4 h-4" />
-      <span className="text-sm">Verificação</span>
-    </Link>
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white text-primary">
+        <Shield className="h-4 w-4" />
+      </div>
 
-    <div className="px-4 py-2">
-      <TrustBadge userId={user.id} size="sm" showLabel={false} />
-    </div>
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">
+            Verificação do senhorio
+          </span>
+          <TrustBadge userId={user.id} size="sm" showLabel={false} />
+        </div>
+
+        <p className="text-xs leading-snug text-muted-foreground">
+          Confirma a identidade e aumenta a confiança dos estudantes nos teus anúncios.
+        </p>
+      </div>
+    </Link>
 
     <div className="border-t border-border my-1" />
 
