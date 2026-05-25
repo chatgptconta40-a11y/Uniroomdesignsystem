@@ -6,6 +6,7 @@ import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { Modal } from '../components/Modal';
 import { LocationMap } from '../components/LocationMap';
+import { RoomCard } from '../components/RoomCard';
 import { ApplicationModal } from '../components/ApplicationModal';
 import { ReviewModal } from '../components/ReviewModal';
 import { ReportModal } from '../components/ReportModal';
@@ -15,8 +16,6 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
-import { getExistingApplicationForRoom } from '../data/mockApplications';
-import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
@@ -50,15 +49,10 @@ export function RoomDetail() {
   const ratingBreakdown = room ? getAverageRatingBreakdown(room.id) : null;
 
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
-  const existingApplication = user?.type === 'student' && room
-    ? getExistingApplicationForRoom(user.id, room.id)
-    : null;
   const canShowCompatibility = Boolean(
     user?.type === 'student' &&
-    hasCompletedCompatibilityProfile(user.id) &&
     room?.compatibilityScore
   );
-  const shouldInviteProfileCompletion = user?.type === 'student' && !canShowCompatibility;
 
   if (!room || !property) {
     return (
@@ -125,13 +119,6 @@ export function RoomDetail() {
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
     views: room.views,
-  };
-
-  const APP_STATUS_LABELS: Record<string, { label: string; description: string; bgCls: string; textCls: string }> = {
-    pending: { label: 'Candidatura enviada', description: 'A aguardar análise pelo senhorio', bgCls: 'bg-blue-50 border-blue-200', textCls: 'text-blue-700' },
-    under_review: { label: 'Em análise', description: 'O senhorio está a rever a tua candidatura', bgCls: 'bg-amber-50 border-amber-200', textCls: 'text-amber-700' },
-    accepted: { label: 'Candidatura aceite', description: 'O senhorio aceitou a tua candidatura', bgCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
-    confirmed: { label: 'Entrada confirmada', description: 'A tua entrada neste quarto foi confirmada', bgCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
   };
 
   const requestAuthentication = () => {
@@ -266,28 +253,18 @@ export function RoomDetail() {
               </div>
 
               <Card className="p-4 bg-blue-50 border-blue-200 mb-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Building className="w-5 h-5 text-blue-600" />
                     <div>
                       <p className="font-semibold text-blue-900">Este quarto faz parte de:</p>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/property/${property.id}`)}
-                        className="text-left text-sm font-semibold text-blue-700 hover:underline"
-                      >
-                        {property.title}
-                      </button>
+                      <p className="text-sm text-blue-700">{property.title}</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/property/${property.id}`)}
-                    className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
-                  >
+                  <Badge variant="default" className="bg-white text-blue-700">
                     <Home className="w-3 h-3 mr-1" />
-                    Ver página da casa
-                  </button>
+                    {property.totalRooms} quartos no total
+                  </Badge>
                 </div>
               </Card>
             </div>
@@ -487,24 +464,37 @@ export function RoomDetail() {
               </div>
             </Card>
 
+            {otherRooms.length > 0 && (
+              <Card className="p-6">
+                <h2 className="text-xl font-bold mb-4">Outros quartos desta casa</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {otherRooms.map(otherRoom => (
+                    <RoomCard
+                      key={otherRoom.id}
+                      room={otherRoom}
+                      property={property}
+                      variant="compact"
+                      showFavorite={!!user && user.type === 'student'}
+                      availableRooms={otherRooms.filter(item => item.status === 'available').length + (room.status === 'available' ? 1 : 0)}
+                      onFavoriteRequiresAuth={requestAuthentication}
+                    />
+                  ))}
+                </div>
+              </Card>
+            )}
           </div>
 
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-4">
               {!isLandlordOwner && (
                 <Card className="p-6 shadow-lg">
-                  <div className="mb-5 pb-4 border-b border-border">
-                    <div className="flex items-baseline gap-1">
+                  <div className="mb-6">
+                    <div className="flex items-baseline gap-2 mb-3">
                       <span className="text-3xl font-bold text-foreground">€{room.price}</span>
-                      <span className="text-muted-foreground text-sm">/mês</span>
+                      <span className="text-muted-foreground">/mês</span>
                     </div>
-                    {room.utilities && room.utilities > 0 ? (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        + €{room.utilities} despesas
-                        <span className="ml-1 font-semibold text-foreground">= €{room.price + room.utilities} total</span>
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-sm text-green-600 font-medium">Despesas incluídas</p>
+                    {room.utilities && (
+                      <p className="text-sm text-muted-foreground">+ Despesas: €{room.utilities}/mês</p>
                     )}
                   </div>
 
@@ -513,65 +503,19 @@ export function RoomDetail() {
                       <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
                       <span className="text-xs text-green-700">Compatibilidade</span>
                       <span className={`ml-auto text-sm font-bold ${
-                        (room.compatibilityScore ?? 0) >= 80 ? 'text-green-700' :
-                        (room.compatibilityScore ?? 0) >= 60 ? 'text-amber-600' : 'text-muted-foreground'
-                      }`}>
-                        {room.compatibilityScore ?? 0}%
-                      </span>
-                    </div>
-                  )}
-
-                  {shouldInviteProfileCompletion && (
-                    <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-                      <div className="flex items-start gap-3">
-                        <Users className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
-                        <div>
-                          <p className="text-sm font-bold text-blue-950">
-                            Completa o teu perfil de convivência
-                          </p>
-                          <p className="mt-1 text-xs leading-relaxed text-blue-800">
-                            Depois do onboarding, a UniRoom desbloqueia compatibilidade personalizada para este quarto.
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-3 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
-                            onClick={() => navigate('/onboarding')}
-                          >
-                            Preencher perfil
-                          </Button>
-                        </div>
-                      </div>
+                        room.compatibilityScore >= 80 ? 'text-green-700' :
+                        room.compatibilityScore >= 60 ? 'text-amber-600' : 'text-muted-foreground'
+                      }`}>{room.compatibilityScore}%</span>
                     </div>
                   )}
 
                   <div className="space-y-3">
-                    {existingApplication ? (
-                      <div className={`rounded-xl border p-3.5 ${APP_STATUS_LABELS[existingApplication.status]?.bgCls || 'bg-muted border-border'}`}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <Clock className={`w-4 h-4 flex-shrink-0 ${APP_STATUS_LABELS[existingApplication.status]?.textCls || 'text-foreground'}`} />
-                          <span className={`text-sm font-semibold ${APP_STATUS_LABELS[existingApplication.status]?.textCls || 'text-foreground'}`}>
-                            {APP_STATUS_LABELS[existingApplication.status]?.label || 'Candidatura submetida'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          {APP_STATUS_LABELS[existingApplication.status]?.description}
-                        </p>
-                        <button
-                          onClick={() => navigate('/applications')}
-                          className="mt-2 text-xs text-primary hover:underline font-medium"
-                        >
-                          Ver as minhas candidaturas →
-                        </button>
-                      </div>
-                    ) : (
-                      <Button variant="primary" className="w-full" onClick={handleApply}>
-                        Candidatar-me
-                      </Button>
-                    )}
+                    <Button variant="primary" className="w-full" onClick={handleApply}>
+                      Candidatar-me
+                    </Button>
                     <Button variant="outline" className="w-full" onClick={handleContact}>
                       <MessageCircle className="w-4 h-4 mr-2" />
-                      Enviar mensagem
+                      Contactar responsável
                     </Button>
                     <Button variant="outline" className="w-full" onClick={handleToggleFavorite}>
                       <Heart className={`w-4 h-4 mr-2 ${isFavorite(room.id) ? 'fill-red-500 text-red-500' : ''}`} />
@@ -582,7 +526,7 @@ export function RoomDetail() {
               )}
 
               {!isLandlordOwner && (
-                <ComfortScorePanel room={room} property={property} canUseCompatibility={canShowCompatibility} />
+                <ComfortScorePanel room={room} property={property} />
               )}
 
               {!isLandlordOwner && (

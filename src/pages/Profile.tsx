@@ -7,7 +7,6 @@ import { Button } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
 import { TrustBadge } from '../components/TrustBadge';
 import { getProfile, saveProfile } from '../data/mockProfiles';
-import { toast } from 'sonner';
 import {
   StudentProfile,
   PersonalProfile,
@@ -44,7 +43,25 @@ export function Profile() {
   useEffect(() => {
     if (user) {
       const userProfile = getProfile(user.id);
-      setProfile(userProfile);
+      setProfile(userProfile || {
+        personal: {
+          userId: user.id,
+          fullName: user.name,
+        },
+        lifestyle: {
+          userId: user.id,
+        },
+        preferences: {
+          userId: user.id,
+        },
+        completeness: user.profileCompleteness || {
+          personal: 100,
+          lifestyle: 100,
+          preferences: 100,
+          overall: 100,
+        },
+        onboardingCompleted: true,
+      });
     }
   }, [user]);
 
@@ -53,7 +70,6 @@ export function Profile() {
       const updatedProfile = { ...profile, personal: updatedPersonal };
       setProfile(updatedProfile);
       saveProfile(updatedProfile);
-      toast.success('Alterações guardadas com sucesso.');
     }
   };
 
@@ -62,7 +78,6 @@ export function Profile() {
       const updatedProfile = { ...profile, lifestyle: updatedLifestyle };
       setProfile(updatedProfile);
       saveProfile(updatedProfile);
-      toast.success('Alterações guardadas com sucesso.');
     }
   };
 
@@ -71,11 +86,11 @@ export function Profile() {
       const updatedProfile = { ...profile, preferences: updatedPreferences };
       setProfile(updatedProfile);
       saveProfile(updatedProfile);
-      toast.success('Alterações guardadas com sucesso.');
     }
   };
 
-  if (!profile) {
+  if (!profile) return null;
+  if (false) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="text-center p-8">
@@ -85,7 +100,7 @@ export function Profile() {
             Ainda não completaste o teu perfil.
           </p>
           <Link to="/onboarding">
-            <Button variant="primary">Completar perfil</Button>
+            <Button variant="primary">Ver perfil</Button>
           </Link>
         </Card>
       </div>
