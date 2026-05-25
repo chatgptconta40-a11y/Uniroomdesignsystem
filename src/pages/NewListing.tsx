@@ -153,7 +153,7 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
   );
 }
 
-function inputCls(error?: boolean) {
+function inputCls(error?: boolean | string) {
   return `w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 bg-input-background transition-colors ${
     error ? 'border-red-400' : 'border-border'
   }`;
@@ -194,22 +194,57 @@ interface RoomFormModalProps {
 
 function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
   const [form, setForm] = useState<RoomDraft>(initial ?? emptyRoom());
-  const [errors, setErrors] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const set = (updates: Partial<RoomDraft>) => setForm(prev => ({ ...prev, ...updates }));
+  const todayIso = new Date().toISOString().split('T')[0];
+
+  const set = (updates: Partial<RoomDraft>) => {
+    setForm(prev => ({ ...prev, ...updates }));
+    const updatedKeys = Object.keys(updates);
+    if (updatedKeys.length > 0) {
+      setErrors(prev => {
+        const next = { ...prev };
+        updatedKeys.forEach(key => delete next[key]);
+        return next;
+      });
+    }
+  };
 
   const validate = () => {
-    const errs: Record<string, boolean> = {};
-    if (!form.title.trim()) errs.title = true;
-    if (!form.price || form.price <= 0) errs.price = true;
-    if (!form.availableFrom) errs.availableFrom = true;
+    const errs: Record<string, string> = {};
+    const title = form.title.trim();
+    const size = form.size === '' ? undefined : Number(form.size);
+
+    if (title.length < 3) {
+      errs.title = 'Dá um nome claro ao quarto.';
+    }
+    if (!form.price) {
+      errs.price = 'Indica a renda mensal.';
+    } else if (form.price < 100) {
+      errs.price = 'A renda parece demasiado baixa. Confirma o valor.';
+    } else if (form.price > 1200) {
+      errs.price = 'A renda parece demasiado alta para quarto universitário.';
+    }
+    if (form.utilities < 0) {
+      errs.utilities = 'As despesas não podem ser negativas.';
+    } else if (form.utilities > 400) {
+      errs.utilities = 'Confirma o valor das despesas mensais.';
+    }
+    if (size !== undefined && (Number.isNaN(size) || size < 6 || size > 80)) {
+      errs.size = 'A área deve estar entre 6m² e 80m².';
+    }
+    if (!form.availableFrom) {
+      errs.availableFrom = 'Indica a data de disponibilidade.';
+    } else if (form.availableFrom < todayIso) {
+      errs.availableFrom = 'A data não pode ser anterior a hoje.';
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
   const handleSave = () => {
     if (!validate()) return;
-    onSave(form);
+    onSave({ ...form, title: form.title.trim() });
   };
 
   const ROOM_PHOTOS = [
@@ -243,7 +278,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                 onChange={e => set({ title: e.target.value })}
                 placeholder="Ex: Quarto 1, Suite, Quarto duplo..."
               />
-              {errors.title && <p className="text-xs text-red-500 mt-1">Nome obrigatório</p>}
+              {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
             </div>
 
             {/* Price + Utilities */}
@@ -254,14 +289,15 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">€</span>
                   <input
                     type="number"
-                    min={0}
+                    min={100}
+                    max={1200}
                     className={`${inputCls(errors.price)} pl-7`}
                     value={form.price || ''}
                     onChange={e => set({ price: Number(e.target.value) })}
                     placeholder="250"
                   />
                 </div>
-                {errors.price && <p className="text-xs text-red-500 mt-1">Preço obrigatório</p>}
+                {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price}</p>}
               </div>
               <div>
                 <FieldLabel>Despesas (€/mês)</FieldLabel>
@@ -270,12 +306,14 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                   <input
                     type="number"
                     min={0}
-                    className={`${inputCls()} pl-7`}
+                    max={400}
+                    className={`${inputCls(errors.utilities)} pl-7`}
                     value={form.utilities || ''}
                     onChange={e => set({ utilities: Number(e.target.value) })}
                     placeholder="0"
                   />
                 </div>
+                {errors.utilities && <p className="text-xs text-red-500 mt-1">{errors.utilities}</p>}
               </div>
             </div>
 
@@ -285,12 +323,14 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                 <FieldLabel>Área (m²)</FieldLabel>
                 <input
                   type="number"
-                  min={1}
-                  className={inputCls()}
+                  min={6}
+                  max={80}
+                  className={inputCls(errors.size)}
                   value={form.size || ''}
                   onChange={e => set({ size: e.target.value ? Number(e.target.value) : '' })}
                   placeholder="15"
                 />
+                {errors.size && <p className="text-xs text-red-500 mt-1">{errors.size}</p>}
               </div>
               <div>
                 <FieldLabel>Tipo</FieldLabel>
@@ -321,15 +361,15 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                 </select>
               </div>
               <div>
-                <FieldLabel>Disponível a partir de</FieldLabel>
+                <FieldLabel required>Disponível a partir de</FieldLabel>
                 <input
                   type="date"
                   className={inputCls(errors.availableFrom)}
                   value={form.availableFrom}
                   onChange={e => set({ availableFrom: e.target.value })}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={todayIso}
                 />
-                {errors.availableFrom && <p className="text-xs text-red-500 mt-1">Data obrigatória</p>}
+                {errors.availableFrom && <p className="text-xs text-red-500 mt-1">{errors.availableFrom}</p>}
               </div>
             </div>
 
@@ -448,18 +488,53 @@ export function NewListing() {
 
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<RoomDraft | null>(null);
-  const [propertyErrors, setPropertyErrors] = useState<Record<string, boolean>>({});
+  const [propertyErrors, setPropertyErrors] = useState<Record<string, string>>({});
 
-  const setP = (updates: Partial<PropertyDraft>) => setProperty(prev => ({ ...prev, ...updates }));
+  const setP = (updates: Partial<PropertyDraft>) => {
+    setProperty(prev => ({ ...prev, ...updates }));
+    const updatedKeys = Object.keys(updates);
+    if (updatedKeys.length > 0) {
+      setPropertyErrors(prev => {
+        const next = { ...prev };
+        updatedKeys.forEach(key => delete next[key]);
+        return next;
+      });
+    }
+  };
   const setR = (updates: Partial<HouseRules>) => setRules(prev => ({ ...prev, ...updates }));
 
   // ── Validation: step 1 ──
   const validateStep1 = () => {
-    const errs: Record<string, boolean> = {};
-    if (!property.title.trim()) errs.title = true;
-    if (!property.address.trim()) errs.address = true;
-    if (!property.city.trim()) errs.city = true;
-    if (!property.university.trim()) errs.university = true;
+    const errs: Record<string, string> = {};
+    const distance = property.distanceToUniversity === '' ? NaN : Number(property.distanceToUniversity);
+    const walkTime = property.walkTimeMinutes === '' ? undefined : Number(property.walkTimeMinutes);
+
+    if (property.title.trim().length < 8) {
+      errs.title = 'Usa um título específico, com pelo menos 8 caracteres.';
+    }
+    if (property.description.trim().length < 40) {
+      errs.description = 'A descrição deve explicar o espaço, ambiente e condições.';
+    }
+    if (property.address.trim().length < 8) {
+      errs.address = 'Indica uma morada suficientemente completa.';
+    }
+    if (property.zone.trim().length < 2) {
+      errs.zone = 'Indica a zona ou bairro para melhorar a pesquisa.';
+    }
+    if (!property.city.trim()) {
+      errs.city = 'Indica a cidade.';
+    }
+    if (!property.university.trim()) {
+      errs.university = 'Seleciona a universidade de referência.';
+    }
+    if (Number.isNaN(distance)) {
+      errs.distanceToUniversity = 'Indica a distância aproximada à universidade.';
+    } else if (distance <= 0 || distance > 20) {
+      errs.distanceToUniversity = 'A distância deve estar entre 0.1km e 20km.';
+    }
+    if (walkTime !== undefined && (Number.isNaN(walkTime) || walkTime < 1 || walkTime > 120)) {
+      errs.walkTimeMinutes = 'O tempo a pé deve estar entre 1 e 120 minutos.';
+    }
     setPropertyErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -522,6 +597,34 @@ export function NewListing() {
     if (mode !== 'draft' && isUserBlockedFromPublishing(user.id)) {
       toast.error('A tua conta está bloqueada de publicar. Guarda como rascunho.');
       return;
+    }
+
+    if (mode === 'draft') {
+      if (property.title.trim().length < 3) {
+        setPropertyErrors({ title: 'Dá pelo menos um nome curto ao rascunho.' });
+        setStep(1);
+        toast.error('Dá um nome ao rascunho antes de guardar.');
+        return;
+      }
+    } else {
+      if (!validateStep1()) {
+        setStep(1);
+        toast.error('Revê os dados da propriedade antes de publicar.');
+        return;
+      }
+
+      if (rooms.length === 0) {
+        setStep(2);
+        toast.error('Adiciona pelo menos um quarto antes de publicar.');
+        return;
+      }
+
+      const selectedRoomsCount = rooms.filter(r => r.publishNow).length;
+      if (mode === 'selected' && selectedRoomsCount === 0) {
+        setStep(4);
+        toast.error('Seleciona pelo menos um quarto para publicar.');
+        return;
+      }
     }
 
     const propertyId = `prop-${Date.now()}`;
@@ -642,9 +745,12 @@ export function NewListing() {
 
   // ── Missing fields for preview ──
   const missingFields: string[] = [];
-  if (!property.title) missingFields.push('Título da propriedade');
-  if (!property.description) missingFields.push('Descrição');
-  if (!property.address) missingFields.push('Morada');
+  if (property.title.trim().length < 8) missingFields.push('Título da propriedade');
+  if (property.description.trim().length < 40) missingFields.push('Descrição completa');
+  if (property.address.trim().length < 8) missingFields.push('Morada completa');
+  if (property.zone.trim().length < 2) missingFields.push('Zona ou bairro');
+  if (!property.city.trim()) missingFields.push('Cidade');
+  if (!property.university.trim()) missingFields.push('Universidade');
   if (!property.distanceToUniversity) missingFields.push('Distância à universidade');
   if (rooms.length === 0) missingFields.push('Pelo menos um quarto');
 
@@ -745,20 +851,27 @@ export function NewListing() {
                   placeholder="Ex: Apartamento T4 perto da ESTGV"
                   maxLength={100}
                 />
-                {propertyErrors.title && <p className="text-xs text-red-500 mt-1">Título obrigatório</p>}
+                {propertyErrors.title && <p className="text-xs text-red-500 mt-1">{propertyErrors.title}</p>}
               </div>
 
               <div>
-                <FieldLabel>Descrição</FieldLabel>
+                <FieldLabel required>Descrição</FieldLabel>
                 <textarea
-                  className={`${inputCls()} resize-none`}
+                  className={`${inputCls(propertyErrors.description)} resize-none`}
                   rows={4}
                   value={property.description}
                   onChange={e => setP({ description: e.target.value })}
                   placeholder="Descreve o espaço, a atmosfera, o que está incluído..."
                   maxLength={800}
                 />
-                <p className="text-xs text-muted-foreground mt-1">{property.description.length}/800</p>
+                <div className="flex items-center justify-between gap-3 mt-1">
+                  {propertyErrors.description ? (
+                    <p className="text-xs text-red-500">{propertyErrors.description}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Mínimo recomendado: 40 caracteres.</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">{property.description.length}/800</p>
+                </div>
               </div>
 
               <div>
@@ -769,18 +882,19 @@ export function NewListing() {
                   onChange={e => setP({ address: e.target.value })}
                   placeholder="Rua, número, andar"
                 />
-                {propertyErrors.address && <p className="text-xs text-red-500 mt-1">Morada obrigatória</p>}
+                {propertyErrors.address && <p className="text-xs text-red-500 mt-1">{propertyErrors.address}</p>}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <FieldLabel>Zona / Bairro</FieldLabel>
+                  <FieldLabel required>Zona / Bairro</FieldLabel>
                   <input
-                    className={inputCls()}
+                    className={inputCls(propertyErrors.zone)}
                     value={property.zone}
                     onChange={e => setP({ zone: e.target.value })}
                     placeholder="Ex: Centro"
                   />
+                  {propertyErrors.zone && <p className="text-xs text-red-500 mt-1">{propertyErrors.zone}</p>}
                 </div>
                 <div>
                   <FieldLabel required>Cidade</FieldLabel>
@@ -790,6 +904,7 @@ export function NewListing() {
                     onChange={e => setP({ city: e.target.value })}
                     placeholder="Viseu"
                   />
+                  {propertyErrors.city && <p className="text-xs text-red-500 mt-1">{propertyErrors.city}</p>}
                 </div>
                 <div>
                   <FieldLabel required>Universidade</FieldLabel>
@@ -800,32 +915,37 @@ export function NewListing() {
                   >
                     {UNIVERSITIES.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
+                  {propertyErrors.university && <p className="text-xs text-red-500 mt-1">{propertyErrors.university}</p>}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <FieldLabel>Distância à universidade (km)</FieldLabel>
+                  <FieldLabel required>Distância à universidade (km)</FieldLabel>
                   <input
                     type="number"
                     step="0.1"
-                    min="0"
-                    className={inputCls()}
+                    min="0.1"
+                    max="20"
+                    className={inputCls(propertyErrors.distanceToUniversity)}
                     value={property.distanceToUniversity}
                     onChange={e => setP({ distanceToUniversity: e.target.value ? Number(e.target.value) : '' })}
                     placeholder="0.5"
                   />
+                  {propertyErrors.distanceToUniversity && <p className="text-xs text-red-500 mt-1">{propertyErrors.distanceToUniversity}</p>}
                 </div>
                 <div>
                   <FieldLabel>Tempo a pé (minutos)</FieldLabel>
                   <input
                     type="number"
                     min="1"
-                    className={inputCls()}
+                    max="120"
+                    className={inputCls(propertyErrors.walkTimeMinutes)}
                     value={property.walkTimeMinutes}
                     onChange={e => setP({ walkTimeMinutes: e.target.value ? Number(e.target.value) : '' })}
                     placeholder="5"
                   />
+                  {propertyErrors.walkTimeMinutes && <p className="text-xs text-red-500 mt-1">{propertyErrors.walkTimeMinutes}</p>}
                 </div>
               </div>
 
