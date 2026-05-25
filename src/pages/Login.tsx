@@ -1,11 +1,18 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Home, ArrowRight, Info } from 'lucide-react';
+import { Home, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/Input';
 import { Checkbox } from '../components/Checkbox';
 import { Button } from '../components/Button';
 import { toast } from 'sonner';
+import type { User } from '../types/auth';
+
+function getPostLoginPath(user: User | null) {
+  if (user?.type === 'landlord') return '/landlord/dashboard';
+  if (user?.type === 'admin') return '/admin';
+  return '/dashboard';
+}
 
 export function Login() {
   const navigate = useNavigate();
@@ -45,7 +52,9 @@ export function Login() {
 
     if (result.success) {
       toast.success('Login efetuado com sucesso!');
-      navigate('/dashboard');
+      const storedUser = localStorage.getItem('uniroom_user');
+      const loggedUser = storedUser ? JSON.parse(storedUser) as User : null;
+      navigate(getPostLoginPath(loggedUser));
     } else {
       toast.error(result.error || 'Erro ao efetuar login');
     }
@@ -126,22 +135,9 @@ export function Login() {
           </div>
         </div>
 
-        <div className="mt-6 p-4 bg-muted/50 rounded-xl border border-border backdrop-blur-sm">
-          <div className="flex items-start gap-4">
-            <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-foreground mb-3">Contas de teste disponíveis:</p>
-              <div className="space-y-1.5">
-                <p className="text-sm text-muted-foreground">
-                  <strong className="text-foreground">Estudante:</strong> estudante@uniroom.pt / password123
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  <strong className="text-foreground">Senhorio:</strong> senhorio@uniroom.pt / password123
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          Acesso reservado a estudantes, senhorios e equipa de administração UniRoom.
+        </p>
       </div>
     </div>
   );
