@@ -18,7 +18,24 @@ export function FeaturedRoomsSection() {
 
   const featuredRooms: FeaturedRoom[] = rooms
     .filter(room => room.status === 'available' && propertyById.has(room.propertyId))
-    .sort((a, b) => (b.compatibilityScore || 0) - (a.compatibilityScore || 0))
+    .sort((a, b) => {
+      const propertyA = propertyById.get(a.propertyId)!;
+      const propertyB = propertyById.get(b.propertyId)!;
+
+      if (propertyA.verified !== propertyB.verified) {
+        return propertyA.verified ? -1 : 1;
+      }
+
+      if (propertyA.distanceToUniversity !== propertyB.distanceToUniversity) {
+        return propertyA.distanceToUniversity - propertyB.distanceToUniversity;
+      }
+
+      if (a.price !== b.price) {
+        return a.price - b.price;
+      }
+
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    })
     .slice(0, 6)
     .map(room => ({
       room,
@@ -36,7 +53,7 @@ export function FeaturedRoomsSection() {
           <div className="max-w-3xl">
             <h2 className="heading-2 mb-4">Quartos disponíveis para estudantes</h2>
             <p className="body-large text-muted-foreground">
-              Explora opções reais antes de criares conta. Para te candidatares, guardar favoritos ou contactar o senhorio, só precisas de iniciar sessão.
+              Explora quartos verificados, perto das instituições e com informação essencial antes de criares conta. A compatibilidade personalizada aparece depois de completares o teu perfil.
             </p>
           </div>
 
