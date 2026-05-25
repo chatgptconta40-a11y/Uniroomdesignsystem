@@ -7,6 +7,8 @@ import {
   MapPin,
   MessageCircle,
   Search,
+  AlertCircle,
+  UserCheck,
   Wrench,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -52,6 +54,7 @@ export function Dashboard() {
   }, [user]);
 
   const canUseCompatibility = Boolean(studentProfile?.onboardingCompleted);
+  const shouldShowProfileNotice = user?.type === 'student' && !canUseCompatibility;
 
   useEffect(() => {
     if (!user) return;
@@ -202,6 +205,39 @@ export function Dashboard() {
             </Link>
           </div>
         </div>
+
+        {shouldShowProfileNotice && (
+          <Card className="p-5 mb-8 border-blue-100 bg-blue-50/70">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white text-primary flex items-center justify-center flex-shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-base font-bold text-foreground">
+                      Completa o perfil para desbloquear compatibilidade
+                    </h2>
+                    <UserCheck className="w-4 h-4 text-primary" />
+                  </div>
+
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Ainda estás a ver sugestões ordenadas por verificação, distância e preço.
+                    Depois de completares o perfil de convivência, a UniRoom passa a mostrar
+                    compatibilidade personalizada nos quartos.
+                  </p>
+                </div>
+              </div>
+
+              <Link to="/onboarding" className="w-full md:w-auto">
+                <Button variant="primary" className="w-full md:w-auto">
+                  Completar perfil
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
           {statsCards.map(stat => {

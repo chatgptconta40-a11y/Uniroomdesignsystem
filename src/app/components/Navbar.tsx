@@ -272,96 +272,97 @@ export function Navbar() {
                             </Link>
                           </>
                         )}
-                      
+
                         {user?.type === 'landlord' && (
-  <>
-    <Link
-      to="/landlord/dashboard"
-      className={navLinkClass('/landlord/dashboard')}
-      onClick={() => setShowMenu(false)}
-    >
-      <LayoutDashboard className="w-4 h-4" />
-      <span className="text-sm">Dashboard Senhorio</span>
-    </Link>
+                          <>
+                            <Link
+                              to="/landlord/dashboard"
+                              className={navLinkClass('/landlord/dashboard')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <LayoutDashboard className="w-4 h-4" />
+                              <span className="text-sm">Dashboard Senhorio</span>
+                            </Link>
 
-    <Link
-      to="/verification"
-      className="mx-2 my-2 flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/80 px-3 py-3 transition-colors hover:bg-blue-50"
-      onClick={() => setShowMenu(false)}
-    >
-      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white text-primary">
-        <Shield className="h-4 w-4" />
-      </div>
+                            <Link
+                              to="/verification"
+                              className="mx-2 my-2 flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/80 px-3 py-3 transition-colors hover:bg-blue-50"
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white text-primary">
+                                <Shield className="h-4 w-4" />
+                              </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-sm font-semibold text-foreground">
-            Verificação do senhorio
-          </span>
-          <TrustBadge userId={user.id} size="sm" showLabel={false} />
-        </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-1 flex items-center gap-2">
+                                  <span className="text-sm font-semibold text-foreground">
+                                    Verificação do senhorio
+                                  </span>
+                                  <TrustBadge userId={user.id} size="sm" showLabel={false} />
+                                </div>
 
-        <p className="text-xs leading-snug text-muted-foreground">
-          Confirma a identidade e aumenta a confiança dos estudantes nos teus anúncios.
-        </p>
-      </div>
-    </Link>
+                                <p className="text-xs leading-snug text-muted-foreground">
+                                  Confirma a identidade e aumenta a confiança dos estudantes nos teus anúncios.
+                                </p>
+                              </div>
+                            </Link>
 
-    <div className="border-t border-border my-1" />
+                            <div className="border-t border-border my-1" />
 
-    <Link
-      to="/landlord/listings"
-      className={navLinkClass('/landlord/listings')}
-      onClick={() => setShowMenu(false)}
-    >
-      <Home className="w-4 h-4" />
-      <span className="text-sm">Os Meus Alojamentos</span>
-    </Link>
+                            <Link
+                              to="/landlord/listings"
+                              className={navLinkClass('/landlord/listings')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <Home className="w-4 h-4" />
+                              <span className="text-sm">Os Meus Alojamentos</span>
+                            </Link>
 
-    <Link
-      to="/landlord/applications"
-      className={navLinkClass('/landlord/applications')}
-      onClick={() => setShowMenu(false)}
-    >
-      <FileText className="w-4 h-4" />
-      <span className="text-sm">Candidaturas</span>
-    </Link>
+                            <Link
+                              to="/landlord/applications"
+                              className={navLinkClass('/landlord/applications')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <FileText className="w-4 h-4" />
+                              <span className="text-sm">Candidaturas</span>
+                            </Link>
 
-    <Link
-      to="/landlord/maintenance"
-      className={navLinkClass('/landlord/maintenance')}
-      onClick={() => setShowMenu(false)}
-    >
-      <Wrench className="w-4 h-4" />
-      <span className="text-sm">Pedidos de Manutenção</span>
-    </Link>
+                            <Link
+                              to="/landlord/maintenance"
+                              className={navLinkClass('/landlord/maintenance')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <Wrench className="w-4 h-4" />
+                              <span className="text-sm">Pedidos de Manutenção</span>
+                            </Link>
 
-    <Link
-      to="/landlord/analytics"
-      className={navLinkClass('/landlord/analytics')}
-      onClick={() => setShowMenu(false)}
-    >
-      <BarChart3 className="w-4 h-4" />
-      <span className="text-sm">Analytics</span>
-    </Link>
+                            <Link
+                              to="/landlord/analytics"
+                              className={navLinkClass('/landlord/analytics')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <BarChart3 className="w-4 h-4" />
+                              <span className="text-sm">Analytics</span>
+                            </Link>
 
-    <div className="border-t border-border my-1" />
+                            <div className="border-t border-border my-1" />
 
-    <Link
-      to="/messages"
-      className={navLinkClass('/messages')}
-      onClick={() => setShowMenu(false)}
-    >
-      <MessageCircle className="w-4 h-4" />
-      <span className="text-sm">Mensagens</span>
-      {unreadMessagesCount > 0 && (
-        <span className="ml-auto w-5 h-5 bg-primary text-white text-xs font-semibold rounded-full flex items-center justify-center">
-          {unreadMessagesCount}
-        </span>
-      )}
-    </Link>
-  </>
-)}
+                            <Link
+                              to="/messages"
+                              className={navLinkClass('/messages')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              <span className="text-sm">Mensagens</span>
+                              {unreadMessagesCount > 0 && (
+                                <span className="ml-auto w-5 h-5 bg-primary text-white text-xs font-semibold rounded-full flex items-center justify-center">
+                                  {unreadMessagesCount}
+                                </span>
+                              )}
+                            </Link>
+                          </>
+                        )}
+
                         {user?.type === 'admin' && (
                           <>
                             <Link

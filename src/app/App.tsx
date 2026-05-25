@@ -40,6 +40,8 @@ import { AdminReports } from '../pages/admin/AdminReports';
 import { AdminAudit } from '../pages/admin/AdminAudit';
 import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
 import { AdminSettings } from '../pages/admin/AdminSettings';
+import { Terms } from '../pages/Terms';
+import { Privacy } from '../pages/Privacy';
 
 function AppShell() {
   const { compareItems, removeFromCompare } = useCompare();
@@ -52,6 +54,26 @@ function AppShell() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+
+          <Route
+            path="/terms"
+            element={
+              <>
+                <Navbar />
+                <Terms />
+              </>
+            }
+          />
+
+          <Route
+            path="/privacy"
+            element={
+              <>
+                <Navbar />
+                <Privacy />
+              </>
+            }
+          />
 
           <Route
             path="/"
@@ -152,15 +174,15 @@ function AppShell() {
             }
           />
 
-        <Route
-  path="/verification"
-  element={
-    <ProtectedRoute allowedTypes={['student', 'landlord']}>
-      <Navbar />
-      <Verification />
-    </ProtectedRoute>
-  }
-/>
+          <Route
+            path="/verification"
+            element={
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
+                <Navbar />
+                <Verification />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/my-home"

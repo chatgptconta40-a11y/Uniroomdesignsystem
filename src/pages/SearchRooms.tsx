@@ -20,6 +20,8 @@ import {
   Wifi,
   Columns,
   Check,
+  AlertCircle,
+  UserCheck,
 } from 'lucide-react';
 import { RoomCard } from '../components/RoomCard';
 import { Button } from '../components/Button';
@@ -659,6 +661,7 @@ export function SearchRooms() {
   const { rooms, properties } = useProperties();
   const { isInCompare, toggleCompare, canAdd } = useCompare();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [results, setResults] = useState<ResultItem[]>([]);
@@ -674,6 +677,7 @@ export function SearchRooms() {
     user?.type === 'student' &&
     studentProfile?.onboardingCompleted
   );
+  const shouldShowProfileNotice = user?.type === 'student' && !canShowCompatibility;
 
   const set = (updates: Partial<SearchFilters>) => setFilters(current => ({ ...current, ...updates }));
 
@@ -955,6 +959,41 @@ export function SearchRooms() {
       </div>
 
       <div className="max-w-[1800px] mx-auto px-4 md:px-6 py-6">
+        {shouldShowProfileNotice && (
+          <Card className="p-4 mb-5 border-blue-100 bg-blue-50/70">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white text-primary flex items-center justify-center flex-shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-sm font-bold text-foreground">
+                      Completa o perfil para ver compatibilidade personalizada
+                    </h2>
+                    <UserCheck className="w-4 h-4 text-primary" />
+                  </div>
+
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Por agora, os resultados estão ordenados por distância, preço e confiança.
+                    Depois do onboarding, desbloqueias percentagens de compatibilidade e filtros
+                    mais úteis para convivência.
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                variant="primary"
+                className="w-full lg:w-auto"
+                onClick={() => navigate('/onboarding')}
+              >
+                Completar perfil
+              </Button>
+            </div>
+          </Card>
+        )}
+
         <div className="flex flex-col lg:flex-row gap-6">
           {showSidebar && (
             <div className="lg:w-68 xl:w-72 flex-shrink-0">

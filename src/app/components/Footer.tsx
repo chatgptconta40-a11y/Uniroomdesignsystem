@@ -16,14 +16,15 @@ export function Footer() {
 
   const supportLinks = [
     { label: 'Contacto', href: 'mailto:suporte@uniroom.pt' },
-    { label: 'Termos e condições', href: 'mailto:suporte@uniroom.pt?subject=Termos%20e%20condicoes%20UniRoom' },
-    { label: 'Política de privacidade', href: 'mailto:suporte@uniroom.pt?subject=Privacidade%20UniRoom' },
+    { label: 'Termos e condições', to: '/terms' },
+    { label: 'Política de privacidade', to: '/privacy' },
   ];
 
   return (
     <footer className="w-full bg-card border-t border-border">
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+          {/* Brand */}
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-3 mb-4 group">
               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-sm">
@@ -45,6 +46,7 @@ export function Footer() {
             </div>
           </div>
 
+          {/* Links */}
           <div className="md:col-span-3">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div>
@@ -78,9 +80,15 @@ export function Footer() {
                 <ul className="space-y-3">
                   {supportLinks.map(link => (
                     <li key={link.label}>
-                      <a href={link.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                        {link.label}
-                      </a>
+                      {'to' in link ? (
+                        <Link to={link.to} className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                          {link.label}
+                        </Link>
+                      ) : (
+                        <a href={link.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                          {link.label}
+                        </a>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -89,6 +97,7 @@ export function Footer() {
           </div>
         </div>
 
+        {/* Bottom */}
         <div className="pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
             &copy; 2026 UniRoom. Todos os direitos reservados.

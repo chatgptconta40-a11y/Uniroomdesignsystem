@@ -35,6 +35,10 @@ export function ApplicationModal({
   const [message, setMessage] = useState('');
   const [moveInDate, setMoveInDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({
+    moveInDate: '',
+    message: '',
+  });
 
   const effectiveRoomId = roomId || accommodation.id;
   const room = getRoom(effectiveRoomId);
@@ -79,6 +83,43 @@ export function ApplicationModal({
     !hasActiveApplication &&
     !isRoomUnavailable;
 
+  const todayIso = new Date().toISOString().split('T')[0];
+
+  const validateApplicationDetails = () => {
+    const errors = {
+      moveInDate: '',
+      message: '',
+    };
+
+    const trimmedMessage = message.trim();
+
+    if (!moveInDate) {
+      errors.moveInDate = 'Indica a data prevista de entrada.';
+    } else if (moveInDate < todayIso) {
+      errors.moveInDate = 'A data de entrada não pode ser anterior a hoje.';
+    }
+
+    if (!trimmedMessage) {
+      errors.message = 'Escreve uma mensagem de apresentação.';
+    } else if (trimmedMessage.length < 40) {
+      errors.message = 'A mensagem deve ter pelo menos 40 caracteres.';
+    } else if (trimmedMessage.length > 500) {
+      errors.message = 'A mensagem não pode ultrapassar 500 caracteres.';
+    }
+
+    setFieldErrors(errors);
+    return !errors.moveInDate && !errors.message;
+  };
+
+  const handleContinue = () => {
+    if (step === 2 && !validateApplicationDetails()) {
+      toast.warning('Revê os campos obrigatórios antes de continuar.');
+      return;
+    }
+
+    setStep(step + 1);
+  };
+
   const handleSubmit = async () => {
     if (!user) {
       toast.error('Inicia sessão para te candidatares.');
@@ -93,6 +134,12 @@ export function ApplicationModal({
     if (isRoomUnavailable) {
       toast.error('Este quarto já não está disponível.');
       refreshProperties();
+      return;
+    }
+
+    if (!validateApplicationDetails()) {
+      setStep(2);
+      toast.warning('Revê os campos obrigatórios antes de enviar.');
       return;
     }
 
@@ -111,8 +158,8 @@ export function ApplicationModal({
         propertyId: effectivePropertyId,
         landlordId: accommodation.landlordId || property?.landlordId || '',
         landlordName: undefined,
-        message,
-        moveInDate: moveInDate ? new Date(moveInDate) : undefined,
+        message: message.trim(),
+        moveInDate: new Date(moveInDate),
         accommodationId: accommodation.id,
       });
 
@@ -302,37 +349,70 @@ export function ApplicationModal({
               <div>
                 <h3 className="font-semibold text-foreground mb-2">Mensagem de apresentação</h3>
                 <p className="text-sm text-muted-foreground">
-                  Apresenta-te ao senhorio. É opcional, mas ajuda muito na decisão.
+                  Apresenta-te ao senhorio. Uma mensagem clara aumenta a confiança e ajuda na decisão.
                 </p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Data prevista de entrada
+                  Data prevista de entrada <span className="text-red-500">*</span>
                 </label>
                 <Input
                   type="date"
                   value={moveInDate}
-                  onChange={event => setMoveInDate(event.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
+                  onChange={event => {
+                    setMoveInDate(event.target.value);
+                    if (fieldErrors.moveInDate) {
+                      setFieldErrors(prev => ({ ...prev, moveInDate: '' }));
+                    }
+                  }}
+                  min={todayIso}
+                  error={fieldErrors.moveInDate}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Mensagem
+                  Mensagem <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   value={message}
-                  onChange={event => setMessage(event.target.value)}
+                  onChange={event => {
+                    setMessage(event.target.value);
+                    if (fieldErrors.message) {
+                      setFieldErrors(prev => ({ ...prev, message: '' }));
+                    }
+                  }}
                   placeholder={exampleMessage}
-                  className="w-full px-4 py-3 bg-input-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary resize-none"
+                  className={`w-full px-4 py-3 bg-input-background border rounded-lg focus:ring-2 resize-none transition-colors ${
+                    fieldErrors.message
+                      ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                      : 'border-border focus:ring-primary focus:border-primary'
+                  }`}
                   rows={6}
                   maxLength={500}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {message.length}/500 caracteres
-                </p>
+                <div className="mt-1 flex items-start justify-between gap-3">
+                  <div>
+                    {fieldErrors.message ? (
+                      <p className="text-xs text-red-500">{fieldErrors.message}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Mínimo 40 caracteres. Evita mensagens demasiado vagas.
+                      </p>
+                    )}
+                  </div>
+
+                  <p
+                    className={`text-xs flex-shrink-0 ${
+                      message.trim().length > 0 && message.trim().length < 40
+                        ? 'text-amber-600'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {message.length}/500
+                  </p>
+                </div>
               </div>
 
               <Card className="p-6 bg-primary/5 border-primary/20">
@@ -394,10 +474,10 @@ export function ApplicationModal({
                     </div>
                   )}
 
-                  {message && (
+                  {message.trim() && (
                     <div className="border-t pt-4">
                       <h4 className="font-medium text-foreground mb-1">Mensagem</h4>
-                      <p className="text-sm text-muted-foreground italic">“{message}”</p>
+                      <p className="text-sm text-muted-foreground italic">“{message.trim()}”</p>
                     </div>
                   )}
                 </div>
@@ -429,7 +509,7 @@ export function ApplicationModal({
           </Button>
 
           <Button
-            onClick={step === 3 ? handleSubmit : () => setStep(step + 1)}
+            onClick={step === 3 ? handleSubmit : handleContinue}
             disabled={step === 3 ? !canSubmit : false}
           >
             {isSubmitting ? (
