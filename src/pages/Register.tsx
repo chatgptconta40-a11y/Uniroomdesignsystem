@@ -87,11 +87,10 @@ export function Register() {
 
     if (result.success) {
       toast.success('Conta criada com sucesso!');
-      // Redirect students to onboarding, others to dashboard
       if (userType === 'student') {
         navigate('/onboarding');
       } else {
-        navigate('/dashboard');
+        navigate('/landlord/dashboard');
       }
     } else {
       toast.error(result.error || 'Erro ao criar conta');
@@ -113,9 +112,9 @@ export function Register() {
 
         <div className="bg-card rounded-2xl p-8 border border-border" style={{ boxShadow: 'var(--shadow-lg)' }}>
           <div className="text-center mb-8">
-            <h1 className="mb-3">Criar Conta</h1>
+            <h1 className="mb-3">Criar conta</h1>
             <p className="text-muted-foreground">
-              Junta-te à comunidade UniRoom gratuitamente
+              Escolhe o teu perfil e começa a usar a UniRoom
             </p>
           </div>
 
@@ -181,7 +180,10 @@ export function Register() {
                   }`}>
                     <User className={`w-5 h-5 ${userType === 'student' ? 'text-primary' : 'text-muted-foreground'}`} />
                   </div>
-                  <p className="text-sm font-medium">Sou estudante</p>
+                  <p className="text-sm font-medium">Estudante</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Procurar quartos
+                  </p>
                 </button>
                 <button
                   type="button"
@@ -202,7 +204,10 @@ export function Register() {
                   }`}>
                     <Building className={`w-5 h-5 ${userType === 'landlord' ? 'text-primary' : 'text-muted-foreground'}`} />
                   </div>
-                  <p className="text-sm font-medium">Sou senhorio</p>
+                  <p className="text-sm font-medium">Senhorio</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Publicar alojamentos
+                  </p>
                 </button>
               </div>
             </div>
@@ -210,7 +215,7 @@ export function Register() {
             <div>
               <div className={errors.terms ? 'p-3 border-2 border-red-500 rounded-xl bg-red-50' : ''}>
                 <Checkbox
-                  label="Aceito os termos e condições"
+                  label="Aceito os termos e a política de utilização"
                   checked={acceptTerms}
                   onChange={(e) => setAcceptTerms(e.target.checked)}
                 />
@@ -228,7 +233,7 @@ export function Register() {
               disabled={loading}
               className="w-full gap-2"
             >
-              {loading ? 'A criar conta...' : 'Criar conta gratuitamente'}
+              {loading ? 'A criar conta...' : 'Criar conta'}
               {!loading && <ArrowRight className="w-4 h-4" />}
             </Button>
           </form>
