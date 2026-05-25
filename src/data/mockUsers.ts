@@ -49,6 +49,12 @@ export const mockUsers: User[] = [
   },
 ];
 
+export const mockCredentials = mockUsers.map(user => ({
+  id: user.id,
+  email: user.email,
+  password: user.password || 'password123',
+}));
+
 export const mockStudentProfiles: StudentProfile[] = [
   {
     userId: '1',
