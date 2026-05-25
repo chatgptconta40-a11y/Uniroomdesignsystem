@@ -22,6 +22,7 @@ import { Profile } from '../pages/Profile';
 import { SearchRooms } from '../pages/SearchRooms';
 import { AccommodationDetail } from '../pages/AccommodationDetail';
 import { RoomDetail } from '../pages/RoomDetail';
+import { PropertyDetail } from '../pages/PropertyDetail';
 import { Favorites } from '../pages/Favorites';
 import { Applications } from '../pages/Applications';
 import { Messages } from '../pages/Messages';
@@ -61,6 +62,7 @@ function AppShell() {
           <Route path="/privacy" element={<><Navbar /><Privacy /></>} />
           <Route path="/" element={<><Navbar /><Home /></>} />
           <Route path="/room/:id" element={<><Navbar /><RoomDetail /></>} />
+          <Route path="/property/:id" element={<><Navbar /><PropertyDetail /></>} />
 
           {/* Estudante */}
           <Route path="/dashboard" element={<ProtectedRoute allowedTypes={['student']}><Navbar /><Dashboard /></ProtectedRoute>} />

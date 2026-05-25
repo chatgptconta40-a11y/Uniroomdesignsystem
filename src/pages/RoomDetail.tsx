@@ -17,7 +17,7 @@ import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
 import { getExistingApplicationForRoom } from '../data/mockApplications';
-import { getProfile } from '../data/mockProfiles';
+import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
@@ -54,12 +54,12 @@ export function RoomDetail() {
   const existingApplication = user?.type === 'student' && room
     ? getExistingApplicationForRoom(user.id, room.id)
     : null;
-  const studentProfile = user?.type === 'student' ? getProfile(user.id) : null;
   const canShowCompatibility = Boolean(
     user?.type === 'student' &&
-    studentProfile?.onboardingCompleted &&
+    hasCompletedCompatibilityProfile(user.id) &&
     room?.compatibilityScore
   );
+  const shouldInviteProfileCompletion = user?.type === 'student' && !canShowCompatibility;
 
   if (!room || !property) {
     return (
@@ -267,18 +267,28 @@ export function RoomDetail() {
               </div>
 
               <Card className="p-4 bg-blue-50 border-blue-200 mb-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <Building className="w-5 h-5 text-blue-600" />
                     <div>
                       <p className="font-semibold text-blue-900">Este quarto faz parte de:</p>
-                      <p className="text-sm text-blue-700">{property.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/property/${property.id}`)}
+                        className="text-left text-sm font-semibold text-blue-700 hover:underline"
+                      >
+                        {property.title}
+                      </button>
                     </div>
                   </div>
-                  <Badge variant="default" className="bg-white text-blue-700">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/property/${property.id}`)}
+                    className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+                  >
                     <Home className="w-3 h-3 mr-1" />
-                    {property.totalRooms} quartos no total
-                  </Badge>
+                    Ver página da casa
+                  </button>
                 </div>
               </Card>
             </div>
@@ -529,6 +539,31 @@ export function RoomDetail() {
                       </span>
                     </div>
                   )}
+
+                  {shouldInviteProfileCompletion && (
+                    <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                      <div className="flex items-start gap-3">
+                        <Users className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                        <div>
+                          <p className="text-sm font-bold text-blue-950">
+                            Completa o teu perfil de convivência
+                          </p>
+                          <p className="mt-1 text-xs leading-relaxed text-blue-800">
+                            Depois do onboarding, a UniRoom desbloqueia compatibilidade personalizada para este quarto.
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
+                            onClick={() => navigate('/onboarding')}
+                          >
+                            Preencher perfil
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     {existingApplication ? (
                       <div className={`rounded-xl border p-3.5 ${APP_STATUS_LABELS[existingApplication.status]?.bgCls || 'bg-muted border-border'}`}>
@@ -566,7 +601,7 @@ export function RoomDetail() {
               )}
 
               {!isLandlordOwner && (
-                <ComfortScorePanel room={room} property={property} />
+                <ComfortScorePanel room={room} property={property} canUseCompatibility={canShowCompatibility} />
               )}
 
               {!isLandlordOwner && (

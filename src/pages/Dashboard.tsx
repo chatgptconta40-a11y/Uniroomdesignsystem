@@ -21,7 +21,7 @@ import { getMaintenanceRequests } from '../data/mockMaintenance';
 import { getApplicationsForUser, getActiveHomeForStudent } from '../data/mockApplications';
 import { getTotalUnreadCount } from '../data/mockMessages';
 import { getProperty, getRoom } from '../data/mockProperties';
-import { getProfile } from '../data/mockProfiles';
+import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import type { Property, Room } from '../types/property';
 
 export function Dashboard() {
@@ -48,12 +48,7 @@ export function Dashboard() {
     return { property, room, activeHomeData };
   }, [user]);
 
-  const studentProfile = useMemo(() => {
-    if (!user || user.type !== 'student') return null;
-    return getProfile(user.id);
-  }, [user]);
-
-  const canUseCompatibility = Boolean(studentProfile?.onboardingCompleted);
+  const canUseCompatibility = Boolean(user?.type === 'student' && hasCompletedCompatibilityProfile(user.id));
   const shouldShowProfileNotice = user?.type === 'student' && !canUseCompatibility;
 
   useEffect(() => {

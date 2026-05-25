@@ -32,7 +32,7 @@ import { useProperties } from '../context/PropertiesContext';
 import { useCompare } from '../context/CompareContext';
 import { useAuth } from '../context/AuthContext';
 import { getVerificationStatus } from '../data/mockTrust';
-import { getProfile } from '../data/mockProfiles';
+import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import { Room, Property } from '../types/property';
 
 const walkMinutes = (km: number) => Math.round(km * 13);
@@ -688,14 +688,9 @@ export function SearchRooms() {
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
 
-  const studentProfile = useMemo(() => {
-    if (!user || user.type !== 'student') return null;
-    return getProfile(user.id);
-  }, [user]);
-
   const canShowCompatibility = Boolean(
     user?.type === 'student' &&
-    studentProfile?.onboardingCompleted
+    hasCompletedCompatibilityProfile(user.id)
   );
   const shouldShowProfileNotice = user?.type === 'student' && !canShowCompatibility;
 

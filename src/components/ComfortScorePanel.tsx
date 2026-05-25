@@ -6,6 +6,7 @@ import { Card } from './Card';
 interface ComfortScorePanelProps {
   room: Room;
   property: Property;
+  canUseCompatibility?: boolean;
 }
 
 interface CategoryScore {
@@ -15,21 +16,17 @@ interface CategoryScore {
   detail: string;
 }
 
-function computeScores(room: Room, property: Property) {
-  // Compatibility (40 pts)
-  const compat = room.compatibilityScore ?? 70;
-  const compatPts = (compat / 100) * 40;
-
+function computeScores(room: Room, property: Property, canUseCompatibility: boolean) {
   // Location — lower distance = better (20 pts)
   const maxDist = 10;
   const locFrac = Math.max(0, Math.min(1, (maxDist - property.distanceToUniversity) / maxDist));
-  const locPts = locFrac * 20;
+  const locPts = locFrac * 30;
 
-  // Price — cheaper relative to 200–500 range (15 pts)
+  // Price — cheaper relative to 200–500 range (25 pts)
   const priceFrac = Math.max(0, Math.min(1, (500 - room.price) / 300));
-  const pricePts = priceFrac * 15;
+  const pricePts = priceFrac * 25;
 
-  // Amenities count (15 pts)
+  // Amenities count (25 pts)
   const amenityKeys: (keyof typeof property.amenities)[] = [
     'wifi', 'kitchen', 'livingRoom', 'laundry', 'parking', 'heating', 'airConditioning', 'elevator',
   ];
@@ -37,24 +34,20 @@ function computeScores(room: Room, property: Property) {
   const roomExtras = [room.privateBathroom, room.balcony, room.desk, room.wardrobe].filter(Boolean).length;
   const totalAmenities = amenityCount + roomExtras;
   const maxAmenities = amenityKeys.length + 4;
-  const amenPts = (totalAmenities / maxAmenities) * 15;
+  const amenPts = (totalAmenities / maxAmenities) * 25;
 
-  // Trust (10 pts): verified (6) + utilities (2) + minimumStay short (2)
+  // Trust (20 pts): verified (12) + utilities (4) + minimumStay short (4)
   const trustPts =
-    (property.verified ? 6 : 0) +
-    (!room.utilities ? 2 : 0) +
-    (room.minimumStay <= 6 ? 2 : 1);
+    (property.verified ? 12 : 0) +
+    (!room.utilities ? 4 : 0) +
+    (room.minimumStay <= 6 ? 4 : 2);
 
-  const total = compatPts + locPts + pricePts + amenPts + trustPts;
+  const compat = room.compatibilityScore ?? 70;
+  const compatibilityBonus = canUseCompatibility ? (compat / 100) * 10 : 0;
+  const total = locPts + pricePts + amenPts + trustPts + compatibilityBonus;
   const score10 = Math.round(Math.min(10, total / 10) * 10) / 10;
 
   const categories: CategoryScore[] = [
-    {
-      label: 'Compatibilidade',
-      score: compat,
-      icon: <Sparkles className="w-3.5 h-3.5" />,
-      detail: compat >= 80 ? 'Excelente ajuste ao teu perfil' : compat >= 60 ? 'Bom ajuste ao teu perfil' : 'Compatibilidade moderada',
-    },
     {
       label: 'Localização',
       score: Math.round(locFrac * 100),
@@ -75,11 +68,20 @@ function computeScores(room: Room, property: Property) {
     },
     {
       label: 'Confiança',
-      score: Math.round((trustPts / 10) * 100),
+      score: Math.round((trustPts / 20) * 100),
       icon: <ShieldCheck className="w-3.5 h-3.5" />,
       detail: property.verified ? 'Senhorio verificado UniRoom' : 'Ainda a verificar',
     },
   ];
+
+  if (canUseCompatibility) {
+    categories.unshift({
+      label: 'Compatibilidade',
+      score: compat,
+      icon: <Sparkles className="w-3.5 h-3.5" />,
+      detail: compat >= 80 ? 'Excelente ajuste ao teu perfil' : compat >= 60 ? 'Bom ajuste ao teu perfil' : 'Compatibilidade moderada',
+    });
+  }
 
   return { score10, categories };
 }
@@ -98,9 +100,9 @@ function barColor(score: number): string {
   return 'bg-red-400';
 }
 
-function buildReasons(room: Room, property: Property, score10: number): string[] {
+function buildReasons(room: Room, property: Property, score10: number, canUseCompatibility: boolean): string[] {
   const reasons: string[] = [];
-  if (room.compatibilityScore && room.compatibilityScore >= 80) reasons.push(`${room.compatibilityScore}% de compatibilidade com o teu perfil`);
+  if (canUseCompatibility && room.compatibilityScore && room.compatibilityScore >= 80) reasons.push(`${room.compatibilityScore}% de compatibilidade com o teu perfil`);
   if (property.distanceToUniversity <= 2) reasons.push(`A apenas ${property.distanceToUniversity}km da universidade`);
   if (property.verified) reasons.push('Senhorio verificado pela UniRoom');
   if (room.privateBathroom) reasons.push('Casa de banho privativa incluída');
@@ -112,10 +114,10 @@ function buildReasons(room: Room, property: Property, score10: number): string[]
   return reasons.slice(0, 4);
 }
 
-export function ComfortScorePanel({ room, property }: ComfortScorePanelProps) {
-  const { score10, categories } = useMemo(() => computeScores(room, property), [room, property]);
+export function ComfortScorePanel({ room, property, canUseCompatibility = false }: ComfortScorePanelProps) {
+  const { score10, categories } = useMemo(() => computeScores(room, property, canUseCompatibility), [room, property, canUseCompatibility]);
   const label = getLabel(score10);
-  const reasons = useMemo(() => buildReasons(room, property, score10), [room, property, score10]);
+  const reasons = useMemo(() => buildReasons(room, property, score10, canUseCompatibility), [room, property, score10, canUseCompatibility]);
 
   return (
     <Card className="p-5 space-y-4">
@@ -133,7 +135,9 @@ export function ComfortScorePanel({ room, property }: ComfortScorePanelProps) {
         <div>
           <p className={`font-bold text-sm ${label.color}`}>{label.text}</p>
           <p className="text-xs text-muted-foreground leading-snug mt-0.5">
-            Calculado com base nas características do quarto e do teu perfil.
+            {canUseCompatibility
+              ? 'Calculado com base nas características do quarto e no teu perfil.'
+              : 'Calculado com base na localização, preço, comodidades e confiança do anúncio.'}
           </p>
         </div>
       </div>

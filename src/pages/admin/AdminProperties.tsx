@@ -202,90 +202,32 @@ export function AdminProperties() {
         <p className="text-gray-600">Gerir todas as propriedades e quartos da plataforma</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Home className="w-4 h-4 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600">Total</p>
-              <p className="text-xl font-bold text-gray-900">{stats.total}</p>
-            </div>
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+        {[
+          { label: 'Total', value: stats.total, icon: Home, color: 'bg-blue-100 text-blue-600' },
+          { label: 'Ativas', value: stats.active, icon: CheckCircle, color: 'bg-green-100 text-green-600' },
+          { label: 'Pendentes', value: stats.pending, icon: Clock, color: 'bg-yellow-100 text-yellow-600' },
+          { label: 'Suspeitas', value: stats.suspicious, icon: AlertTriangle, color: 'bg-red-100 text-red-600' },
+          { label: 'Quartos', value: stats.totalRooms, icon: DoorOpen, color: 'bg-purple-100 text-purple-600' },
+          { label: 'Disponíveis', value: stats.availableRooms, icon: DoorOpen, color: 'bg-green-100 text-green-600' },
+          { label: 'Ocupados', value: stats.occupiedRooms, icon: DoorClosed, color: 'bg-gray-100 text-gray-600' },
+        ].map(stat => {
+          const Icon = stat.icon;
 
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600">Ativas</p>
-              <p className="text-xl font-bold text-gray-900">{stats.active}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <Clock className="w-4 h-4 text-yellow-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600">Pendentes</p>
-              <p className="text-xl font-bold text-gray-900">{stats.pending}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600">Suspeitas</p>
-              <p className="text-xl font-bold text-gray-900">{stats.suspicious}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <DoorOpen className="w-4 h-4 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600">Quartos</p>
-              <p className="text-xl font-bold text-gray-900">{stats.totalRooms}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <DoorOpen className="w-4 h-4 text-green-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600">Disponíveis</p>
-              <p className="text-xl font-bold text-gray-900">{stats.availableRooms}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <DoorClosed className="w-4 h-4 text-gray-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600">Ocupados</p>
-              <p className="text-xl font-bold text-gray-900">{stats.occupiedRooms}</p>
-            </div>
-          </div>
-        </Card>
+          return (
+            <Card key={stat.label} className="p-4 min-h-[92px]">
+              <div className="flex items-center gap-3 h-full">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${stat.color}`}>
+                  <Icon className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-2xl font-bold text-gray-900 leading-none">{stat.value}</p>
+                  <p className="text-sm text-gray-600 mt-1 leading-tight break-words">{stat.label}</p>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
       <Card className="p-6">

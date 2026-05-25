@@ -1,7 +1,8 @@
 import { StudentProfile } from '../types/profile';
 
-// Storage key
+// Storage keys
 export const PROFILES_STORAGE_KEY = 'uniroom_student_profiles';
+export const PROFILE_COMPLETED_STORAGE_PREFIX = 'uniroom_profile_completed_';
 
 // Student profile records
 export const mockProfiles: StudentProfile[] = [
@@ -54,21 +55,26 @@ export const mockProfiles: StudentProfile[] = [
       },
     },
     completeness: {
-      personal: 100,
-      lifestyle: 100,
-      preferences: 100,
-      overall: 100,
+      personal: 35,
+      lifestyle: 0,
+      preferences: 0,
+      overall: 12,
     },
-    onboardingCompleted: true,
+    onboardingCompleted: false,
   },
 ];
+
+export function getProfileCompletedStorageKey(userId: string): string {
+  return `${PROFILE_COMPLETED_STORAGE_PREFIX}${userId}`;
+}
 
 // Helper functions
 export function getProfile(userId: string): StudentProfile | null {
   const profiles: StudentProfile[] = JSON.parse(
     localStorage.getItem(PROFILES_STORAGE_KEY) || JSON.stringify(mockProfiles)
   );
-  return profiles.find(p => p.personal.userId === userId) || null;
+
+  return profiles.find(profile => profile.personal.userId === userId) || null;
 }
 
 export function saveProfile(profile: StudentProfile): void {
@@ -76,7 +82,9 @@ export function saveProfile(profile: StudentProfile): void {
     localStorage.getItem(PROFILES_STORAGE_KEY) || JSON.stringify(mockProfiles)
   );
 
-  const index = profiles.findIndex(p => p.personal.userId === profile.personal.userId);
+  const index = profiles.findIndex(
+    existingProfile => existingProfile.personal.userId === profile.personal.userId
+  );
 
   if (index >= 0) {
     profiles[index] = profile;
@@ -85,39 +93,109 @@ export function saveProfile(profile: StudentProfile): void {
   }
 
   localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+
+  const completedEnough = Boolean(
+    profile.onboardingCompleted &&
+      profile.completeness?.personal >= 80 &&
+      profile.completeness?.lifestyle >= 80 &&
+      profile.completeness?.preferences >= 80 &&
+      profile.completeness?.overall >= 80
+  );
+
+  if (completedEnough) {
+    localStorage.setItem(getProfileCompletedStorageKey(profile.personal.userId), 'true');
+  } else {
+    localStorage.removeItem(getProfileCompletedStorageKey(profile.personal.userId));
+  }
 }
 
-export function calculateCompleteness(profile: Partial<StudentProfile>): StudentProfile['completeness'] {
+export function hasCompletedCompatibilityProfile(userId?: string | null): boolean {
+  if (!userId) return false;
+
+  const profile = getProfile(userId);
+  if (!profile) return false;
+
+  const completedByCurrentFlow =
+    localStorage.getItem(getProfileCompletedStorageKey(userId)) === 'true';
+
+  return Boolean(
+    completedByCurrentFlow &&
+      profile.onboardingCompleted &&
+      profile.completeness?.personal >= 80 &&
+      profile.completeness?.lifestyle >= 80 &&
+      profile.completeness?.preferences >= 80 &&
+      profile.completeness?.overall >= 80
+  );
+}
+
+export function calculateCompleteness(
+  profile: Partial<StudentProfile>
+): StudentProfile['completeness'] {
   const personal = profile.personal || {};
   const lifestyle = profile.lifestyle || {};
   const preferences = profile.preferences || {};
 
-  // Personal completeness
-  const personalFields = ['fullName', 'age', 'course', 'institution', 'yearOfStudy', 'hometown', 'bio', 'languages'];
+  const personalFields = [
+    'fullName',
+    'age',
+    'course',
+    'institution',
+    'yearOfStudy',
+    'hometown',
+    'bio',
+    'languages',
+  ];
+
   const personalCompleted = personalFields.filter(field => {
     const value = personal[field as keyof typeof personal];
     return value !== undefined && value !== null && value !== '';
   }).length;
+
   const personalScore = Math.round((personalCompleted / personalFields.length) * 100);
 
-  // Lifestyle completeness
   const lifestyleFields = [
-    'bedtime', 'wakeupTime', 'schedule', 'cleanliness', 'cleaningFrequency',
-    'noiseTolerance', 'musicVolume', 'guestsFrequency', 'guestsAcceptance',
-    'smoking', 'pets', 'cooking', 'personality', 'socialPreference'
+    'bedtime',
+    'wakeupTime',
+    'schedule',
+    'cleanliness',
+    'cleaningFrequency',
+    'noiseTolerance',
+    'musicVolume',
+    'guestsFrequency',
+    'guestsAcceptance',
+    'smoking',
+    'pets',
+    'cooking',
+    'personality',
+    'socialPreference',
   ];
+
   const lifestyleCompleted = lifestyleFields.filter(field => {
     const value = lifestyle[field as keyof typeof lifestyle];
     return value !== undefined && value !== null && value !== '';
   }).length;
+
   const lifestyleScore = Math.round((lifestyleCompleted / lifestyleFields.length) * 100);
 
-  // Preferences completeness
-  const preferencesFields = ['maxBudget', 'preferredCities', 'maxDistanceFromUniversity', 'moveInDate', 'stayDuration', 'roomType'];
+  const preferencesFields = [
+    'maxBudget',
+    'preferredCities',
+    'maxDistanceFromUniversity',
+    'moveInDate',
+    'stayDuration',
+    'roomType',
+  ];
+
   const preferencesCompleted = preferencesFields.filter(field => {
     const value = preferences[field as keyof typeof preferences];
-    return value !== undefined && value !== null && value !== '' && (Array.isArray(value) ? value.length > 0 : true);
+    return (
+      value !== undefined &&
+      value !== null &&
+      value !== '' &&
+      (Array.isArray(value) ? value.length > 0 : true)
+    );
   }).length;
+
   const preferencesScore = Math.round((preferencesCompleted / preferencesFields.length) * 100);
 
   const overall = Math.round((personalScore + lifestyleScore + preferencesScore) / 3);
