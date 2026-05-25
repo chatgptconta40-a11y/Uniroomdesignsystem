@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import {
   ArrowRight,
   CalendarDays,
@@ -13,8 +13,20 @@ import { Button } from '../../components/Button';
 
 type SearchMode = 'rooms' | 'houses';
 
-export function Hero() {
-  const navigate = useNavigate();
+export interface HomeSearchFilters {
+  mode: SearchMode;
+  city: string;
+  university: string;
+  maxPrice: string;
+  roomType: string;
+  moveIn: string;
+}
+
+interface HeroProps {
+  onSearch: (filters: HomeSearchFilters) => void;
+}
+
+export function Hero({ onSearch }: HeroProps) {
   const [mode, setMode] = useState<SearchMode>('rooms');
   const [city, setCity] = useState('Viseu');
   const [university, setUniversity] = useState('ESTGV - Viseu');
@@ -24,16 +36,8 @@ export function Hero() {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    const params = new URLSearchParams();
-    if (city) params.set('city', city);
-    if (university) params.set('university', university);
-    if (maxPrice) params.set('maxPrice', maxPrice);
-    if (roomType) params.set('roomType', roomType);
-    if (moveIn) params.set('moveIn', moveIn);
-    params.set('type', mode);
-
-    navigate(`/search?${params.toString()}`);
+    onSearch({ mode, city, university, maxPrice, roomType, moveIn });
+    document.getElementById('quartos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (

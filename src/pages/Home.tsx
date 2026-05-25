@@ -1,16 +1,19 @@
+import { useState } from 'react';
 import { Search, Users, ShieldCheck } from 'lucide-react';
-import { Hero } from '../app/components/Hero';
+import { Hero, HomeSearchFilters } from '../app/components/Hero';
 import { FeatureCard } from '../app/components/FeatureCard';
 import { Footer } from '../app/components/Footer';
 import { FeaturedRoomsSection } from '../components/FeaturedRoomsSection';
 
 export function Home() {
+  const [homeFilters, setHomeFilters] = useState<HomeSearchFilters | null>(null);
+
   return (
     <main className="flex-1">
-      <Hero />
+      <Hero onSearch={setHomeFilters} />
 
       <section id="quartos">
-        <FeaturedRoomsSection />
+        <FeaturedRoomsSection filters={homeFilters} />
       </section>
 
       <section id="como-funciona" className="py-16 md:py-24 px-4 md:px-6 lg:px-8 bg-card scroll-mt-24">
