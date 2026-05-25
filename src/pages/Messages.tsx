@@ -213,53 +213,25 @@ export function Messages() {
               </div>
 
               <div className="px-4 py-3 border-b border-border grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFilter('all')}
-                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    filter === 'all'
-                      ? 'bg-primary text-white'
-                      : 'bg-card text-muted-foreground border border-border hover:bg-muted'
-                  }`}
-                >
-                  Todas
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFilter('landlords')}
-                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    filter === 'landlords'
-                      ? 'bg-primary text-white'
-                      : 'bg-card text-muted-foreground border border-border hover:bg-muted'
-                  }`}
-                >
-                  Senhorios
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFilter('students')}
-                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    filter === 'students'
-                      ? 'bg-primary text-white'
-                      : 'bg-card text-muted-foreground border border-border hover:bg-muted'
-                  }`}
-                >
-                  Estudantes
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFilter('unread')}
-                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    filter === 'unread'
-                      ? 'bg-primary text-white'
-                      : 'bg-card text-muted-foreground border border-border hover:bg-muted'
-                  }`}
-                >
-                  Não lidas
-                </button>
+                {[
+                  { id: 'all', label: 'Todas' },
+                  { id: 'landlords', label: 'Senhorios' },
+                  { id: 'students', label: 'Estudantes' },
+                  { id: 'unread', label: 'Não lidas' },
+                ].map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setFilter(item.id as typeof filter)}
+                    className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      filter === item.id
+                        ? 'bg-primary text-white'
+                        : 'bg-card text-muted-foreground border border-border hover:bg-muted'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
 
               <div className="flex-1 overflow-y-auto">
@@ -320,22 +292,14 @@ export function Messages() {
                                 </span>
                               </div>
 
-                              <p
-                                className={`text-sm truncate ${
-                                  unreadCount > 0
-                                    ? 'font-semibold text-foreground'
-                                    : 'text-muted-foreground'
-                                }`}
-                              >
+                              <p className={`text-sm truncate ${unreadCount > 0 ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
                                 {conversation.lastMessage?.content}
                               </p>
                             </div>
 
                             {unreadCount > 0 && (
                               <div className="flex-shrink-0 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                                <span className="text-xs text-white font-semibold">
-                                  {unreadCount}
-                                </span>
+                                <span className="text-xs text-white font-semibold">{unreadCount}</span>
                               </div>
                             )}
                           </div>
@@ -463,13 +427,9 @@ export function Messages() {
                       <div className="h-full flex flex-col items-center justify-center text-center">
                         <MessageCircle className="w-16 h-16 text-gray-300 mb-4" />
 
-                        <h3 className="text-lg font-semibold text-foreground mb-3">
-                          Inicia a conversa
-                        </h3>
+                        <h3 className="text-lg font-semibold text-foreground mb-3">Inicia a conversa</h3>
 
-                        <p className="text-muted-foreground mb-6">
-                          Experimenta uma destas sugestões:
-                        </p>
+                        <p className="text-muted-foreground mb-6">Experimenta uma destas sugestões:</p>
 
                         <div className="space-y-3">
                           {quickSuggestions.map((suggestion, index) => (
@@ -497,31 +457,18 @@ export function Messages() {
                               const isOwn = isSameMessageUser(message.senderId, user?.id || '');
 
                               return (
-                                <div
-                                  key={message.id}
-                                  className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`}
-                                >
+                                <div key={message.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`}>
                                   <div className={`max-w-[85%] sm:max-w-[70%] ${isOwn ? 'order-2' : 'order-1'}`}>
                                     {isGroupChat && !isOwn && (
                                       <p className="text-xs font-medium text-muted-foreground mb-1 px-1">
                                         {message.senderName}
                                       </p>
                                     )}
-                                    <div
-                                      className={`px-4 py-2 rounded-2xl ${
-                                        isOwn
-                                          ? 'bg-primary text-white rounded-br-sm'
-                                          : 'bg-card border border-border text-foreground rounded-bl-sm'
-                                      }`}
-                                    >
+                                    <div className={`px-4 py-2 rounded-2xl ${isOwn ? 'bg-primary text-white rounded-br-sm' : 'bg-card border border-border text-foreground rounded-bl-sm'}`}>
                                       <p className="text-sm break-words">{message.content}</p>
                                     </div>
 
-                                    <div
-                                      className={`flex items-center gap-1 mt-1 px-1 ${
-                                        isOwn ? 'justify-end' : 'justify-start'
-                                      }`}
-                                    >
+                                    <div className={`flex items-center gap-1 mt-1 px-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                                       <span className="text-xs text-muted-foreground">
                                         {message.createdAt.toLocaleTimeString('pt-PT', {
                                           hour: '2-digit',

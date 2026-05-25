@@ -89,70 +89,70 @@ export function Navbar() {
                       )}
                     </button>
 
-                  {showNotifications && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => setShowNotifications(false)}
-                      />
-                      <div className="fixed left-3 right-3 top-[72px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 bg-card border border-border rounded-xl shadow-lg z-20 max-h-[calc(100dvh-5rem)] sm:max-h-96 overflow-y-auto">
-                        <div className="sticky top-0 bg-card px-4 py-3 border-b border-border flex items-center justify-between gap-3">
-                          <h3 className="font-semibold text-foreground">Notificações</h3>
-                          {unreadCount > 0 && (
-                            <button
-                              type="button"
-                              onClick={handleMarkAllRead}
-                              className="text-xs text-primary hover:underline text-right"
-                            >
-                              Marcar todas como lidas
-                            </button>
+                    {showNotifications && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setShowNotifications(false)}
+                        />
+                        <div className="fixed left-3 right-3 top-[72px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 bg-card border border-border rounded-xl shadow-lg z-20 max-h-[calc(100dvh-5rem)] sm:max-h-96 overflow-y-auto">
+                          <div className="sticky top-0 bg-card px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+                            <h3 className="font-semibold text-foreground">Notificações</h3>
+                            {unreadCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleMarkAllRead}
+                                className="text-xs text-primary hover:underline text-right"
+                              >
+                                Marcar todas como lidas
+                              </button>
+                            )}
+                          </div>
+
+                          {notifications.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground text-sm">
+                              Sem notificações
+                            </div>
+                          ) : (
+                            <div>
+                              {notifications.map(notification => (
+                                <button
+                                  key={notification.id}
+                                  onClick={() => handleNotificationClick(notification)}
+                                  className={`w-full text-left px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0 ${
+                                    !notification.read ? 'bg-blue-50' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div
+                                      className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                                        !notification.read ? 'bg-blue-500' : 'bg-transparent'
+                                      }`}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-sm text-foreground mb-1">
+                                        {notification.title}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground line-clamp-2">
+                                        {notification.message}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        {notification.createdAt.toLocaleDateString('pt-PT', {
+                                          day: 'numeric',
+                                          month: 'short',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
                           )}
                         </div>
-
-                        {notifications.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground text-sm">
-                            Sem notificações
-                          </div>
-                        ) : (
-                          <div>
-                            {notifications.map(notification => (
-                              <button
-                                key={notification.id}
-                                onClick={() => handleNotificationClick(notification)}
-                                className={`w-full text-left px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0 ${
-                                  !notification.read ? 'bg-blue-50' : ''
-                                }`}
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div
-                                    className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                                      !notification.read ? 'bg-blue-500' : 'bg-transparent'
-                                    }`}
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-sm text-foreground mb-1">
-                                      {notification.title}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground line-clamp-2">
-                                      {notification.message}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      {notification.createdAt.toLocaleDateString('pt-PT', {
-                                        day: 'numeric',
-                                        month: 'short',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })}
-                                    </p>
-                                  </div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
+                      </>
+                    )}
                   </div>
                 )}
 

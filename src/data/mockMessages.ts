@@ -339,6 +339,7 @@ export function sendMessage(
   content: string
 ): Message {
   const normalizedSenderId = normalizeMessageUserId(senderId);
+
   const newMessage: Message = {
     id: `msg${mockMessages.length + 1}`,
     conversationId,
@@ -396,6 +397,7 @@ export function createConversation(
 ): Conversation {
   const normalizedCurrentUserId = normalizeMessageUserId(currentUserId);
   const normalizedOtherUserId = normalizeMessageUserId(otherUserId);
+
   const newConversation: Conversation = {
     id: `conv${mockConversations.length + 1}`,
     participants: [
@@ -446,6 +448,7 @@ export function findOrCreateRoomConversation(
 ): Conversation {
   const normalizedCurrentUserId = normalizeMessageUserId(currentUserId);
   const normalizedLandlordId = normalizeMessageUserId(landlordId);
+
   const existingConversation = mockConversations.find(conversation =>
     conversation.roomId === roomId &&
     conversation.participants.some(participant => isSameMessageUser(participant.id, normalizedCurrentUserId)) &&
