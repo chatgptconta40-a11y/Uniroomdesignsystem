@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard,
@@ -27,13 +27,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const menuItems = [
-    { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-    { path: '/admin/users', icon: Users, label: 'Utilizadores' },
-    { path: '/admin/properties', icon: Home, label: 'Casas e Quartos' },
-    { path: '/admin/reports', icon: Flag, label: 'Moderação' },
-    { path: '/admin/audit', icon: ScrollText, label: 'Auditoria' },
-    { path: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
-    { path: '/admin/settings', icon: Settings, label: 'Configurações' },
+    { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true, description: 'Vista geral da plataforma' },
+    { path: '/admin/users', icon: Users, label: 'Utilizadores', description: 'Gestão de contas e verificações' },
+    { path: '/admin/properties', icon: Home, label: 'Casas e Quartos', description: 'Alojamentos e quartos publicados' },
+    { path: '/admin/reports', icon: Flag, label: 'Moderação', description: 'Denúncias e relatórios' },
+    { path: '/admin/audit', icon: ScrollText, label: 'Auditoria', description: 'Histórico de ações administrativas' },
+    { path: '/admin/analytics', icon: BarChart3, label: 'Analytics', description: 'Estatísticas e métricas' },
+    { path: '/admin/settings', icon: Settings, label: 'Configurações', description: 'Definições da plataforma' },
   ];
 
   const isActive = (path: string, exact?: boolean) => {
@@ -47,6 +47,21 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     logout();
     navigate('/');
   };
+
+  const breadcrumbs = useMemo(() => {
+    const currentItem = menuItems.find(item =>
+      item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path)
+    );
+
+    if (!currentItem || currentItem.exact) {
+      return [];
+    }
+
+    return [
+      { label: 'Dashboard', path: '/admin' },
+      { label: currentItem.label, path: currentItem.path }
+    ];
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -83,6 +98,27 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </div>
             </div>
           </div>
+
+          {/* Breadcrumbs */}
+          {breadcrumbs.length > 0 && (
+            <div className="flex items-center gap-2 mt-3 text-xs">
+              {breadcrumbs.map((crumb, index) => (
+                <div key={crumb.path} className="flex items-center gap-2">
+                  {index > 0 && <ChevronRight className="w-3 h-3 text-gray-400" />}
+                  <Link
+                    to={crumb.path}
+                    className={`${
+                      index === breadcrumbs.length - 1
+                        ? 'text-gray-900 font-medium'
+                        : 'text-gray-500 hover:text-gray-700'
+                    } transition-colors`}
+                  >
+                    {crumb.label}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -91,7 +127,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         <aside
           className={`${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          } lg:translate-x-0 fixed lg:sticky top-[73px] left-0 h-[calc(100vh-73px)] w-64 bg-white border-r border-gray-200 transition-transform duration-300 ease-in-out z-20 overflow-y-auto`}
+          } lg:translate-x-0 fixed lg:sticky top-[85px] left-0 h-[calc(100vh-85px)] w-64 bg-white border-r border-gray-200 transition-transform duration-300 ease-in-out z-20 overflow-y-auto`}
         >
           <nav className="p-4 space-y-1">
             {menuItems.map((item) => {
@@ -102,6 +138,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <Link
                   key={item.path}
                   to={item.path}
+                  title={item.description}
+                  onClick={() => setSidebarOpen(false)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all group ${
                     active
                       ? 'bg-primary text-white shadow-sm'
@@ -109,7 +147,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   }`}
                 >
                   <Icon className={`w-5 h-5 ${active ? 'text-white' : 'text-gray-500 group-hover:text-primary'}`} />
-                  <span className="font-medium flex-1">{item.label}</span>
+                  <div className="flex-1">
+                    <span className="font-medium block">{item.label}</span>
+                    {!active && (
+                      <span className="text-xs text-gray-400 group-hover:text-gray-500 hidden lg:block">
+                        {item.description}
+                      </span>
+                    )}
+                  </div>
                   {active && <ChevronRight className="w-4 h-4" />}
                 </Link>
               );
@@ -129,7 +174,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-h-[calc(100vh-73px)]">
+        <main className="flex-1 min-h-[calc(100vh-85px)]">
           {children}
         </main>
       </div>

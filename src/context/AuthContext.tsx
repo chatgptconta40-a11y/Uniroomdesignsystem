@@ -1,17 +1,19 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, AuthContextType, RegisterData } from '../types/auth';
-import { mockUsers, mockStudentProfiles, mockLandlordProfiles } from '../data/mockUsers';
+import { mockUsers, mockCredentials, mockStudentProfiles, mockLandlordProfiles } from '../data/mockUsers';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Storage keys
-const STORAGE_KEY = 'uniroom_user';
-const USERS_KEY = 'uniroom_all_users';
+const CURRENT_USER_KEY = 'uniroom_user';
+const ALL_USERS_KEY = 'uniroom_all_users';
+const CREDENTIALS_KEY = 'uniroom_credentials';
 
-// Initialize localStorage if not exists
 const initializeStorage = () => {
-  if (!localStorage.getItem(USERS_KEY)) {
-    localStorage.setItem(USERS_KEY, JSON.stringify(mockUsers));
+  if (!localStorage.getItem(ALL_USERS_KEY)) {
+    localStorage.setItem(ALL_USERS_KEY, JSON.stringify(mockUsers));
+  }
+  if (!localStorage.getItem(CREDENTIALS_KEY)) {
+    localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(mockCredentials));
   }
 };
 
@@ -21,80 +23,105 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     initializeStorage();
-
-    // Check if user is logged in
-    const storedUser = localStorage.getItem(STORAGE_KEY);
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const stored = localStorage.getItem(CURRENT_USER_KEY);
+    if (stored) {
+      try {
+        setUser(JSON.parse(stored) as User);
+      } catch {
+        localStorage.removeItem(CURRENT_USER_KEY);
+      }
     }
     setLoading(false);
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (
+    email: string,
+    password: string,
+  ): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+    const credentials = JSON.parse(
+      localStorage.getItem(CREDENTIALS_KEY) || '[]',
+    ) as { id: string; email: string; password: string }[];
 
-    const allUsers: User[] = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-    const foundUser = allUsers.find(u => u.email === email && u.password === password);
+    const match = credentials.find(
+      (c) => c.email === email && c.password === password,
+    );
 
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(foundUser));
+    if (!match) {
       setLoading(false);
-      return { success: true };
+      return { success: false, error: 'Email ou palavra-passe incorretos' };
     }
 
+    const allUsers = JSON.parse(
+      localStorage.getItem(ALL_USERS_KEY) || '[]',
+    ) as User[];
+
+    const foundUser = allUsers.find((u) => u.id === match.id);
+
+    if (!foundUser) {
+      setLoading(false);
+      return { success: false, error: 'Utilizador não encontrado' };
+    }
+
+    setUser(foundUser);
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(foundUser));
     setLoading(false);
-    return { success: false, error: 'Email ou palavra-passe incorretos' };
+    return { success: true };
   };
 
-  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
+  const register = async (
+    data: RegisterData,
+  ): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+    const allUsers = JSON.parse(
+      localStorage.getItem(ALL_USERS_KEY) || '[]',
+    ) as User[];
 
-    const allUsers: User[] = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const credentials = JSON.parse(
+      localStorage.getItem(CREDENTIALS_KEY) || '[]',
+    ) as { id: string; email: string; password: string }[];
 
-    // Check if email already exists
-    if (allUsers.some(u => u.email === data.email)) {
+    if (allUsers.some((u) => u.email === data.email)) {
       setLoading(false);
       return { success: false, error: 'Este email já está registado' };
     }
 
-    // Create new user
+    const newId = String(Date.now());
+
     const newUser: User = {
-      id: String(allUsers.length + 1),
+      id: newId,
       name: data.name,
       email: data.email,
-      password: data.password,
       type: data.type,
       verified: false,
       createdAt: new Date(),
     };
 
     allUsers.push(newUser);
-    localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
+    localStorage.setItem(ALL_USERS_KEY, JSON.stringify(allUsers));
 
-    // Create profile based on type
+    credentials.push({ id: newId, email: data.email, password: data.password });
+    localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(credentials));
+
     if (data.type === 'student') {
-      const profiles = mockStudentProfiles;
-      profiles.push({ userId: newUser.id });
+      mockStudentProfiles.push({ userId: newId });
     } else if (data.type === 'landlord') {
-      const profiles = mockLandlordProfiles;
-      profiles.push({ userId: newUser.id });
+      mockLandlordProfiles.push({ userId: newId });
     }
 
     setUser(newUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(newUser));
     setLoading(false);
-
     return { success: true };
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(CURRENT_USER_KEY);
   };
 
   return (

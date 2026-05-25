@@ -431,7 +431,7 @@ export function AdminUsers() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
         {[
           { label: 'Total', value: stats.total, icon: Users, color: 'bg-blue-100 text-blue-600' },
           { label: 'Estudantes', value: stats.students, icon: BookOpen, color: 'bg-blue-100 text-blue-500' },
@@ -443,14 +443,14 @@ export function AdminUsers() {
         ].map(stat => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.label} className="p-3">
-              <div className="flex items-center gap-2">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${stat.color}`}>
-                  <Icon className="w-3.5 h-3.5" />
+            <Card key={stat.label} className="p-4 min-h-[92px]">
+              <div className="flex items-center gap-3 h-full">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${stat.color}`}>
+                  <Icon className="w-5 h-5" />
                 </div>
-                <div>
-                  <p className="text-lg font-bold text-gray-900 leading-none">{stat.value}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">{stat.label}</p>
+                <div className="min-w-0">
+                  <p className="text-2xl font-bold text-gray-900 leading-none">{stat.value}</p>
+                  <p className="text-sm text-gray-600 mt-1 leading-tight break-words">{stat.label}</p>
                 </div>
               </div>
             </Card>
