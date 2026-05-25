@@ -291,64 +291,87 @@ export function Navbar() {
 </Link>
 
 <div className="border-t border-border my-1" />
-                            <Link
-                              to="/landlord/dashboard"
-                              className={navLinkClass('/landlord/dashboard')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <LayoutDashboard className="w-4 h-4" />
-                              <span className="text-sm">Dashboard Senhorio</span>
-                            </Link>
+                            {user?.type === 'landlord' && (
+  <>
+    <Link
+      to="/landlord/dashboard"
+      className={navLinkClass('/landlord/dashboard')}
+      onClick={() => setShowMenu(false)}
+    >
+      <LayoutDashboard className="w-4 h-4" />
+      <span className="text-sm">Dashboard Senhorio</span>
+    </Link>
 
-                            <Link
-                              to="/landlord/listings"
-                              className={navLinkClass('/landlord/listings')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <Home className="w-4 h-4" />
-                              <span className="text-sm">Os Meus Alojamentos</span>
-                            </Link>
-                            <Link
-                              to="/landlord/applications"
-                              className={navLinkClass('/landlord/applications')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <FileText className="w-4 h-4" />
-                              <span className="text-sm">Candidaturas</span>
-                            </Link>
-                            <Link
-                              to="/landlord/maintenance"
-                              className={navLinkClass('/landlord/maintenance')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <Wrench className="w-4 h-4" />
-                              <span className="text-sm">Pedidos de Manutenção</span>
-                            </Link>
-                            <Link
-                              to="/landlord/analytics"
-                              className={navLinkClass('/landlord/analytics')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <BarChart3 className="w-4 h-4" />
-                              <span className="text-sm">Analytics</span>
-                            </Link>
-                            <div className="border-t border-border my-1" />
-                            <Link
-                              to="/messages"
-                              className={navLinkClass('/messages')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                              <span className="text-sm">Mensagens</span>
-                              {unreadMessagesCount > 0 && (
-                                <span className="ml-auto w-5 h-5 bg-primary text-white text-xs font-semibold rounded-full flex items-center justify-center">
-                                  {unreadMessagesCount}
-                                </span>
-                              )}
-                            </Link>
-                          </>
-                        )}
+    <div className="border-t border-border my-1" />
 
+    <div className="px-4 py-2">
+      <TrustBadge userId={user.id} size="sm" showLabel={false} />
+    </div>
+
+    <Link
+      to="/verification"
+      className={navLinkClass('/verification')}
+      onClick={() => setShowMenu(false)}
+    >
+      <Shield className="w-4 h-4" />
+      <span className="text-sm">Verificação</span>
+    </Link>
+
+    <div className="border-t border-border my-1" />
+
+    <Link
+      to="/landlord/listings"
+      className={navLinkClass('/landlord/listings')}
+      onClick={() => setShowMenu(false)}
+    >
+      <Home className="w-4 h-4" />
+      <span className="text-sm">Os Meus Alojamentos</span>
+    </Link>
+
+    <Link
+      to="/landlord/applications"
+      className={navLinkClass('/landlord/applications')}
+      onClick={() => setShowMenu(false)}
+    >
+      <FileText className="w-4 h-4" />
+      <span className="text-sm">Candidaturas</span>
+    </Link>
+
+    <Link
+      to="/landlord/maintenance"
+      className={navLinkClass('/landlord/maintenance')}
+      onClick={() => setShowMenu(false)}
+    >
+      <Wrench className="w-4 h-4" />
+      <span className="text-sm">Pedidos de Manutenção</span>
+    </Link>
+
+    <Link
+      to="/landlord/analytics"
+      className={navLinkClass('/landlord/analytics')}
+      onClick={() => setShowMenu(false)}
+    >
+      <BarChart3 className="w-4 h-4" />
+      <span className="text-sm">Analytics</span>
+    </Link>
+
+    <div className="border-t border-border my-1" />
+
+    <Link
+      to="/messages"
+      className={navLinkClass('/messages')}
+      onClick={() => setShowMenu(false)}
+    >
+      <MessageCircle className="w-4 h-4" />
+      <span className="text-sm">Mensagens</span>
+      {unreadMessagesCount > 0 && (
+        <span className="ml-auto w-5 h-5 bg-primary text-white text-xs font-semibold rounded-full flex items-center justify-center">
+          {unreadMessagesCount}
+        </span>
+      )}
+    </Link>
+  </>
+)}
                         {user?.type === 'admin' && (
                           <>
                             <Link
