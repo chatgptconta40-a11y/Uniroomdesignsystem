@@ -37,22 +37,22 @@ export function LocationMap({ address, zone, city }: LocationMapProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Button
           variant="primary"
-          className="w-full"
+          className="w-full h-12 rounded-xl shadow-sm text-sm"
           onClick={() => window.open(mapsUrl, '_blank', 'noopener,noreferrer')}
         >
-          <ExternalLink className="w-4 h-4 mr-2" />
+          <ExternalLink className="w-4 h-4" />
           Ver no Google Maps
         </Button>
 
         <Button
           variant="outline"
-          className="w-full"
+          className="w-full h-12 rounded-xl border-primary/20 text-sm hover:bg-primary/5"
           onClick={() => window.open(directionsUrl, '_blank', 'noopener,noreferrer')}
         >
-          <Navigation className="w-4 h-4 mr-2" />
+          <Navigation className="w-4 h-4 text-primary" />
           Obter direções
         </Button>
       </div>

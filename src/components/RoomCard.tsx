@@ -61,6 +61,7 @@ interface RoomCardProps {
   variant?: 'default' | 'public' | 'management' | 'compact';
   displayMode?: 'grid' | 'list';
   showFavorite?: boolean;
+  showPropertyContext?: boolean;
   availableRooms?: number;
   onFavoriteRequiresAuth?: () => void;
   compareProps?: CompareProps;
@@ -86,6 +87,7 @@ export function RoomCard({
   variant = 'default',
   displayMode = 'grid',
   showFavorite = true,
+  showPropertyContext = true,
   availableRooms,
   onFavoriteRequiresAuth,
   compareProps,
@@ -196,14 +198,16 @@ export function RoomCard({
               </div>
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mb-2">
-                <button
-                  type="button"
-                  onClick={handlePropertyClick}
-                  className="flex items-center gap-1 font-medium text-primary hover:underline text-left"
-                >
-                  <Home className="w-3 h-3 flex-shrink-0" />
-                  Este quarto faz parte de: {property.title}
-                </button>
+                {showPropertyContext && (
+                  <button
+                    type="button"
+                    onClick={handlePropertyClick}
+                    className="flex items-center gap-1 font-medium text-primary hover:underline text-left"
+                  >
+                    <Home className="w-3 h-3 flex-shrink-0" />
+                    Este quarto faz parte de: {property.title}
+                  </button>
+                )}
 
                 <span className="flex items-center gap-1">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
@@ -401,22 +405,24 @@ export function RoomCard({
           {room.title}
         </h3>
 
-        <button
-          type="button"
-          onClick={handlePropertyClick}
-          className="mb-3 flex w-full items-start gap-2 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-left text-xs text-primary transition-colors hover:border-primary/30 hover:bg-primary/10"
-        >
-          <Home className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-          <span className="min-w-0">
-            <span className="block font-semibold text-primary">Este quarto faz parte de:</span>
-            <span className="line-clamp-1 text-foreground">{property.title}</span>
-            {availableRooms !== undefined && (
-              <span className="mt-0.5 block text-[11px] text-green-700">
-                {availableRooms} quarto{availableRooms !== 1 ? 's' : ''} livre{availableRooms !== 1 ? 's' : ''}
-              </span>
-            )}
-          </span>
-        </button>
+        {showPropertyContext && (
+          <button
+            type="button"
+            onClick={handlePropertyClick}
+            className="mb-3 flex w-full items-start gap-2 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-left text-xs text-primary transition-colors hover:border-primary/30 hover:bg-primary/10"
+          >
+            <Home className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+            <span className="min-w-0">
+              <span className="block font-semibold text-primary">Este quarto faz parte de:</span>
+              <span className="line-clamp-1 text-foreground">{property.title}</span>
+              {availableRooms !== undefined && (
+                <span className="mt-0.5 block text-[11px] text-green-700">
+                  {availableRooms} quarto{availableRooms !== 1 ? 's' : ''} livre{availableRooms !== 1 ? 's' : ''}
+                </span>
+              )}
+            </span>
+          </button>
+        )}
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted-foreground mb-3">
           <span className="flex items-center gap-1.5">

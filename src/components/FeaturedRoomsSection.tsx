@@ -47,19 +47,21 @@ export function FeaturedRoomsSection() {
   }
 
   return (
-    <section className="py-16 md:py-20 px-4 md:px-6 lg:px-8 bg-background">
+    <section className="py-10 md:py-12 px-4 md:px-6 lg:px-8 bg-slate-50">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-7">
           <div className="max-w-3xl">
-            <h2 className="heading-2 mb-4">Quartos disponíveis para estudantes</h2>
-            <p className="body-large text-muted-foreground">
-              Explora quartos verificados, perto das instituições e com informação essencial antes de criares conta. A compatibilidade personalizada aparece depois de completares o teu perfil.
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
+              Anúncios destacados
+            </h2>
+            <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
+              Quartos verificados e perto das instituições, escolhidos para começares a pesquisa com segurança.
             </p>
           </div>
 
-          <Link to="/register" className="w-full sm:w-auto">
+          <Link to="/search" className="w-full sm:w-auto">
             <Button variant="outline" className="w-full sm:w-auto">
-              Criar conta UniRoom
+              Mostrar tudo
               <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>

@@ -6,7 +6,6 @@ import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { Modal } from '../components/Modal';
 import { LocationMap } from '../components/LocationMap';
-import { RoomCard } from '../components/RoomCard';
 import { ApplicationModal } from '../components/ApplicationModal';
 import { ReviewModal } from '../components/ReviewModal';
 import { ReportModal } from '../components/ReportModal';
@@ -488,24 +487,6 @@ export function RoomDetail() {
               </div>
             </Card>
 
-            {otherRooms.length > 0 && (
-              <Card className="p-6">
-                <h2 className="text-xl font-bold mb-4">Outros quartos desta casa</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {otherRooms.map(otherRoom => (
-                    <RoomCard
-                      key={otherRoom.id}
-                      room={otherRoom}
-                      property={property}
-                      variant="compact"
-                      showFavorite={!!user && user.type === 'student'}
-                      availableRooms={otherRooms.filter(item => item.status === 'available').length + (room.status === 'available' ? 1 : 0)}
-                      onFavoriteRequiresAuth={requestAuthentication}
-                    />
-                  ))}
-                </div>
-              </Card>
-            )}
           </div>
 
           <div className="lg:col-span-1">
