@@ -40,12 +40,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <div className="w-20 h-20 bg-destructive/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <AlertTriangle className="w-10 h-10 text-destructive" />
             </div>
+
             <h1 className="text-2xl font-bold text-foreground mb-3">
               Algo correu mal
             </h1>
+
             <p className="text-muted-foreground mb-8 leading-relaxed">
               Ocorreu um erro inesperado. Tenta recarregar a página ou volta ao início.
             </p>
+
             {import.meta.env.DEV && this.state.error && (
               <div className="mb-6 text-left bg-destructive/5 border border-destructive/20 rounded-xl p-4">
                 <p className="text-xs font-mono text-destructive break-all">
@@ -53,6 +56,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 </p>
               </div>
             )}
+
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
                 onClick={this.handleReload}
@@ -61,7 +65,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <RefreshCw className="w-4 h-4" />
                 Recarregar página
               </button>
-              
+
+              <a
                 href="/"
                 className="inline-flex items-center justify-center gap-2 px-5 py-2.5 border-2 border-border text-foreground font-semibold rounded-lg hover:bg-muted transition-colors"
               >
