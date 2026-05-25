@@ -275,6 +275,22 @@ export function Navbar() {
 
                         {user?.type === 'landlord' && (
                           <>
+                            <div className="border-t border-border my-1" />
+
+<div className="px-4 py-2">
+  <TrustBadge userId={user.id} size="sm" showLabel={false} />
+</div>
+
+<Link
+  to="/verification"
+  className={navLinkClass('/verification')}
+  onClick={() => setShowMenu(false)}
+>
+  <Shield className="w-4 h-4" />
+  <span className="text-sm">Verificação</span>
+</Link>
+
+<div className="border-t border-border my-1" />
                             <Link
                               to="/landlord/dashboard"
                               className={navLinkClass('/landlord/dashboard')}
