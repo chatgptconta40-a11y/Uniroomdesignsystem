@@ -19,6 +19,7 @@ import { getMaintenanceRequests } from '../data/mockMaintenance';
 import { getApplicationsForUser, getActiveHomeForStudent } from '../data/mockApplications';
 import { getTotalUnreadCount } from '../data/mockMessages';
 import { getProperty, getRoom } from '../data/mockProperties';
+import { getProfile } from '../data/mockProfiles';
 import type { Property, Room } from '../types/property';
 
 export function Dashboard() {
@@ -44,6 +45,13 @@ export function Dashboard() {
 
     return { property, room, activeHomeData };
   }, [user]);
+
+  const studentProfile = useMemo(() => {
+    if (!user || user.type !== 'student') return null;
+    return getProfile(user.id);
+  }, [user]);
+
+  const canUseCompatibility = Boolean(studentProfile?.onboardingCompleted);
 
   useEffect(() => {
     if (!user) return;
@@ -110,12 +118,30 @@ export function Dashboard() {
     }
 
     topSuggestions = topSuggestions
-      .sort((a, b) => (b.room.compatibilityScore || 0) - (a.room.compatibilityScore || 0))
+      .sort((a, b) => {
+        if (canUseCompatibility) {
+          return (b.room.compatibilityScore || 0) - (a.room.compatibilityScore || 0);
+        }
+
+        if (a.property.verified !== b.property.verified) {
+          return a.property.verified ? -1 : 1;
+        }
+
+        if (a.property.distanceToUniversity !== b.property.distanceToUniversity) {
+          return a.property.distanceToUniversity - b.property.distanceToUniversity;
+        }
+
+        if (a.room.price !== b.room.price) {
+          return a.room.price - b.room.price;
+        }
+
+        return new Date(b.room.createdAt).getTime() - new Date(a.room.createdAt).getTime();
+      })
       .slice(0, 3);
 
     setSuggestions(topSuggestions);
     setMaintenanceRequests(getMaintenanceRequests(user.id).slice(0, 3));
-  }, [user, rooms, properties]);
+  }, [user, rooms, properties, canUseCompatibility]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -216,7 +242,11 @@ export function Dashboard() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl font-bold text-foreground">Sugestões para ti</h2>
-              <p className="text-sm text-muted-foreground">Com base no teu perfil de compatibilidade</p>
+              <p className="text-sm text-muted-foreground">
+                {canUseCompatibility
+                  ? 'Com base no teu perfil de compatibilidade'
+                  : 'Quartos verificados, próximos e dentro do teu orçamento'}
+              </p>
             </div>
 
             <Link to="/search">
