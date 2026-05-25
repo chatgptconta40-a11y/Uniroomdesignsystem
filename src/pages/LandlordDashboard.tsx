@@ -3,7 +3,7 @@ import {
   Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle,
   Clock, User, Wrench, AlertCircle, PauseCircle, Camera, BarChart2,
   ChevronRight, BedDouble, Users, RefreshCw, CalendarDays, Bell,
-  Ban, ShieldOff, ShieldCheck,
+  Ban, ShieldOff, ShieldCheck, CheckCircle2, ArrowUpRight,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -82,6 +82,53 @@ export function LandlordDashboard() {
   const verificationStatus = user ? getVerificationStatus(user.id) : null;
   const trustScore = user ? getTrustScore(user.id) : null;
   const isVerifiedLandlord = verificationStatus?.level === 'gold' || verificationStatus?.documentVerified;
+  const occupiedOrReservedRooms = roomStats.occupied + roomStats.reserved;
+  const occupancyRate = roomStats.total > 0
+    ? Math.round((occupiedOrReservedRooms / roomStats.total) * 100)
+    : 0;
+  const monthlyPotential = myRooms.reduce((total, room) => total + room.price + (room.utilities ?? 0), 0);
+  const openWorkCount =
+    pendingApplicationsCount +
+    (mockMetrics?.unreadMessages ?? 0) +
+    maintenanceStats.pending +
+    maintenanceStats.highUrgency +
+    draftRooms.length +
+    draftProperties.length;
+  const portfolioScore = [
+    activeProperties.length > 0,
+    roomStats.available > 0 || roomStats.occupied > 0 || roomStats.reserved > 0,
+    noImageProperties.length === 0,
+    lowViewProperties.length === 0,
+    isVerifiedLandlord,
+  ].filter(Boolean).length;
+  const portfolioScorePercent = Math.round((portfolioScore / 5) * 100);
+  const priorityTasks = [
+    pendingApplicationsCount > 0 && {
+      label: `${pendingApplicationsCount} candidatura${pendingApplicationsCount > 1 ? 's' : ''} por responder`,
+      route: '/landlord/applications',
+      tone: 'text-blue-700 bg-blue-50 border-blue-100',
+    },
+    (mockMetrics?.unreadMessages ?? 0) > 0 && {
+      label: `${mockMetrics?.unreadMessages ?? 0} mensagem${(mockMetrics?.unreadMessages ?? 0) > 1 ? 'ns' : ''} não lida${(mockMetrics?.unreadMessages ?? 0) > 1 ? 's' : ''}`,
+      route: '/messages',
+      tone: 'text-emerald-700 bg-emerald-50 border-emerald-100',
+    },
+    maintenanceStats.highUrgency > 0 && {
+      label: `${maintenanceStats.highUrgency} pedido${maintenanceStats.highUrgency > 1 ? 's' : ''} urgente${maintenanceStats.highUrgency > 1 ? 's' : ''}`,
+      route: '/landlord/maintenance',
+      tone: 'text-red-700 bg-red-50 border-red-100',
+    },
+    draftRooms.length > 0 && {
+      label: `${draftRooms.length} quarto${draftRooms.length > 1 ? 's' : ''} em rascunho`,
+      route: '/landlord/listings',
+      tone: 'text-amber-700 bg-amber-50 border-amber-100',
+    },
+    !isVerifiedLandlord && {
+      label: 'Completar verificação de senhorio',
+      route: '/verification',
+      tone: 'text-primary bg-primary/5 border-primary/10',
+    },
+  ].filter(Boolean) as { label: string; route: string; tone: string }[];
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -131,13 +178,59 @@ export function LandlordDashboard() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8">
-        <div className="mb-10">
-          <h1 className="text-3xl font-bold text-foreground mb-3">
-            Olá, {user?.name}! 👋
-          </h1>
-          <p className="text-lg text-muted-foreground">
-            Aqui está um resumo da tua atividade como senhorio
-          </p>
+        <div className="mb-8 flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
+          <div>
+            <p className="text-sm font-medium text-primary mb-2">Área do senhorio</p>
+            <h1 className="text-3xl font-bold text-foreground mb-3">
+              Dashboard de gestão
+            </h1>
+            <p className="text-base text-muted-foreground max-w-2xl">
+              Acompanha alojamentos, candidaturas, mensagens e manutenção num único painel operacional.
+            </p>
+          </div>
+
+          <Card className="w-full xl:w-[420px] p-5 border-border/80 bg-card">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <p className="text-sm font-semibold text-foreground">{user?.name}</p>
+                <p className="text-xs text-muted-foreground">Conta de senhorio</p>
+              </div>
+              <TrustBadge userId={user?.id || ''} size="sm" showLabel />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">Estado</p>
+                <p className="text-sm font-semibold text-foreground">
+                  {isAccountSuspended ? 'Suspensa' : isBlockedFromPublishing ? 'Limitada' : 'Ativa'}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">Score</p>
+                <p className="text-sm font-semibold text-foreground">{trustScore?.score ?? 0}/100</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">Tarefas</p>
+                <p className="text-sm font-semibold text-foreground">{openWorkCount}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={() => navigate('/landlord/new-listing')}
+                disabled={isAccountSuspended || isBlockedFromPublishing}
+              >
+                <PlusCircle className="w-4 h-4" />
+                Novo alojamento
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate('/verification')}>
+                <ShieldCheck className="w-4 h-4" />
+                Verificação
+              </Button>
+            </div>
+          </Card>
         </div>
 
         {/* Account suspension banner */}
@@ -196,6 +289,82 @@ export function LandlordDashboard() {
             </button>
           </div>
         )}
+
+        <Card className="p-5 md:p-6 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-6">
+            <div>
+              <div className="flex items-center justify-between gap-4 mb-5">
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">Resumo operacional</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Leitura rápida do estado atual do teu portefólio.
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => navigate('/landlord/analytics')}>
+                  Ver detalhe
+                  <ArrowUpRight className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Ocupação</p>
+                  <p className="text-2xl font-bold text-foreground">{occupancyRate}%</p>
+                  <p className="text-xs text-muted-foreground mt-1">{occupiedOrReservedRooms}/{roomStats.total || 0} quartos</p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Receita potencial</p>
+                  <p className="text-2xl font-bold text-foreground">€{monthlyPotential}</p>
+                  <p className="text-xs text-muted-foreground mt-1">rendas + despesas/mês</p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Visibilidade</p>
+                  <p className="text-2xl font-bold text-foreground">{totalViews}</p>
+                  <p className="text-xs text-muted-foreground mt-1">visualizações totais</p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Saúde</p>
+                  <p className="text-2xl font-bold text-foreground">{portfolioScorePercent}%</p>
+                  <p className="text-xs text-muted-foreground mt-1">{portfolioScore}/5 critérios bons</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-muted/20 p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">Prioridades</h3>
+                  <p className="text-xs text-muted-foreground">O que merece atenção primeiro.</p>
+                </div>
+                {priorityTasks.length === 0 && (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                )}
+              </div>
+
+              {priorityTasks.length > 0 ? (
+                <div className="space-y-2">
+                  {priorityTasks.slice(0, 4).map(task => (
+                    <button
+                      key={task.label}
+                      onClick={() => navigate(task.route)}
+                      className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-white ${task.tone}`}
+                    >
+                      <span className="text-xs font-medium leading-snug">{task.label}</span>
+                      <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+                  <p className="text-sm font-semibold text-emerald-800">Tudo controlado</p>
+                  <p className="text-xs text-emerald-700 mt-1">
+                    Não há candidaturas, mensagens ou alertas urgentes por tratar.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
 
         <Card className="p-6 mb-6 border-blue-100 bg-gradient-to-br from-blue-50 to-white">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
@@ -314,15 +483,24 @@ export function LandlordDashboard() {
           </Card>
         </div>
 
-        <Card className="p-8 mb-10 bg-gradient-to-br from-accent/5 to-accent/10 border-accent/20 cursor-pointer" hover onClick={() => navigate('/landlord/maintenance')}>
-          <div className="flex items-center gap-6">
-            <div className="w-16 h-16 bg-accent rounded-xl flex items-center justify-center shadow-md">
-              <Wrench className="w-8 h-8 text-white" />
+        <Card className="p-5 md:p-6 mb-8 bg-gradient-to-br from-accent/5 to-accent/10 border-accent/20 cursor-pointer" hover onClick={() => navigate('/landlord/maintenance')}>
+          <div className="flex flex-col md:flex-row md:items-center gap-5">
+            <div className="w-12 h-12 bg-accent rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
+              <Wrench className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1">
-              <h3 className="text-xl font-bold text-foreground mb-2">Pedidos de Manutenção</h3>
-              <p className="text-sm text-muted-foreground mb-4">Acompanha e gere problemas reportados pelos estudantes</p>
-              <div className="flex items-center gap-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Pedidos de Manutenção</h3>
+                  <p className="text-sm text-muted-foreground">Problemas reportados pelos estudantes e estado de resolução.</p>
+                </div>
+                {maintenanceStats.highUrgency > 0 && (
+                  <Badge variant="outline" className="w-fit bg-red-50 text-red-700 border-red-300">
+                    {maintenanceStats.highUrgency} urgente{maintenanceStats.highUrgency > 1 ? 's' : ''}
+                  </Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <p className="text-2xl font-bold text-accent">{maintenanceStats.pending}</p>
                   <p className="text-xs text-muted-foreground">Pendentes</p>
@@ -335,16 +513,9 @@ export function LandlordDashboard() {
                   <p className="text-2xl font-bold text-secondary">{maintenanceStats.resolved}</p>
                   <p className="text-xs text-muted-foreground">Resolvidos</p>
                 </div>
-                {maintenanceStats.highUrgency > 0 && (
-                  <div>
-                    <Badge variant="outline" className="text-lg px-3 py-1 bg-red-50 text-red-700 border-red-300">
-                      {maintenanceStats.highUrgency} urgentes
-                    </Badge>
-                  </div>
-                )}
               </div>
             </div>
-            <Button variant="primary" onClick={(e) => { e.stopPropagation(); navigate('/landlord/maintenance'); }}>
+            <Button className="w-full md:w-auto" variant="primary" onClick={(e) => { e.stopPropagation(); navigate('/landlord/maintenance'); }}>
               Ver pedidos
             </Button>
           </div>
