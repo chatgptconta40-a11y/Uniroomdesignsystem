@@ -1,27 +1,29 @@
-import { Home, Mail, Facebook, Instagram, Linkedin } from 'lucide-react';
+import { Home, Mail } from 'lucide-react';
 import { Link } from 'react-router';
 
 export function Footer() {
-  const links = [
-    { label: 'Sobre', href: '#' },
-    { label: 'Como funciona', href: '#' },
-    { label: 'Para senhorios', href: '#' },
-    { label: 'Contacto', href: '#' },
-    { label: 'Termos e Condições', href: '#' },
-    { label: 'Privacidade', href: '#' },
+  const companyLinks = [
+    { label: 'Sobre nós', href: '/' },
+    { label: 'Como funciona', href: '/#como-funciona' },
+    { label: 'Quartos disponíveis', href: '/#quartos' },
   ];
 
-  const socialLinks = [
-    { icon: Facebook, href: '#', label: 'Facebook' },
-    { icon: Instagram, href: '#', label: 'Instagram' },
-    { icon: Linkedin, href: '#', label: 'LinkedIn' },
+  const resourceLinks = [
+    { label: 'Para estudantes', to: '/register' },
+    { label: 'Para senhorios', to: '/register' },
+    { label: 'Entrar na conta', to: '/login' },
+  ];
+
+  const supportLinks = [
+    { label: 'Contacto', href: 'mailto:suporte@uniroom.pt' },
+    { label: 'Termos e condições', href: 'mailto:suporte@uniroom.pt?subject=Termos%20e%20condicoes%20UniRoom' },
+    { label: 'Política de privacidade', href: 'mailto:suporte@uniroom.pt?subject=Privacidade%20UniRoom' },
   ];
 
   return (
     <footer className="w-full bg-card border-t border-border">
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-          {/* Brand */}
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-3 mb-4 group">
               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-sm">
@@ -35,90 +37,58 @@ export function Footer() {
             <p className="text-sm text-muted-foreground mb-4">
               A plataforma que conecta estudantes com alojamento ideal através de compatibilidade real.
             </p>
-            <div className="flex items-center gap-3">
-              {socialLinks.map((social) => (
-                <a
-                  key={social.label}
-                  href={social.href}
-                  className="w-9 h-9 rounded-lg bg-muted hover:bg-primary hover:text-white transition-all flex items-center justify-center group"
-                  aria-label={social.label}
-                >
-                  <social.icon className="w-4 h-4" />
-                </a>
-              ))}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Mail className="w-4 h-4" />
+              <a href="mailto:suporte@uniroom.pt" className="hover:text-primary transition-colors">
+                suporte@uniroom.pt
+              </a>
             </div>
           </div>
 
-          {/* Links */}
           <div className="md:col-span-3">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div>
                 <h4 className="mb-4 text-sm font-semibold text-foreground">Empresa</h4>
                 <ul className="space-y-3">
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Sobre nós
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Como funciona
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Contacto
-                    </a>
-                  </li>
+                  {companyLinks.map(link => (
+                    <li key={link.label}>
+                      <a href={link.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
                 </ul>
               </div>
 
               <div>
                 <h4 className="mb-4 text-sm font-semibold text-foreground">Recursos</h4>
                 <ul className="space-y-3">
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Para Estudantes
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Para Senhorios
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Blog
-                    </a>
-                  </li>
+                  {resourceLinks.map(link => (
+                    <li key={link.label}>
+                      <Link to={link.to} className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                        {link.label}
+                      </Link>
+                    </li>
+                  ))}
                 </ul>
               </div>
 
               <div>
-                <h4 className="mb-4 text-sm font-semibold text-foreground">Legal</h4>
+                <h4 className="mb-4 text-sm font-semibold text-foreground">Suporte</h4>
                 <ul className="space-y-3">
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Termos e Condições
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Política de Privacidade
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                      Cookies
-                    </a>
-                  </li>
+                  {supportLinks.map(link => (
+                    <li key={link.label}>
+                      <a href={link.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
                 </ul>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Bottom */}
         <div className="pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
             &copy; 2026 UniRoom. Todos os direitos reservados.
