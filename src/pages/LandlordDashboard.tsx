@@ -3,7 +3,7 @@ import {
   Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle,
   Clock, User, Wrench, AlertCircle, PauseCircle, Camera, BarChart2,
   ChevronRight, BedDouble, Users, RefreshCw, CalendarDays, Bell,
-  Ban, ShieldOff,
+  Ban, ShieldOff, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -14,6 +14,8 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { isUserSuspended, isUserBlockedFromPublishing, getUserState } from '../data/mockAdminUsersState';
+import { TrustBadge } from '../components/TrustBadge';
+import { getTrustScore, getVerificationStatus } from '../data/mockTrust';
 
 export function LandlordDashboard() {
   const { user } = useAuth();
@@ -77,6 +79,9 @@ export function LandlordDashboard() {
   const isAccountSuspended = user ? isUserSuspended(user.id) : false;
   const isBlockedFromPublishing = user ? isUserBlockedFromPublishing(user.id) : false;
   const suspensionReason = user ? getUserState(user.id)?.reason : undefined;
+  const verificationStatus = user ? getVerificationStatus(user.id) : null;
+  const trustScore = user ? getTrustScore(user.id) : null;
+  const isVerifiedLandlord = verificationStatus?.level === 'gold' || verificationStatus?.documentVerified;
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -191,6 +196,68 @@ export function LandlordDashboard() {
             </button>
           </div>
         )}
+
+        <Card className="p-6 mb-6 border-blue-100 bg-gradient-to-br from-blue-50 to-white">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <h2 className="text-lg font-bold text-foreground">
+                    Estado da conta de senhorio
+                  </h2>
+
+                  <TrustBadge userId={user?.id || ''} size="sm" showLabel />
+                </div>
+
+                <p className="text-sm text-muted-foreground max-w-2xl">
+                  {isVerifiedLandlord
+                    ? 'A tua conta já transmite sinais fortes de confiança aos estudantes. Mantém os dados dos alojamentos atualizados para reforçar a credibilidade.'
+                    : 'Completa a verificação para aumentar a confiança dos estudantes antes das visitas e candidaturas.'}
+                </p>
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Confiança</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {trustScore?.level === 'trusted' ? 'Elevada' : 'Em construção'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Pontuação</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {trustScore?.score ?? 0}/100
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Verificação</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {verificationStatus?.level === 'gold'
+                        ? 'Completa'
+                        : verificationStatus?.level === 'silver'
+                        ? 'Intermédia'
+                        : verificationStatus?.level === 'bronze'
+                        ? 'Básica'
+                        : 'Pendente'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Button
+              onClick={() => navigate('/verification')}
+              className="w-full lg:w-auto"
+            >
+              Gerir verificação
+            </Button>
+          </div>
+        </Card>
 
         {/* Top metric cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">

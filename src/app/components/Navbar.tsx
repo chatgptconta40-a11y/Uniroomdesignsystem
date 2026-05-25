@@ -272,7 +272,7 @@ export function Navbar() {
                             </Link>
                           </>
                         )}
-
+                      
                         {user?.type === 'landlord' && (
   <>
     <Link
