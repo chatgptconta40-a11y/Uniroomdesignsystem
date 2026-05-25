@@ -55,11 +55,11 @@ export function RoomDetail() {
     ? getExistingApplicationForRoom(user.id, room.id)
     : null;
   const studentProfile = user?.type === 'student' ? getProfile(user.id) : null;
-const canShowCompatibility = Boolean(
-  user?.type === 'student' &&
-  studentProfile?.onboardingCompleted &&
-  room?.compatibilityScore
-);
+  const canShowCompatibility = Boolean(
+    user?.type === 'student' &&
+    studentProfile?.onboardingCompleted &&
+    room?.compatibilityScore
+  );
 
   if (!room || !property) {
     return (
@@ -517,18 +517,18 @@ const canShowCompatibility = Boolean(
                     )}
                   </div>
 
-                   {canShowCompatibility && (
-  <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-green-50 rounded-lg border border-green-100">
-    <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-    <span className="text-xs text-green-700">Compatibilidade</span>
-    <span className={`ml-auto text-sm font-bold ${
-      (room.compatibilityScore ?? 0) >= 80 ? 'text-green-700' :
-      (room.compatibilityScore ?? 0) >= 60 ? 'text-amber-600' : 'text-muted-foreground'
-    }`}>
-      {room.compatibilityScore ?? 0}%
-    </span>
-  </div>
-)}
+                  {canShowCompatibility && (
+                    <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-green-50 rounded-lg border border-green-100">
+                      <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                      <span className="text-xs text-green-700">Compatibilidade</span>
+                      <span className={`ml-auto text-sm font-bold ${
+                        (room.compatibilityScore ?? 0) >= 80 ? 'text-green-700' :
+                        (room.compatibilityScore ?? 0) >= 60 ? 'text-amber-600' : 'text-muted-foreground'
+                      }`}>
+                        {room.compatibilityScore ?? 0}%
+                      </span>
+                    </div>
+                  )}
                   <div className="space-y-3">
                     {existingApplication ? (
                       <div className={`rounded-xl border p-3.5 ${APP_STATUS_LABELS[existingApplication.status]?.bgCls || 'bg-muted border-border'}`}>
