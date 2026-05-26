@@ -462,7 +462,6 @@ interface GeneralMapViewProps {
   toggleCompare: (room: Room, property: Property) => void;
   canAdd: boolean;
   canShowCompatibility: boolean;
-  onShowList: () => void;
 }
 
 function GeneralMapView({
@@ -473,7 +472,6 @@ function GeneralMapView({
   toggleCompare,
   canAdd,
   canShowCompatibility,
-  onShowList,
 }: GeneralMapViewProps) {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
 
@@ -482,16 +480,10 @@ function GeneralMapView({
   const bounds = getBounds(visibleCity);
   const universityMarker = UNIVERSITY_MARKERS[university] || UNIVERSITY_MARKERS.ESTGV;
   const selectedGroup = groups.find(group => group.property.id === selectedPropertyId) || null;
-  const mapQuery = encodeURIComponent(`${visibleCity}, Portugal`);
-  const googleMapsUrl = `https://www.google.com/maps?q=${mapQuery}&output=embed`;
-  const googleMapsLink = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
 
   const visibleResults = selectedPropertyId
     ? results.filter(item => item.property.id === selectedPropertyId)
     : results;
-  const visibleMinPrice = visibleResults.length
-    ? Math.min(...visibleResults.map(item => item.room.price))
-    : 0;
 
   useEffect(() => {
     if (selectedPropertyId && !groups.some(group => group.property.id === selectedPropertyId)) {
@@ -501,16 +493,155 @@ function GeneralMapView({
 
   return (
     <div className="rounded-2xl border border-border overflow-hidden bg-card shadow-sm">
-      <div className="grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] min-h-[720px] xl:h-[calc(100vh-210px)]">
-        <aside className="order-2 xl:order-1 border-t xl:border-t-0 xl:border-r border-border bg-card min-h-0 flex flex-col">
-          <div className="p-5 border-b border-border">
-            <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_430px] min-h-[640px] xl:h-[calc(100vh-230px)]">
+        <div className="relative min-h-[520px] overflow-hidden bg-[#e8edf3]">
+          <div
+            className="absolute inset-0 opacity-70"
+            style={{
+              backgroundImage: `
+                linear-gradient(rgba(120, 144, 156, 0.22) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(120, 144, 156, 0.22) 1px, transparent 1px)
+              `,
+              backgroundSize: '72px 72px',
+            }}
+          />
+
+          <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 700">
+            <path d="M-60 390 C160 350 260 375 430 330 C610 280 740 315 1060 250" fill="none" stroke="#ffffff" strokeWidth="30" opacity="0.9" />
+            <path d="M-60 390 C160 350 260 375 430 330 C610 280 740 315 1060 250" fill="none" stroke="#c6d0dc" strokeWidth="8" opacity="0.9" />
+
+            <path d="M230 -40 C270 120 285 270 320 390 C355 520 390 610 430 740" fill="none" stroke="#ffffff" strokeWidth="24" opacity="0.85" />
+            <path d="M230 -40 C270 120 285 270 320 390 C355 520 390 610 430 740" fill="none" stroke="#c6d0dc" strokeWidth="6" opacity="0.9" />
+
+            <path d="M720 -30 C650 120 660 260 720 390 C775 505 850 605 925 735" fill="none" stroke="#ffffff" strokeWidth="20" opacity="0.75" />
+            <path d="M720 -30 C650 120 660 260 720 390 C775 505 850 605 925 735" fill="none" stroke="#cbd5df" strokeWidth="5" opacity="0.9" />
+
+            <path d="M-40 570 C180 535 350 560 530 520 C720 478 880 500 1050 450" fill="none" stroke="#ffffff" strokeWidth="18" opacity="0.7" />
+            <path d="M-40 570 C180 535 350 560 530 520 C720 478 880 500 1050 450" fill="none" stroke="#d0d8e2" strokeWidth="4" opacity="0.9" />
+
+            <ellipse cx="790" cy="135" rx="95" ry="58" fill="#b7d7b1" opacity="0.55" />
+            <ellipse cx="170" cy="575" rx="105" ry="52" fill="#b7d7b1" opacity="0.45" />
+            <ellipse cx="860" cy="540" rx="80" ry="44" fill="#a8d5e5" opacity="0.35" />
+            <rect x="92" y="115" width="125" height="80" rx="8" fill="#d7ddd3" opacity="0.65" />
+            <rect x="520" y="130" width="130" height="95" rx="8" fill="#d7ddd3" opacity="0.5" />
+            <rect x="430" y="460" width="150" height="85" rx="8" fill="#d7ddd3" opacity="0.5" />
+          </svg>
+
+          <div className="absolute left-4 top-4 right-4 z-20 flex flex-wrap items-start justify-between gap-3">
+            <div className="rounded-xl bg-white/95 backdrop-blur px-4 py-3 shadow-sm border border-white/70">
+              <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+                <MapPin className="w-4 h-4 text-primary" />
+                Mapa de alojamentos
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {groups.length} {groups.length === 1 ? 'casa' : 'casas'} · {results.length} {results.length === 1 ? 'quarto' : 'quartos'} disponíveis
+              </p>
+            </div>
+
+            {selectedGroup && (
+              <button
+                type="button"
+                onClick={() => setSelectedPropertyId(null)}
+                className="rounded-xl bg-white/95 backdrop-blur px-3 py-2 shadow-sm border border-white/70 text-xs font-semibold text-primary hover:bg-primary hover:text-white transition-colors flex items-center gap-2"
+              >
+                <X className="w-3.5 h-3.5" />
+                Ver todas as casas
+              </button>
+            )}
+          </div>
+
+          <div
+            className="absolute z-10"
+            style={{
+              left: `${universityMarker.x}%`,
+              top: `${universityMarker.y}%`,
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            <div className="relative flex flex-col items-center">
+              <div className="absolute w-28 h-28 rounded-full bg-primary/10 border border-primary/20" />
+              <div className="w-12 h-12 rounded-full bg-primary text-white shadow-lg flex items-center justify-center font-bold border-4 border-white">
+                {universityMarker.label}
+              </div>
+              <div className="mt-2 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold text-foreground shadow-sm whitespace-nowrap">
+                {universityLabel}
+              </div>
+            </div>
+          </div>
+
+          {groups.map(group => {
+            const coordinates = group.property.coordinates || stableCoordinate(group.property, bounds);
+            const position = coordinateToPercent(coordinates.lat, coordinates.lng, bounds);
+            const selected = group.property.id === selectedPropertyId;
+            const walk = walkMinutes(group.property.distanceToUniversity);
+
+            return (
+              <button
+                key={group.property.id}
+                type="button"
+                onClick={() => setSelectedPropertyId(selected ? null : group.property.id)}
+                className={`absolute z-20 transition-all ${selected ? 'scale-110' : 'hover:scale-105'}`}
+                style={{
+                  left: `${position.x}%`,
+                  top: `${position.y}%`,
+                  transform: 'translate(-50%, -100%)',
+                }}
+              >
+                <div
+                  className={`relative px-3 py-2 rounded-full shadow-lg border text-sm font-bold whitespace-nowrap ${
+                    selected
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-white text-foreground border-white hover:border-primary hover:text-primary'
+                  }`}
+                >
+                  €{group.minPrice}+
+                  <span
+                    className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] ${
+                      selected ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'
+                    }`}
+                  >
+                    {group.rooms.length}
+                  </span>
+                </div>
+
+                <div className={`mx-auto w-3 h-3 rotate-45 -mt-1 ${selected ? 'bg-primary' : 'bg-white border-r border-b border-white'}`} />
+
+                {selected && (
+                  <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2 rounded-xl bg-white shadow-xl border border-border w-56 p-3 text-left">
+                    <p className="text-xs font-bold text-foreground line-clamp-1">{group.property.title}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {group.property.zone}, {group.property.city}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {walk}min a pé · {group.property.distanceToUniversity}km da universidade
+                    </p>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+
+          <div className="absolute left-4 bottom-4 z-20 rounded-xl bg-white/95 backdrop-blur px-3 py-2 shadow-sm border border-white/70">
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span className="inline-block w-16 h-1 rounded-full bg-foreground/50" />
+              1 km
+            </div>
+          </div>
+
+          <div className="absolute right-4 bottom-4 z-20 rounded-xl bg-white/95 backdrop-blur px-3 py-2 shadow-sm border border-white/70 text-[11px] text-muted-foreground">
+            Localização aproximada
+          </div>
+        </div>
+
+        <aside className="border-t xl:border-t-0 xl:border-l border-border bg-background/70 min-h-0 flex flex-col">
+          <div className="p-4 border-b border-border bg-card">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-bold text-foreground">
-                  {selectedGroup ? selectedGroup.property.zone : `${results.length} anúncios`}
+                  {selectedGroup ? selectedGroup.property.zone : 'Casas no mapa'}
                 </h3>
-                <p className="text-sm text-muted-foreground">
-                  {groups.length} {groups.length === 1 ? 'casa' : 'casas'} · {visibleResults.length} {visibleResults.length === 1 ? 'quarto' : 'quartos'}
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {visibleResults.length} {visibleResults.length === 1 ? 'quarto visível' : 'quartos visíveis'}
                 </p>
               </div>
 
@@ -518,54 +649,12 @@ function GeneralMapView({
                 <button
                   type="button"
                   onClick={() => setSelectedPropertyId(null)}
-                  className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-primary hover:bg-primary/5"
+                  className="text-xs font-semibold text-primary hover:underline"
                 >
                   Limpar
                 </button>
               )}
             </div>
-
-            <button
-              type="button"
-              className="w-full rounded-xl bg-lime-100 px-4 py-3 text-left text-sm font-bold text-slate-950 hover:bg-lime-200 transition-colors"
-            >
-              Guardar pesquisa
-              <span className="block text-xs font-medium text-slate-600 mt-0.5">
-                Receber novos quartos nesta zona
-              </span>
-            </button>
-          </div>
-
-          <div className="p-4 border-b border-border bg-muted/30 space-y-3">
-            <div>
-              <label className="text-xs font-bold text-muted-foreground">Tipo de quarto</label>
-              <div className="mt-1 rounded-xl border border-border bg-white px-3 py-2 text-sm font-semibold">
-                Quarto universitário
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs font-bold text-muted-foreground">Preço desde</label>
-                <div className="mt-1 rounded-xl border border-border bg-white px-3 py-2 text-sm font-semibold">
-                  {visibleMinPrice > 0 ? `€${visibleMinPrice}` : 'Sem quartos'}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground">Zona</label>
-                <div className="mt-1 rounded-xl border border-border bg-white px-3 py-2 text-sm font-semibold truncate">
-                  {visibleCity}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onShowList}
-              className="w-full rounded-xl border-2 border-primary/30 bg-white px-4 py-3 text-sm font-bold text-primary hover:bg-primary/5 transition-colors"
-            >
-              Ir para a lista
-            </button>
           </div>
 
           <div className="p-4 space-y-3 overflow-y-auto xl:max-h-full">
@@ -583,147 +672,6 @@ function GeneralMapView({
             ))}
           </div>
         </aside>
-
-        <div className="order-1 xl:order-2 relative min-h-[620px] overflow-hidden bg-slate-200">
-          <iframe
-            title={`Mapa Google de ${visibleCity}`}
-            src={googleMapsUrl}
-            className="absolute inset-0 h-full w-full border-0"
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            allowFullScreen
-          />
-
-          <div className="absolute inset-0 pointer-events-none bg-white/10" />
-
-          <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 1000 700" preserveAspectRatio="none">
-            <path
-              d="M240 190 L595 135 L750 210 L820 390 L705 520 L430 560 L275 470 Z"
-              fill="rgba(190, 24, 134, 0.18)"
-              stroke="rgba(190, 24, 134, 0.85)"
-              strokeWidth="4"
-            />
-          </svg>
-
-          <div className="absolute left-4 top-4 z-30">
-            <button
-              type="button"
-              className="rounded-xl border-2 border-pink-600 bg-white px-4 py-3 text-sm font-bold text-pink-700 shadow-lg flex items-center gap-2"
-            >
-              <MapIcon className="w-4 h-4" />
-              Zona selecionada ({groups.length})
-              <ChevronDown className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="absolute left-1/2 top-5 z-30 -translate-x-1/2 rounded-full bg-slate-900/70 px-4 py-2 text-sm font-bold text-white shadow-lg">
-            {results.length} anúncios de quartos
-          </div>
-
-          <div className="absolute right-4 top-4 z-30 w-[min(360px,calc(100%-2rem))] rounded-xl border border-border bg-white shadow-lg">
-            <div className="flex items-center gap-2 px-4 py-3">
-              <SearchIcon className="w-5 h-5 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Zona, cidade, universidade</span>
-            </div>
-          </div>
-
-          <div
-            className="absolute z-20"
-            style={{
-              left: `${universityMarker.x}%`,
-              top: `${universityMarker.y}%`,
-              transform: 'translate(-50%, -50%)',
-            }}
-          >
-            <div className="relative flex flex-col items-center">
-              <div className="absolute h-24 w-24 rounded-full bg-primary/15 border border-primary/25" />
-              <div className="h-12 w-12 rounded-full bg-primary text-white shadow-lg flex items-center justify-center font-bold border-4 border-white">
-                {universityMarker.label}
-              </div>
-              <div className="mt-2 rounded-full bg-white px-3 py-1 text-xs font-bold text-foreground shadow whitespace-nowrap">
-                {universityLabel}
-              </div>
-            </div>
-          </div>
-
-          {groups.map(group => {
-            const coordinates = group.property.coordinates || stableCoordinate(group.property, bounds);
-            const position = coordinateToPercent(coordinates.lat, coordinates.lng, bounds);
-            const selected = group.property.id === selectedPropertyId;
-            const walk = walkMinutes(group.property.distanceToUniversity);
-
-            return (
-              <button
-                key={group.property.id}
-                type="button"
-                onClick={() => setSelectedPropertyId(selected ? null : group.property.id)}
-                className={`absolute z-30 transition-all ${selected ? 'scale-110' : 'hover:scale-105'}`}
-                style={{
-                  left: `${position.x}%`,
-                  top: `${position.y}%`,
-                  transform: 'translate(-50%, -100%)',
-                }}
-              >
-                <div className={`relative px-3 py-1.5 rounded-md border-2 text-sm font-black whitespace-nowrap shadow-lg ${
-                  selected
-                    ? 'bg-primary text-white border-primary'
-                    : 'bg-lime-300 text-slate-950 border-lime-500 hover:bg-lime-200'
-                }`}>
-                  {group.minPrice} €
-                  <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${
-                    selected ? 'bg-white/20 text-white' : 'bg-white/70 text-primary'
-                  }`}>
-                    {group.rooms.length}
-                  </span>
-                </div>
-                <div className={`mx-auto -mt-1 h-3 w-3 rotate-45 border-r-2 border-b-2 ${
-                  selected ? 'bg-primary border-primary' : 'bg-lime-300 border-lime-500'
-                }`} />
-
-                {selected && (
-                  <div className="absolute left-1/2 top-full mt-2 w-64 -translate-x-1/2 rounded-xl border border-border bg-white p-3 text-left shadow-2xl">
-                    <p className="text-sm font-bold text-foreground line-clamp-1">{group.property.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {group.property.zone}, {group.property.city}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {walk}min a pé · {group.property.distanceToUniversity}km da universidade
-                    </p>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        window.open(googleMapsLink, '_blank', 'noopener,noreferrer');
-                      }}
-                      className="mt-3 text-xs font-bold text-primary hover:underline"
-                    >
-                      Abrir no Google Maps
-                    </button>
-                  </div>
-                )}
-              </button>
-            );
-          })}
-
-          <div className="absolute right-4 bottom-28 z-30 overflow-hidden rounded-lg border border-slate-400 bg-white shadow-lg">
-            <button type="button" className="block h-11 w-11 text-2xl font-bold border-b border-slate-300">+</button>
-            <button type="button" className="block h-11 w-11 text-2xl font-bold">−</button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => window.open(googleMapsLink, '_blank', 'noopener,noreferrer')}
-            className="absolute right-4 bottom-20 z-30 rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-bold text-slate-900 shadow-lg flex items-center gap-2"
-          >
-            <Navigation className="w-4 h-4" />
-            Abrir Google Maps
-          </button>
-
-          <div className="absolute right-4 bottom-4 z-30 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-400 bg-white shadow-lg">
-            <button type="button" className="px-4 py-3 text-sm font-bold text-primary bg-primary/5 border-r border-slate-300">Padrão</button>
-            <button type="button" className="px-4 py-3 text-sm font-bold text-slate-700">Satélite</button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -1117,14 +1065,15 @@ export function SearchRooms() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <h2 className="text-sm font-bold text-foreground">
-                      Ativa compatibilidade para ver casas que combinam contigo
+                      Completa o perfil para ver compatibilidade personalizada
                     </h2>
                     <UserCheck className="w-4 h-4 text-primary" />
                   </div>
 
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    Por agora os resultados ordenam por distância, preço e confiança.
-                    Após o onboarding vês % de compatibilidade com a rotina e hábitos de cada casa.
+                    Por agora, os resultados estão ordenados por distância, preço e confiança.
+                    Depois do onboarding, desbloqueias percentagens de compatibilidade e filtros
+                    mais úteis para convivência.
                   </p>
                 </div>
               </div>
@@ -1138,16 +1087,6 @@ export function SearchRooms() {
               </Button>
             </div>
           </Card>
-        )}
-
-        {results.length > 0 && (
-          <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-            <GraduationCap className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-foreground leading-relaxed">
-              <span className="font-semibold">A procurar quarto perto da {universityLabel}?</span>
-              {' '}Prioriza o tempo a pé até às aulas, o custo total com despesas, as regras da casa e a data real de entrada.
-            </p>
-          </div>
         )}
 
         {!loading && results.length > 0 && (
@@ -1171,23 +1110,23 @@ export function SearchRooms() {
                   {results.length} quarto{results.length !== 1 ? 's' : ''} em {resultStats.propertyCount} casa{resultStats.propertyCount !== 1 ? 's' : ''}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  Perto da {universityLabel}
-                  {filters.cities.length > 0 ? ` · ${filters.cities.join(', ')}` : ''}
+                  Pesquisa perto da {universityLabel}
+                  {filters.cities.length > 0 ? ` em ${filters.cities.join(', ')}` : ''}
                 </p>
               </div>
 
               <div className="grid grid-cols-3 gap-2 sm:min-w-[420px]">
                 <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
-                  <p className="text-[11px] text-muted-foreground">Renda desde</p>
-                  <p className="text-sm font-bold text-foreground">€{resultStats.minPrice}/mês</p>
+                  <p className="text-[11px] text-muted-foreground">Desde</p>
+                  <p className="text-sm font-bold text-foreground">€{resultStats.minPrice}</p>
                 </div>
                 <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
                   <p className="text-[11px] text-muted-foreground">Mais perto</p>
-                  <p className="text-sm font-bold text-foreground">{resultStats.closestWalk}min a pé</p>
+                  <p className="text-sm font-bold text-foreground">{resultStats.closestWalk}min</p>
                 </div>
                 <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
-                  <p className="text-[11px] text-muted-foreground">Verificados</p>
-                  <p className="text-sm font-bold text-foreground">{resultStats.verifiedCount} anúncios</p>
+                  <p className="text-[11px] text-muted-foreground">Confiança</p>
+                  <p className="text-sm font-bold text-foreground">{resultStats.verifiedCount} verif.</p>
                 </div>
               </div>
             </div>
@@ -1552,7 +1491,6 @@ export function SearchRooms() {
                 toggleCompare={toggleCompare}
                 canAdd={canAdd}
                 canShowCompatibility={canShowCompatibility}
-                onShowList={() => setViewMode('list')}
               />
             ) : viewMode === 'list' ? (
               <div className="space-y-3">
@@ -1564,7 +1502,6 @@ export function SearchRooms() {
                     availableRooms={availableRooms}
                     variant="public"
                     displayMode="list"
-                    entryMonth={filters.entryMonth || undefined}
                     compareProps={{
                       isComparing: isInCompare(room.id),
                       onToggle: event => {
@@ -1585,7 +1522,6 @@ export function SearchRooms() {
                     property={property}
                     availableRooms={availableRooms}
                     variant="public"
-                    entryMonth={filters.entryMonth || undefined}
                     compareProps={{
                       isComparing: isInCompare(room.id),
                       onToggle: event => {

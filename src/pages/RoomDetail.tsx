@@ -16,12 +16,12 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
+import { getExistingApplicationForRoom } from '../data/mockApplications';
 import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
 import { TrustSignals } from '../components/TrustSignals';
-import { getCompatibilityShortLabel } from '../utils/compatibilityInsights';
 
 export function RoomDetail() {
   const { id } = useParams<{ id: string }>();
@@ -51,11 +51,15 @@ export function RoomDetail() {
   const ratingBreakdown = room ? getAverageRatingBreakdown(room.id) : null;
 
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
+  const existingApplication = user?.type === 'student' && room
+    ? getExistingApplicationForRoom(user.id, room.id)
+    : null;
   const canShowCompatibility = Boolean(
     user?.type === 'student' &&
     hasCompletedCompatibilityProfile(user.id) &&
     room?.compatibilityScore
   );
+  const shouldInviteProfileCompletion = user?.type === 'student' && !canShowCompatibility;
 
   if (!room || !property) {
     return (
@@ -84,36 +88,6 @@ export function RoomDetail() {
     month: 'long',
     year: 'numeric',
   });
-
-  const availabilityStatus = (() => {
-    const now = new Date();
-    const avDate = new Date(room.availableFrom);
-    const diffDays = Math.ceil((avDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    const monthLabel = avDate.toLocaleDateString('pt-PT', { month: 'long' });
-    const yearLabel = avDate.getFullYear();
-    const sameYear = yearLabel === now.getFullYear();
-    const fullLabel = sameYear ? monthLabel : `${monthLabel} de ${yearLabel}`;
-    if (room.status === 'occupied') return { label: diffDays > 0 ? `Ocupado · livre em ${fullLabel}` : 'Ocupado', color: 'text-muted-foreground', bg: 'bg-muted/50', dot: 'bg-gray-400' };
-    if (room.status === 'reserved') return { label: diffDays > 0 ? `Reservado até ${fullLabel}` : 'Reservado', color: 'text-amber-700', bg: 'bg-amber-50', dot: 'bg-amber-500' };
-    if (diffDays <= 0) return { label: 'Disponível já', color: 'text-green-700', bg: 'bg-green-50', dot: 'bg-green-500' };
-    if (diffDays <= 14) return { label: 'Disponível em breve', color: 'text-green-700', bg: 'bg-green-50', dot: 'bg-green-500' };
-    return { label: `Livre a partir de ${fullLabel}`, color: 'text-amber-700', bg: 'bg-amber-50', dot: 'bg-amber-500' };
-  })();
-
-  // Build 7-month timeline starting from this month
-  const availabilityTimeline = (() => {
-    const avDate = new Date(room.availableFrom);
-    const now = new Date();
-    const months: { label: string; state: 'occupied' | 'available' | 'current' }[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const label = d.toLocaleDateString('pt-PT', { month: 'short' }).replace('.', '');
-      const isAvailable = d >= new Date(avDate.getFullYear(), avDate.getMonth(), 1);
-      const isCurrent = i === 0;
-      months.push({ label: label.charAt(0).toUpperCase() + label.slice(1), state: isCurrent ? 'current' : isAvailable ? 'available' : 'occupied' });
-    }
-    return months;
-  })();
 
   const applicationAccommodation: Accommodation = {
     id: room.id,
@@ -152,6 +126,13 @@ export function RoomDetail() {
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
     views: room.views,
+  };
+
+  const APP_STATUS_LABELS: Record<string, { label: string; description: string; bgCls: string; textCls: string }> = {
+    pending: { label: 'Candidatura enviada', description: 'A aguardar análise pelo senhorio', bgCls: 'bg-blue-50 border-blue-200', textCls: 'text-blue-700' },
+    under_review: { label: 'Em análise', description: 'O senhorio está a rever a tua candidatura', bgCls: 'bg-amber-50 border-amber-200', textCls: 'text-amber-700' },
+    accepted: { label: 'Candidatura aceite', description: 'O senhorio aceitou a tua candidatura', bgCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
+    confirmed: { label: 'Entrada confirmada', description: 'A tua entrada neste quarto foi confirmada', bgCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
   };
 
   const requestAuthentication = () => {
@@ -286,25 +267,34 @@ export function RoomDetail() {
               </div>
 
               <Card className="p-4 bg-blue-50 border-blue-200 mb-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <Building className="w-5 h-5 text-blue-600" />
                     <div>
                       <p className="font-semibold text-blue-900">Este quarto faz parte de:</p>
-                      <p className="text-sm text-blue-700">{property.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/property/${property.id}`)}
+                        className="text-left text-sm font-semibold text-blue-700 hover:underline"
+                      >
+                        {property.title}
+                      </button>
                     </div>
                   </div>
-                  <Badge variant="default" className="bg-white text-blue-700">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/property/${property.id}`)}
+                    className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+                  >
                     <Home className="w-3 h-3 mr-1" />
-                    {property.totalRooms} quartos no total
-                  </Badge>
+                    Ver página da casa
+                  </button>
                 </div>
               </Card>
             </div>
 
             <Card className="p-6">
-              <h2 className="text-xl font-bold mb-1">Sobre o quarto</h2>
-              <p className="text-sm text-muted-foreground mb-4">O que inclui e como está equipado</p>
+              <h2 className="text-xl font-bold mb-4">Sobre o quarto</h2>
               <p className="text-foreground leading-relaxed mb-6">{room.description}</p>
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -357,37 +347,7 @@ export function RoomDetail() {
             </Card>
 
             <Card className="p-6">
-              <h2 className="text-xl font-bold mb-1">Está livre quando precisas?</h2>
-              <p className="text-sm text-muted-foreground mb-4">Disponibilidade e estadia mínima</p>
-
-              {/* Status pill */}
-              <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 ${availabilityStatus.bg}`}>
-                <span className={`w-2 h-2 rounded-full ${availabilityStatus.dot}`} />
-                <span className={`text-sm font-semibold ${availabilityStatus.color}`}>{availabilityStatus.label}</span>
-              </div>
-
-              {/* Monthly timeline */}
-              <div className="flex items-end gap-1 mb-5">
-                {availabilityTimeline.map((m, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div className={`w-full h-5 rounded-sm transition-colors ${
-                      m.state === 'available'
-                        ? 'bg-green-400'
-                        : m.state === 'current'
-                          ? 'bg-primary/30 ring-1 ring-primary'
-                          : 'bg-muted-foreground/20'
-                    }`} />
-                    <span className={`text-[10px] font-medium ${
-                      m.state === 'available' ? 'text-green-700' : m.state === 'current' ? 'text-primary' : 'text-muted-foreground'
-                    }`}>{m.label}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-4 text-[11px] text-muted-foreground mb-4">
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-400 inline-block" /> Disponível</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-muted-foreground/20 inline-block" /> Ocupado</span>
-              </div>
-
+              <h2 className="text-xl font-bold mb-4">Disponibilidade</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
                   <Calendar className="w-5 h-5 text-primary" />
@@ -407,8 +367,7 @@ export function RoomDetail() {
             </Card>
 
             <Card className="p-6">
-              <h2 className="text-xl font-bold mb-1">A rotina da casa combina contigo?</h2>
-              <p className="text-sm text-muted-foreground mb-4">Equipamentos e comodidades disponíveis</p>
+              <h2 className="text-xl font-bold mb-4">Comodidades da casa</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {property.amenities.wifi && (
                   <div className="flex items-center gap-2">
@@ -451,8 +410,7 @@ export function RoomDetail() {
 
             {property.houseRules && (
               <Card className="p-6">
-                <h2 className="text-xl font-bold mb-1">Regras da casa</h2>
-                <p className="text-sm text-muted-foreground mb-4">O que é permitido e o ambiente do dia-a-dia</p>
+                <h2 className="text-xl font-bold mb-4">Regras da casa</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
                     <span className="text-sm text-muted-foreground">Fumar</span>
@@ -554,49 +512,85 @@ export function RoomDetail() {
             <div className="sticky top-24 space-y-4">
               {!isLandlordOwner && (
                 <Card className="p-6 shadow-lg">
-                  <div className="mb-6">
-                    <div className="flex items-baseline gap-2 mb-1">
+                  <div className="mb-5 pb-4 border-b border-border">
+                    <div className="flex items-baseline gap-1">
                       <span className="text-3xl font-bold text-foreground">€{room.price}</span>
-                      <span className="text-muted-foreground">/mês</span>
+                      <span className="text-muted-foreground text-sm">/mês</span>
                     </div>
                     {room.utilities && room.utilities > 0 ? (
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">+ €{room.utilities}/mês despesas</p>
-                        <p className="text-sm font-semibold text-foreground">
-                          Total: €{room.price + room.utilities}/mês
-                        </p>
-                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        + €{room.utilities} despesas
+                        <span className="ml-1 font-semibold text-foreground">= €{room.price + room.utilities} total</span>
+                      </p>
                     ) : (
-                      <p className="text-sm font-medium text-green-600">Despesas incluídas</p>
+                      <p className="mt-1 text-sm text-green-600 font-medium">Despesas incluídas</p>
                     )}
                   </div>
 
-                  {canShowCompatibility && room.compatibilityScore && (() => {
-                    const score = room.compatibilityScore;
-                    const { label, tone } = getCompatibilityShortLabel(score, room, property);
-                    const toneClass = tone === 'positive'
-                      ? 'bg-green-50 border-green-200 text-green-700'
-                      : tone === 'neutral'
-                        ? 'bg-blue-50 border-blue-200 text-blue-700'
-                        : 'bg-amber-50 border-amber-200 text-amber-700';
-                    return (
-                      <div className={`flex items-center gap-2 mb-4 px-3 py-2.5 rounded-xl border ${toneClass}`}>
-                        <Users className="w-3.5 h-3.5 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-xs font-bold">{score}% compatível</span>
-                          <span className="text-[10px] opacity-80 ml-1.5">· {label}</span>
+                  {canShowCompatibility && (
+                    <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-green-50 rounded-lg border border-green-100">
+                      <Users className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                      <span className="text-xs text-green-700">Compatibilidade</span>
+                      <span className={`ml-auto text-sm font-bold ${
+                        (room.compatibilityScore ?? 0) >= 80 ? 'text-green-700' :
+                        (room.compatibilityScore ?? 0) >= 60 ? 'text-amber-600' : 'text-muted-foreground'
+                      }`}>
+                        {room.compatibilityScore ?? 0}%
+                      </span>
+                    </div>
+                  )}
+
+                  {shouldInviteProfileCompletion && (
+                    <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                      <div className="flex items-start gap-3">
+                        <Users className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                        <div>
+                          <p className="text-sm font-bold text-blue-950">
+                            Completa o teu perfil de convivência
+                          </p>
+                          <p className="mt-1 text-xs leading-relaxed text-blue-800">
+                            Depois do onboarding, a UniRoom desbloqueia compatibilidade personalizada para este quarto.
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
+                            onClick={() => navigate('/onboarding')}
+                          >
+                            Preencher perfil
+                          </Button>
                         </div>
                       </div>
-                    );
-                  })()}
+                    </div>
+                  )}
 
                   <div className="space-y-3">
-                    <Button variant="primary" className="w-full" onClick={handleApply}>
-                      Candidatar-me
-                    </Button>
+                    {existingApplication ? (
+                      <div className={`rounded-xl border p-3.5 ${APP_STATUS_LABELS[existingApplication.status]?.bgCls || 'bg-muted border-border'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Clock className={`w-4 h-4 flex-shrink-0 ${APP_STATUS_LABELS[existingApplication.status]?.textCls || 'text-foreground'}`} />
+                          <span className={`text-sm font-semibold ${APP_STATUS_LABELS[existingApplication.status]?.textCls || 'text-foreground'}`}>
+                            {APP_STATUS_LABELS[existingApplication.status]?.label || 'Candidatura submetida'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {APP_STATUS_LABELS[existingApplication.status]?.description}
+                        </p>
+                        <button
+                          onClick={() => navigate('/applications')}
+                          className="mt-2 text-xs text-primary hover:underline font-medium"
+                        >
+                          Ver as minhas candidaturas →
+                        </button>
+                      </div>
+                    ) : (
+                      <Button variant="primary" className="w-full" onClick={handleApply}>
+                        Candidatar-me
+                      </Button>
+                    )}
                     <Button variant="outline" className="w-full" onClick={handleContact}>
                       <MessageCircle className="w-4 h-4 mr-2" />
-                      Contactar responsável
+                      Enviar mensagem
                     </Button>
                     <Button variant="outline" className="w-full" onClick={handleToggleFavorite}>
                       <Heart className={`w-4 h-4 mr-2 ${isFavorite(room.id) ? 'fill-red-500 text-red-500' : ''}`} />
@@ -619,8 +613,7 @@ export function RoomDetail() {
               )}
 
               <Card className="p-6">
-                <h3 className="font-bold mb-1">Consegues chegar às aulas?</h3>
-              <p className="text-xs text-muted-foreground mb-4">Distância e tempo até à universidade</p>
+                <h3 className="font-bold mb-4">Localização</h3>
                 <div className="mb-4">
                   <LocationMap
                     address={property.address}

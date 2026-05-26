@@ -1,32 +1,35 @@
-import { useMemo, type ReactNode } from 'react';
-import { MapPin, Wallet, Sparkles, ShieldCheck, Star, CheckCircle2, AlertTriangle, Home } from 'lucide-react';
+import { useMemo } from 'react';
+import { MapPin, Wallet, Sparkles, ShieldCheck, Star } from 'lucide-react';
 import { Room, Property } from '../types/property';
 import { Card } from './Card';
-import { useAuth } from '../context/AuthContext';
-import { getProfile } from '../data/mockProfiles';
-import { getCompatibilityInsights } from '../utils/compatibilityInsights';
 
 interface ComfortScorePanelProps {
   room: Room;
   property: Property;
-  canUseCompatibility?: boolean;
 }
 
 interface CategoryScore {
   label: string;
   score: number; // 0–100
-  icon: ReactNode;
+  icon: React.ReactNode;
   detail: string;
 }
 
-function computeScores(room: Room, property: Property, canUseCompatibility: boolean) {
+function computeScores(room: Room, property: Property) {
+  // Compatibility (40 pts)
+  const compat = room.compatibilityScore ?? 70;
+  const compatPts = (compat / 100) * 40;
+
+  // Location — lower distance = better (20 pts)
   const maxDist = 10;
   const locFrac = Math.max(0, Math.min(1, (maxDist - property.distanceToUniversity) / maxDist));
-  const locPts = locFrac * 30;
+  const locPts = locFrac * 20;
 
+  // Price — cheaper relative to 200–500 range (15 pts)
   const priceFrac = Math.max(0, Math.min(1, (500 - room.price) / 300));
-  const pricePts = priceFrac * 25;
+  const pricePts = priceFrac * 15;
 
+  // Amenities count (15 pts)
   const amenityKeys: (keyof typeof property.amenities)[] = [
     'wifi', 'kitchen', 'livingRoom', 'laundry', 'parking', 'heating', 'airConditioning', 'elevator',
   ];
@@ -34,19 +37,24 @@ function computeScores(room: Room, property: Property, canUseCompatibility: bool
   const roomExtras = [room.privateBathroom, room.balcony, room.desk, room.wardrobe].filter(Boolean).length;
   const totalAmenities = amenityCount + roomExtras;
   const maxAmenities = amenityKeys.length + 4;
-  const amenPts = (totalAmenities / maxAmenities) * 25;
+  const amenPts = (totalAmenities / maxAmenities) * 15;
 
+  // Trust (10 pts): verified (6) + utilities (2) + minimumStay short (2)
   const trustPts =
-    (property.verified ? 12 : 0) +
-    (!room.utilities ? 4 : 0) +
-    (room.minimumStay <= 6 ? 4 : 2);
+    (property.verified ? 6 : 0) +
+    (!room.utilities ? 2 : 0) +
+    (room.minimumStay <= 6 ? 2 : 1);
 
-  const compat = room.compatibilityScore ?? 70;
-  const compatibilityBonus = canUseCompatibility ? (compat / 100) * 10 : 0;
-  const total = locPts + pricePts + amenPts + trustPts + compatibilityBonus;
+  const total = compatPts + locPts + pricePts + amenPts + trustPts;
   const score10 = Math.round(Math.min(10, total / 10) * 10) / 10;
 
   const categories: CategoryScore[] = [
+    {
+      label: 'Compatibilidade',
+      score: compat,
+      icon: <Sparkles className="w-3.5 h-3.5" />,
+      detail: compat >= 80 ? 'Excelente ajuste ao teu perfil' : compat >= 60 ? 'Bom ajuste ao teu perfil' : 'Compatibilidade moderada',
+    },
     {
       label: 'Localização',
       score: Math.round(locFrac * 100),
@@ -67,20 +75,11 @@ function computeScores(room: Room, property: Property, canUseCompatibility: bool
     },
     {
       label: 'Confiança',
-      score: Math.round((trustPts / 20) * 100),
+      score: Math.round((trustPts / 10) * 100),
       icon: <ShieldCheck className="w-3.5 h-3.5" />,
       detail: property.verified ? 'Senhorio verificado UniRoom' : 'Ainda a verificar',
     },
   ];
-
-  if (canUseCompatibility) {
-    categories.unshift({
-      label: 'Compatibilidade',
-      score: compat,
-      icon: <Sparkles className="w-3.5 h-3.5" />,
-      detail: compat >= 80 ? 'Excelente ajuste ao teu perfil' : compat >= 60 ? 'Bom ajuste ao teu perfil' : 'Compatibilidade moderada',
-    });
-  }
 
   return { score10, categories };
 }
@@ -99,25 +98,24 @@ function barColor(score: number): string {
   return 'bg-red-400';
 }
 
-export function ComfortScorePanel({ room, property, canUseCompatibility = false }: ComfortScorePanelProps) {
-  const { user } = useAuth();
+function buildReasons(room: Room, property: Property, score10: number): string[] {
+  const reasons: string[] = [];
+  if (room.compatibilityScore && room.compatibilityScore >= 80) reasons.push(`${room.compatibilityScore}% de compatibilidade com o teu perfil`);
+  if (property.distanceToUniversity <= 2) reasons.push(`A apenas ${property.distanceToUniversity}km da universidade`);
+  if (property.verified) reasons.push('Senhorio verificado pela UniRoom');
+  if (room.privateBathroom) reasons.push('Casa de banho privativa incluída');
+  if (property.amenities.wifi) reasons.push('Wi-Fi incluído');
+  if (!room.utilities) reasons.push('Despesas incluídas no preço');
+  if (room.balcony) reasons.push('Varanda disponível');
+  if (room.price <= 300) reasons.push('Preço abaixo da média de mercado');
+  if (reasons.length === 0 && score10 >= 5) reasons.push('Quarto com bom equilíbrio de características');
+  return reasons.slice(0, 4);
+}
 
-  const profile = useMemo(() => {
-    if (!canUseCompatibility || !user?.id) return null;
-    return getProfile(user.id);
-  }, [canUseCompatibility, user?.id]);
-
-  const { score10, categories } = useMemo(
-    () => computeScores(room, property, canUseCompatibility),
-    [room, property, canUseCompatibility]
-  );
-
+export function ComfortScorePanel({ room, property }: ComfortScorePanelProps) {
+  const { score10, categories } = useMemo(() => computeScores(room, property), [room, property]);
   const label = getLabel(score10);
-
-  const insights = useMemo(() => {
-    if (!canUseCompatibility || !room.compatibilityScore) return null;
-    return getCompatibilityInsights(room, property, room.compatibilityScore, profile);
-  }, [canUseCompatibility, room, property, profile]);
+  const reasons = useMemo(() => buildReasons(room, property, score10), [room, property, score10]);
 
   return (
     <Card className="p-5 space-y-4">
@@ -135,9 +133,7 @@ export function ComfortScorePanel({ room, property, canUseCompatibility = false 
         <div>
           <p className={`font-bold text-sm ${label.color}`}>{label.text}</p>
           <p className="text-xs text-muted-foreground leading-snug mt-0.5">
-            {canUseCompatibility
-              ? 'Com base nas características do quarto e no teu perfil.'
-              : 'Com base na localização, preço, comodidades e confiança.'}
+            Calculado com base nas características do quarto e do teu perfil.
           </p>
         </div>
       </div>
@@ -164,98 +160,19 @@ export function ComfortScorePanel({ room, property, canUseCompatibility = false 
         ))}
       </div>
 
-      {/* Compatibility insights — only when profile is active */}
-      {canUseCompatibility && insights ? (
-        <div className="pt-3 border-t border-border space-y-4">
-          {/* Natural summary */}
-          <p className="text-xs text-muted-foreground leading-relaxed italic">
-            "{insights.naturalSummary}"
-          </p>
-
-          {/* Strengths */}
-          {insights.strengths.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1.5 mb-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                <p className="text-xs font-semibold text-green-700">Pontos fortes</p>
-              </div>
-              <ul className="space-y-1.5">
-                {insights.strengths.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <span className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded-full bg-green-100 flex items-center justify-center">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
-                    </span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Conflicts */}
-          {insights.conflicts.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1.5 mb-2">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                <p className="text-xs font-semibold text-amber-700">Possíveis pontos de atrito</p>
-              </div>
-              <ul className="space-y-1.5">
-                {insights.conflicts.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <span className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded-full bg-amber-100 flex items-center justify-center">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    </span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Protective rules */}
-          {insights.protectiveRules.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1.5 mb-2">
-                <Home className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                <p className="text-xs font-semibold text-foreground">Regras que reduzem risco</p>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {insights.protectiveRules.map((rule, i) => (
-                  <span
-                    key={i}
-                    className="inline-block text-[10px] px-2 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium"
-                  >
-                    {rule}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Generic reasons when no profile — just highlight room features */
+      {/* Reasons */}
+      {reasons.length > 0 && (
         <div className="pt-3 border-t border-border">
-          <p className="text-xs font-semibold text-foreground mb-2">Destaques deste quarto</p>
+          <p className="text-xs font-semibold text-foreground mb-2">Porque recomendamos este quarto</p>
           <ul className="space-y-1.5">
-            {[
-              property.distanceToUniversity <= 2 && `A ${Math.round(property.distanceToUniversity * 13)}min a pé das aulas`,
-              property.verified && 'Anúncio verificado pela UniRoom',
-              room.privateBathroom && 'Casa de banho privativa',
-              property.amenities.wifi && 'Wi-Fi incluído',
-              !room.utilities && 'Despesas incluídas no preço',
-              room.desk && 'Secretária de trabalho',
-              room.price <= 300 && 'Preço abaixo da média',
-            ]
-              .filter(Boolean)
-              .slice(0, 4)
-              .map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <span className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  </span>
-                  {item}
-                </li>
-              ))}
+            {reasons.map((reason, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <span className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                </span>
+                {reason}
+              </li>
+            ))}
           </ul>
         </div>
       )}

@@ -30,52 +30,21 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
 import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import { getAverageRatingBreakdown, getVerificationStatus } from '../data/mockTrust';
-import { getCompatibilityShortLabel } from '../utils/compatibilityInsights';
 
-function getAvailabilityLabel(
-  date: Date,
-  status?: string,
-): { text: string; cls: string; icon: 'available' | 'soon' | 'reserved' | 'occupied' | 'future' } {
+function getAvailabilityLabel(date: Date): { text: string; cls: string } {
   const now = new Date();
   const availableDate = new Date(date);
   const diffDays = Math.ceil((availableDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return { text: 'Disponível agora', cls: 'text-green-600' };
+  if (diffDays <= 14) return { text: 'Disponível em breve', cls: 'text-green-600' };
+
   const month = availableDate.toLocaleDateString('pt-PT', { month: 'long' });
   const year = availableDate.getFullYear();
   const sameYear = year === now.getFullYear();
-  const monthLabel = sameYear ? month : `${month} de ${year}`;
 
-  if (status === 'occupied') {
-    if (diffDays <= 0) return { text: 'Ocupado', cls: 'text-muted-foreground', icon: 'occupied' };
-    return { text: `Ocupado · livre em ${monthLabel}`, cls: 'text-muted-foreground', icon: 'occupied' };
-  }
-  if (status === 'reserved') {
-    if (diffDays <= 0) return { text: 'Reservado', cls: 'text-amber-600', icon: 'reserved' };
-    return { text: `Reservado até ${monthLabel}`, cls: 'text-amber-600', icon: 'reserved' };
-  }
-  if (diffDays <= 0) return { text: 'Disponível já', cls: 'text-green-600', icon: 'available' };
-  if (diffDays <= 14) return { text: 'Disponível em breve', cls: 'text-green-600', icon: 'soon' };
-  if (diffDays <= 90) return { text: `Livre a partir de ${monthLabel}`, cls: 'text-amber-600', icon: 'future' };
-  return { text: `Livre a partir de ${monthLabel}`, cls: 'text-muted-foreground', icon: 'future' };
-}
-
-function getEntryMonthMatch(
-  availableFrom: Date,
-  roomStatus: string,
-  entryMonth: string,
-): { matches: boolean; label: string } | null {
-  if (!entryMonth) return null;
-  const [y, m] = entryMonth.split('-').map(Number);
-  const entryDate = new Date(y, m - 1, 1);
-  const availDate = new Date(availableFrom);
-  const monthLabel = entryDate.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' });
-  if (roomStatus === 'occupied' || roomStatus === 'reserved') {
-    return { matches: false, label: `Indisponível para ${monthLabel}` };
-  }
-  const matches = availDate <= entryDate;
-  return {
-    matches,
-    label: matches ? `Disponível para ${monthLabel}` : `Só livre após ${monthLabel}`,
-  };
+  if (diffDays <= 90) return { text: `A partir de ${month}${sameYear ? '' : ` de ${year}`}`, cls: 'text-amber-600' };
+  return { text: `A partir de ${month} de ${year}`, cls: 'text-muted-foreground' };
 }
 
 const walkMinutes = (km: number) => Math.round(km * 13);
@@ -92,10 +61,8 @@ interface RoomCardProps {
   variant?: 'default' | 'public' | 'management' | 'compact';
   displayMode?: 'grid' | 'list';
   showFavorite?: boolean;
-  showPropertyContext?: boolean;
   availableRooms?: number;
   onFavoriteRequiresAuth?: () => void;
-  entryMonth?: string;
   compareProps?: CompareProps;
   managementActions?: {
     statusLabel: string;
@@ -119,10 +86,8 @@ export function RoomCard({
   variant = 'default',
   displayMode = 'grid',
   showFavorite = true,
-  showPropertyContext = true,
   availableRooms,
   onFavoriteRequiresAuth,
-  entryMonth,
   compareProps,
   managementActions,
 }: RoomCardProps) {
@@ -170,8 +135,7 @@ export function RoomCard({
 
   const roomTypeBadge = getRoomTypeBadge();
   const roomRating = getAverageRatingBreakdown(room.id);
-  const availability = getAvailabilityLabel(room.availableFrom, room.status);
-  const entryMatch = getEntryMonthMatch(room.availableFrom, room.status, entryMonth ?? '');
+  const availability = getAvailabilityLabel(room.availableFrom);
   const walk = walkMinutes(property.distanceToUniversity);
   const totalPrice = room.price + (room.utilities || 0);
 
@@ -232,25 +196,23 @@ export function RoomCard({
               </div>
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mb-2">
-                {showPropertyContext && (
-                  <button
-                    type="button"
-                    onClick={handlePropertyClick}
-                    className="flex items-center gap-1 font-medium text-primary hover:underline text-left"
-                  >
-                    <Home className="w-3 h-3 flex-shrink-0" />
-                    Este quarto faz parte de: {property.title}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handlePropertyClick}
+                  className="flex items-center gap-1 font-medium text-primary hover:underline text-left"
+                >
+                  <Home className="w-3 h-3 flex-shrink-0" />
+                  Este quarto faz parte de: {property.title}
+                </button>
 
                 <span className="flex items-center gap-1">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
                   {property.zone}, {property.city}
                 </span>
 
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-semibold">
-                  <Navigation className="w-2.5 h-2.5 flex-shrink-0" />
-                  {walk}min a pé
+                <span className="flex items-center gap-1">
+                  <Navigation className="w-3 h-3 flex-shrink-0" />
+                  ~{walk}min a pé · {property.distanceToUniversity}km
                 </span>
 
                 {room.size && (
@@ -299,16 +261,6 @@ export function RoomCard({
                   {availability.text}
                 </span>
 
-                {entryMatch && (
-                  <span className={`flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded-full ${
-                    entryMatch.matches
-                      ? 'bg-green-50 text-green-700'
-                      : 'bg-red-50 text-red-600'
-                  }`}>
-                    {entryMatch.matches ? '✓' : '✗'} {entryMatch.label}
-                  </span>
-                )}
-
                 {roomRating.total > 0 && (
                   <span className="flex items-center gap-1 text-amber-600">
                     <Star className="w-3 h-3 fill-amber-400" />
@@ -316,15 +268,11 @@ export function RoomCard({
                   </span>
                 )}
 
-                {canShowCompatibility && room.compatibilityScore && (() => {
-                  const { label, tone } = getCompatibilityShortLabel(room.compatibilityScore, room, property);
-                  const cls = tone === 'positive' ? 'text-green-700' : tone === 'neutral' ? 'text-blue-700' : 'text-amber-700';
-                  return (
-                    <span className={`font-semibold ${cls}`}>
-                      {room.compatibilityScore}% · {label}
-                    </span>
-                  );
-                })()}
+                {canShowCompatibility && (
+                  <span className={`font-medium ${compatibilityTone}`}>
+                    {room.compatibilityScore}% compat.
+                  </span>
+                )}
 
                 {isVerifiedLandlord && (
                   <span className="flex items-center gap-1 text-blue-600">
@@ -343,10 +291,10 @@ export function RoomCard({
 
                 {room.utilities && room.utilities > 0 ? (
                   <p className="text-[10px] text-muted-foreground whitespace-nowrap">
-                    +€{room.utilities} desp. · <span className="font-semibold text-foreground">€{totalPrice} total</span>
+                    +€{room.utilities} desp. · €{totalPrice} total
                   </p>
                 ) : (
-                  <p className="text-[10px] text-green-600 font-medium">Despesas incluídas</p>
+                  <p className="text-[10px] text-green-600">Despesas incluídas</p>
                 )}
               </div>
 
@@ -453,24 +401,22 @@ export function RoomCard({
           {room.title}
         </h3>
 
-        {showPropertyContext && (
-          <button
-            type="button"
-            onClick={handlePropertyClick}
-            className="mb-3 flex w-full items-start gap-2 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-left text-xs text-primary transition-colors hover:border-primary/30 hover:bg-primary/10"
-          >
-            <Home className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-            <span className="min-w-0">
-              <span className="block font-semibold text-primary">Este quarto faz parte de:</span>
-              <span className="line-clamp-1 text-foreground">{property.title}</span>
-              {availableRooms !== undefined && (
-                <span className="mt-0.5 block text-[11px] text-green-700">
-                  {availableRooms} quarto{availableRooms !== 1 ? 's' : ''} livre{availableRooms !== 1 ? 's' : ''}
-                </span>
-              )}
-            </span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handlePropertyClick}
+          className="mb-3 flex w-full items-start gap-2 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-left text-xs text-primary transition-colors hover:border-primary/30 hover:bg-primary/10"
+        >
+          <Home className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+          <span className="min-w-0">
+            <span className="block font-semibold text-primary">Este quarto faz parte de:</span>
+            <span className="line-clamp-1 text-foreground">{property.title}</span>
+            {availableRooms !== undefined && (
+              <span className="mt-0.5 block text-[11px] text-green-700">
+                {availableRooms} quarto{availableRooms !== 1 ? 's' : ''} livre{availableRooms !== 1 ? 's' : ''}
+              </span>
+            )}
+          </span>
+        </button>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted-foreground mb-3">
           <span className="flex items-center gap-1.5">
@@ -478,9 +424,9 @@ export function RoomCard({
             {property.zone}, {property.city}
           </span>
 
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
-            <Navigation className="w-3 h-3 flex-shrink-0" />
-            {walk}min a pé
+          <span className="flex items-center gap-1.5">
+            <Navigation className="w-3.5 h-3.5 flex-shrink-0" />
+            ~{walk}min a pé · {property.distanceToUniversity}km
           </span>
 
           {room.size && (
@@ -523,20 +469,9 @@ export function RoomCard({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <span className={`flex items-center gap-1.5 text-sm font-medium ${availability.cls}`}>
-            <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />
-            {availability.text}
-          </span>
-          {entryMatch && (
-            <span className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
-              entryMatch.matches
-                ? 'bg-green-50 text-green-700'
-                : 'bg-red-50 text-red-600'
-            }`}>
-              {entryMatch.matches ? '✓' : '✗'} {entryMatch.label}
-            </span>
-          )}
+        <div className={`flex items-center gap-1.5 text-sm font-medium mb-4 ${availability.cls}`}>
+          <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" />
+          {availability.text}
         </div>
 
         <div className="flex items-end justify-between pt-3 border-t border-border">
@@ -548,48 +483,34 @@ export function RoomCard({
 
             {room.utilities && room.utilities > 0 ? (
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                +€{room.utilities} desp. ·{' '}
-                <span className="font-semibold text-foreground">€{totalPrice} total/mês</span>
+                +€{room.utilities} desp. · total €{totalPrice}/mês
               </p>
             ) : (
-              <p className="text-[11px] text-green-600 mt-0.5 font-medium">Despesas incluídas</p>
+              <p className="text-[11px] text-green-600 mt-0.5">Despesas incluídas</p>
             )}
 
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              {roomRating.total > 0 && (
-                <span className="flex items-center gap-1">
-                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span className="text-xs font-semibold text-foreground">{roomRating.average.toFixed(1)}</span>
-                  <span className="text-xs text-muted-foreground">({roomRating.total})</span>
-                </span>
-              )}
-              {isVerifiedLandlord && (
-                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3 h-3" /> Senhorio verificado
-                </span>
-              )}
-              {!roomRating.total && !isVerifiedLandlord && property.verified && (
-                <span className="inline-flex items-center gap-0.5 text-[10px] text-blue-600">
-                  <ShieldCheck className="w-3 h-3" /> Anúncio verificado
-                </span>
-              )}
-            </div>
+            {roomRating.total > 0 ? (
+              <div className="flex items-center gap-1 mt-1">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                <span className="text-xs font-semibold text-foreground">{roomRating.average.toFixed(1)}</span>
+                <span className="text-xs text-muted-foreground">({roomRating.total})</span>
+              </div>
+            ) : property.verified ? (
+              <div className="flex items-center gap-1 mt-1">
+                <ShieldCheck className="w-3 h-3 text-blue-600" />
+                <span className="text-xs text-blue-600">Anúncio verificado</span>
+              </div>
+            ) : null}
           </div>
 
-          {canShowCompatibility && room.compatibilityScore && (() => {
-            const { label, tone } = getCompatibilityShortLabel(room.compatibilityScore, room, property);
-            const toneStyle = tone === 'positive'
-              ? 'bg-green-50 border-green-200 text-green-700'
-              : tone === 'neutral'
-                ? 'bg-blue-50 border-blue-200 text-blue-700'
-                : 'bg-amber-50 border-amber-200 text-amber-700';
-            return (
-              <div className={`w-full mt-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold flex items-center justify-between gap-2 ${toneStyle}`}>
-                <span>{room.compatibilityScore}% compatível</span>
-                <span className="font-normal opacity-80 text-right leading-tight">{label}</span>
+          {canShowCompatibility && (
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">Compatibilidade</div>
+              <div className={`text-sm font-bold ${compatibilityTone}`}>
+                {room.compatibilityScore}%
               </div>
-            );
-          })()}
+            </div>
+          )}
         </div>
 
         {isManagement && managementActions ? (
