@@ -538,9 +538,9 @@ function GeneralMapView({
 
           <div className="p-4 border-b border-border bg-muted/30 space-y-3">
             <div>
-              <label className="text-xs font-bold text-muted-foreground">Tipo de imóvel</label>
+              <label className="text-xs font-bold text-muted-foreground">Tipo de quarto</label>
               <div className="mt-1 rounded-xl border border-border bg-white px-3 py-2 text-sm font-semibold">
-                Quartos
+                Quarto universitário
               </div>
             </div>
 
@@ -1117,15 +1117,14 @@ export function SearchRooms() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <h2 className="text-sm font-bold text-foreground">
-                      Completa o perfil para ver compatibilidade personalizada
+                      Ativa compatibilidade para ver casas que combinam contigo
                     </h2>
                     <UserCheck className="w-4 h-4 text-primary" />
                   </div>
 
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    Por agora, os resultados estão ordenados por distância, preço e confiança.
-                    Depois do onboarding, desbloqueias percentagens de compatibilidade e filtros
-                    mais úteis para convivência.
+                    Por agora os resultados ordenam por distância, preço e confiança.
+                    Após o onboarding vês % de compatibilidade com a rotina e hábitos de cada casa.
                   </p>
                 </div>
               </div>
@@ -1139,6 +1138,16 @@ export function SearchRooms() {
               </Button>
             </div>
           </Card>
+        )}
+
+        {results.length > 0 && (
+          <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+            <GraduationCap className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-foreground leading-relaxed">
+              <span className="font-semibold">A procurar quarto perto da {universityLabel}?</span>
+              {' '}Prioriza o tempo a pé até às aulas, o custo total com despesas, as regras da casa e a data real de entrada.
+            </p>
+          </div>
         )}
 
         {!loading && results.length > 0 && (
@@ -1162,23 +1171,23 @@ export function SearchRooms() {
                   {results.length} quarto{results.length !== 1 ? 's' : ''} em {resultStats.propertyCount} casa{resultStats.propertyCount !== 1 ? 's' : ''}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  Pesquisa perto da {universityLabel}
-                  {filters.cities.length > 0 ? ` em ${filters.cities.join(', ')}` : ''}
+                  Perto da {universityLabel}
+                  {filters.cities.length > 0 ? ` · ${filters.cities.join(', ')}` : ''}
                 </p>
               </div>
 
               <div className="grid grid-cols-3 gap-2 sm:min-w-[420px]">
                 <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
-                  <p className="text-[11px] text-muted-foreground">Desde</p>
-                  <p className="text-sm font-bold text-foreground">€{resultStats.minPrice}</p>
+                  <p className="text-[11px] text-muted-foreground">Renda desde</p>
+                  <p className="text-sm font-bold text-foreground">€{resultStats.minPrice}/mês</p>
                 </div>
                 <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
                   <p className="text-[11px] text-muted-foreground">Mais perto</p>
-                  <p className="text-sm font-bold text-foreground">{resultStats.closestWalk}min</p>
+                  <p className="text-sm font-bold text-foreground">{resultStats.closestWalk}min a pé</p>
                 </div>
                 <div className="rounded-xl border border-border bg-muted/20 px-3 py-2">
-                  <p className="text-[11px] text-muted-foreground">Confiança</p>
-                  <p className="text-sm font-bold text-foreground">{resultStats.verifiedCount} verif.</p>
+                  <p className="text-[11px] text-muted-foreground">Verificados</p>
+                  <p className="text-sm font-bold text-foreground">{resultStats.verifiedCount} anúncios</p>
                 </div>
               </div>
             </div>
@@ -1555,6 +1564,7 @@ export function SearchRooms() {
                     availableRooms={availableRooms}
                     variant="public"
                     displayMode="list"
+                    entryMonth={filters.entryMonth || undefined}
                     compareProps={{
                       isComparing: isInCompare(room.id),
                       onToggle: event => {
@@ -1575,6 +1585,7 @@ export function SearchRooms() {
                     property={property}
                     availableRooms={availableRooms}
                     variant="public"
+                    entryMonth={filters.entryMonth || undefined}
                     compareProps={{
                       isComparing: isInCompare(room.id),
                       onToggle: event => {

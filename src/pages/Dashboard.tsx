@@ -188,14 +188,14 @@ export function Dashboard() {
                 <h1 className="text-3xl font-bold text-foreground mb-1">
                   {getGreeting()}, {user?.name?.split(' ')[0]}!
                 </h1>
-                <p className="text-base text-muted-foreground">Dashboard do Estudante</p>
+                <p className="text-base text-muted-foreground">A tua área de alojamento universitário</p>
               </div>
             </div>
 
             <Link to="/search">
               <Button variant="primary" size="lg">
                 <Search className="w-5 h-5" />
-                Procurar alojamento
+                Procurar quarto
               </Button>
             </Link>
           </div>
@@ -212,15 +212,14 @@ export function Dashboard() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <h2 className="text-base font-bold text-foreground">
-                      Completa o perfil para desbloquear compatibilidade
+                      Ativa compatibilidade para encontrar a casa certa
                     </h2>
                     <UserCheck className="w-4 h-4 text-primary" />
                   </div>
 
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    Ainda estás a ver sugestões ordenadas por verificação, distância e preço.
-                    Depois de completares o perfil de convivência, a UniRoom passa a mostrar
-                    compatibilidade personalizada nos quartos.
+                    Por agora mostras-te sugestões por verificação, distância e preço.
+                    Com o perfil completo, vês % de compatibilidade com a rotina e ambiente de cada casa.
                   </p>
                 </div>
               </div>
@@ -272,11 +271,11 @@ export function Dashboard() {
         <div className="mb-10">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-bold text-foreground">Sugestões para ti</h2>
+              <h2 className="text-2xl font-bold text-foreground">Quartos para ti</h2>
               <p className="text-sm text-muted-foreground">
                 {canUseCompatibility
-                  ? 'Com base no teu perfil de compatibilidade'
-                  : 'Quartos verificados, próximos e dentro do teu orçamento'}
+                  ? 'Ordenados por compatibilidade com o teu perfil'
+                  : 'Verificados, perto da universidade e dentro do orçamento'}
               </p>
             </div>
 
@@ -301,12 +300,12 @@ export function Dashboard() {
               <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
                 <HomeIcon className="w-10 h-10 text-accent" />
               </div>
-              <h3 className="text-xl font-bold mb-3">Sem sugestões dentro do orçamento</h3>
+              <h3 className="text-xl font-bold mb-3">Sem quartos dentro do orçamento</h3>
               <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                Não encontrámos alojamentos dentro do teu orçamento máximo. Podes ajustar os filtros ou ver todas as opções disponíveis.
+                Não encontrámos quartos dentro do teu orçamento máximo. Podes ajustar os filtros ou ver todas as opções perto da universidade.
               </p>
               <Link to="/search">
-                <Button variant="primary">Ver todas as opções</Button>
+                <Button variant="primary">Explorar todos os quartos</Button>
               </Link>
             </Card>
           )}
@@ -376,9 +375,9 @@ export function Dashboard() {
                 <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
                   <HomeIcon className="w-8 h-8 text-accent" />
                 </div>
-                <p className="text-muted-foreground mb-4">Ainda não tens um alojamento ativo.</p>
+                <p className="text-muted-foreground mb-4">Ainda não tens um quarto ativo. Encontra a tua casa perto da universidade.</p>
                 <Link to="/search">
-                  <Button variant="primary">Procurar alojamento</Button>
+                  <Button variant="primary">Procurar quarto</Button>
                 </Link>
               </div>
             )}
@@ -396,13 +395,13 @@ export function Dashboard() {
 
             <p className="text-muted-foreground mb-6">
               {favoritesCount > 0
-                ? `Tens ${favoritesCount} ${favoritesCount === 1 ? 'quarto guardado' : 'quartos guardados'}.`
-                : 'Ainda não guardaste nenhum quarto.'}
+                ? `Tens ${favoritesCount} ${favoritesCount === 1 ? 'quarto guardado' : 'quartos guardados'} para comparar.`
+                : 'Guarda quartos que te interessam para comparar mais tarde.'}
             </p>
 
             <Link to="/favorites">
               <Button variant="secondary">
-                {favoritesCount > 0 ? 'Ver favoritos' : 'Explorar alojamentos'}
+                {favoritesCount > 0 ? 'Ver favoritos' : 'Explorar quartos'}
               </Button>
             </Link>
           </Card>
@@ -417,13 +416,13 @@ export function Dashboard() {
 
             <p className="text-muted-foreground mb-6">
               {applicationsCount > 0
-                ? `Tens ${applicationsCount} ${applicationsCount === 1 ? 'candidatura ativa' : 'candidaturas ativas'}.`
-                : 'Ainda não tens candidaturas ativas.'}
+                ? `Tens ${applicationsCount} ${applicationsCount === 1 ? 'candidatura ativa' : 'candidaturas ativas'} em curso.`
+                : 'Ainda não candidataste a nenhum quarto.'}
             </p>
 
             <Link to={applicationsCount > 0 ? '/applications' : '/search'}>
               <Button variant="primary">
-                {applicationsCount > 0 ? 'Ver candidaturas' : 'Procurar alojamento'}
+                {applicationsCount > 0 ? 'Ver candidaturas' : 'Procurar quarto'}
               </Button>
             </Link>
           </Card>

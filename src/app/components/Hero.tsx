@@ -55,15 +55,15 @@ export function Hero({ onSearch }: HeroProps) {
         <div className="mx-auto max-w-4xl text-center text-white">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-4 py-2 text-sm font-semibold backdrop-blur">
             <ShieldCheck className="h-4 w-4" />
-            Alojamento universitário verificado
+            Quartos verificados perto da tua universidade
           </div>
 
           <h1 className="text-3xl md:text-5xl font-bold tracking-tight">
-            Procura quartos antes de decidires onde viver
+            Encontra o quarto certo perto da tua universidade
           </h1>
 
           <p className="mx-auto mt-4 max-w-2xl text-base md:text-lg leading-relaxed text-white/85">
-            Encontra quartos perto da tua instituição, compara preços e vê casas com informação clara antes de marcares visita.
+            Vê distância a pé, regras da casa, compatibilidade com os moradores e disponibilidade real — antes de perderes tempo com visitas.
           </p>
         </div>
 
@@ -158,7 +158,7 @@ export function Hero({ onSearch }: HeroProps) {
                   >
                     <option value="private">Quarto privado</option>
                     <option value="shared">Quarto partilhado</option>
-                    <option value="studio">Estúdio</option>
+                    <option value="studio">Estúdio independente</option>
                     <option value="any">Qualquer tipo</option>
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -186,7 +186,7 @@ export function Hero({ onSearch }: HeroProps) {
 
                 <Link to="/register" className="sm:w-auto">
                   <Button type="button" variant="outline" className="h-12 w-full rounded-xl whitespace-nowrap">
-                    Criar conta
+                    Criar conta gratuita
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>

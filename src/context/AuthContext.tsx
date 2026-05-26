@@ -18,7 +18,6 @@ type DbProfile = {
   status?: 'active' | 'suspended' | 'blocked';
   verified?: boolean;
   onboarding_completed?: boolean;
-  profile_completeness?: User['profileCompleteness'];
   created_at?: string;
 };
 
@@ -36,8 +35,7 @@ function initializeStorage() {
 }
 
 function mapDbProfile(profile: DbProfile): User {
-  const completeness = profile.profile_completeness || defaultCompleteness;
-  const isStudent = profile.type === 'student';
+  const onboardingDone = Boolean(profile.onboarding_completed);
 
   return {
     id: profile.id,
@@ -46,8 +44,8 @@ function mapDbProfile(profile: DbProfile): User {
     type: profile.type,
     verified: Boolean(profile.verified),
     status: profile.status || 'active',
-    onboardingCompleted: isStudent || Boolean(profile.onboarding_completed) || completeness.overall >= 80,
-    profileCompleteness: completeness,
+    onboardingCompleted: onboardingDone,
+    profileCompleteness: defaultCompleteness,
     createdAt: profile.created_at ? new Date(profile.created_at) : new Date(),
   };
 }
@@ -70,7 +68,7 @@ async function fetchSupabaseProfile(userId: string, fallbackEmail?: string): Pro
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,email,full_name,type,status,verified,onboarding_completed,profile_completeness,created_at')
+    .select('id,email,full_name,type,status,verified,onboarding_completed,created_at')
     .eq('id', userId)
     .maybeSingle();
 
@@ -344,7 +342,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .update({
             full_name: profileToSave.personal.fullName || user.name,
             onboarding_completed: true,
-            profile_completeness: profileToSave.completeness,
           })
           .eq('id', user.id),
       ]);

@@ -321,6 +321,43 @@ function RoomCard({ room, reservedByName, onEdit, onPause, onReactivate }: {
         </div>
       )}
 
+      {/* Availability microcopy */}
+      {(() => {
+        const avDate = new Date(room.availableFrom);
+        const now = new Date();
+        const diffDays = Math.ceil((avDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const monthLabel = avDate.toLocaleDateString('pt-PT', { month: 'long' });
+        if (room.status === 'occupied' && diffDays > 0) {
+          const isImminentAlert = diffDays <= 30;
+          return (
+            <div className={`flex flex-col gap-0.5 px-3 py-2 rounded-lg border text-xs ${isImminentAlert ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-muted/50 border-border text-muted-foreground'}`}>
+              <span className="font-medium">Este quarto fica livre em {monthLabel}</span>
+              {isImminentAlert
+                ? <span>Lembrete ativo · podes preparar a republicação</span>
+                : <span>Podes preparar a republicação antecipadamente</span>
+              }
+            </div>
+          );
+        }
+        if (room.status === 'available' && diffDays <= 0) {
+          return (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg border bg-green-50 border-green-200 text-xs text-green-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" />
+              <span className="font-medium">Disponível já — pronto para novo inquilino</span>
+            </div>
+          );
+        }
+        if (room.status === 'available' && diffDays > 0) {
+          return (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg border bg-muted/50 border-border text-xs text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block flex-shrink-0" />
+              Livre a partir de {monthLabel}
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       <div className="flex items-center gap-2 pt-1 flex-wrap">
         <button
           onClick={() => navigate(`/room/${room.id}`)}

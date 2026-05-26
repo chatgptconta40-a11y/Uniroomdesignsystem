@@ -6,9 +6,11 @@ import {
   Check,
   Save,
   Eye,
+  EyeOff,
   Plus,
   Trash2,
   Pencil,
+  Copy,
   Home,
   BedDouble,
   Shield,
@@ -575,6 +577,17 @@ export function NewListing() {
     toast.success('Quarto removido');
   };
 
+  const handleDuplicateRoom = (room: RoomDraft) => {
+    const duplicate: RoomDraft = {
+      ...room,
+      tempId: Math.random().toString(36).slice(2),
+      title: `${room.title} (cópia)`,
+      publishNow: false,
+    };
+    setRooms(prev => [...prev, duplicate]);
+    toast.success(`"${duplicate.title}" duplicado — fica em rascunho`);
+  };
+
   const toggleRoomPublish = (tempId: string) => {
     setRooms(prev => prev.map(r =>
       r.tempId === tempId ? { ...r, publishNow: !r.publishNow } : r,
@@ -839,7 +852,7 @@ export function NewListing() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-foreground mb-1">Detalhes da propriedade</h2>
-                <p className="text-sm text-muted-foreground">Informação da casa ou apartamento que irás arrendar por quartos.</p>
+                <p className="text-sm text-muted-foreground">Informação geral da casa. Os quartos, rendas e disponibilidades serão definidos individualmente no passo seguinte.</p>
               </div>
 
               <div>
@@ -972,6 +985,12 @@ export function NewListing() {
                       <p className="text-xs text-muted-foreground">Água, luz, gás, internet incluídos na renda</p>
                     </div>
                   </button>
+                  {property.utilitiesIncluded && (
+                    <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
+                      <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-green-700">Os estudantes verão <strong>"Despesas incluídas"</strong> em destaque nos teus quartos — aumenta a visibilidade do anúncio.</p>
+                    </div>
+                  )}
                   <input
                     className={inputCls()}
                     value={property.utilitiesNotes}
@@ -1044,13 +1063,20 @@ export function NewListing() {
                 <div>
                   <h2 className="text-xl font-bold text-foreground mb-1">Quartos</h2>
                   <p className="text-sm text-muted-foreground">
-                    Adiciona cada quarto individualmente com preço, características e disponibilidade.
+                    Cada quarto tem renda, disponibilidade e estado de publicação próprios e independentes.
                   </p>
                 </div>
                 <Button onClick={() => setShowRoomModal(true)} size="sm">
                   <Plus className="w-4 h-4 mr-1.5" />
                   Novo quarto
                 </Button>
+              </div>
+
+              <div className="flex items-start gap-2.5 p-3 bg-blue-50/70 border border-blue-100 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-700">
+                  Podes publicar alguns quartos agora e guardar outros como rascunho — por exemplo, se um quarto está ocupado ou ainda não está pronto para receber candidatos.
+                </p>
               </div>
 
               {rooms.length === 0 ? (
@@ -1096,10 +1122,24 @@ export function NewListing() {
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button
                           onClick={() => toggleRoomPublish(room.tempId)}
-                          title="Alternar publicar/rascunho"
-                          className="w-8 h-8 rounded-lg border border-border hover:bg-primary/5 flex items-center justify-center transition-colors"
+                          title={room.publishNow ? 'Mover para rascunho' : 'Marcar para publicar'}
+                          className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
+                            room.publishNow
+                              ? 'border-green-200 bg-green-50 hover:bg-green-100'
+                              : 'border-border hover:bg-primary/5'
+                          }`}
                         >
-                          <Eye className="w-4 h-4 text-muted-foreground" />
+                          {room.publishNow
+                            ? <Eye className="w-4 h-4 text-green-600" />
+                            : <EyeOff className="w-4 h-4 text-muted-foreground" />
+                          }
+                        </button>
+                        <button
+                          onClick={() => handleDuplicateRoom(room)}
+                          title="Duplicar quarto"
+                          className="w-8 h-8 rounded-lg border border-border hover:bg-muted flex items-center justify-center transition-colors"
+                        >
+                          <Copy className="w-4 h-4 text-muted-foreground" />
                         </button>
                         <button
                           onClick={() => setEditingRoom(room)}
@@ -1145,7 +1185,7 @@ export function NewListing() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-foreground mb-1">Regras da casa</h2>
-                <p className="text-sm text-muted-foreground">Define o que é permitido e o perfil de ocupante que procuras.</p>
+                <p className="text-sm text-muted-foreground">As regras ativas ficam visíveis no anúncio e ajudam a filtrar candidatos desde o início.</p>
               </div>
 
               <div>
@@ -1253,7 +1293,7 @@ export function NewListing() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-foreground mb-1">Pré-visualização e publicação</h2>
-                <p className="text-sm text-muted-foreground">Revê tudo antes de publicar. Podes publicar agora ou guardar como rascunho.</p>
+                <p className="text-sm text-muted-foreground">Revê o que os estudantes vão ver. <strong>Sem pressas</strong> — podes guardar tudo como rascunho e publicar mais tarde.</p>
               </div>
 
               {/* Missing field warnings */}
@@ -1271,88 +1311,133 @@ export function NewListing() {
                 </div>
               )}
 
-              {/* Property summary */}
-              <div className="border border-border rounded-xl overflow-hidden">
-                <div className="relative h-36">
-                  <img
-                    src={PROPERTY_IMAGES[selectedPropertyPhoto]}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-3 left-4 text-white">
-                    <p className="font-bold text-lg">{property.title || 'Sem título'}</p>
-                    <p className="text-xs text-white/80">{property.address && `${property.address} · `}{property.city}</p>
-                  </div>
-                </div>
-                <div className="p-4 bg-card">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                    <div>
-                      <p className="text-lg font-bold text-foreground">{rooms.length}</p>
-                      <p className="text-xs text-muted-foreground">quartos</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-green-600">{rooms.filter(r => r.publishNow).length}</p>
-                      <p className="text-xs text-muted-foreground">para publicar</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-blue-600">{rooms.filter(r => !r.publishNow).length}</p>
-                      <p className="text-xs text-muted-foreground">em rascunho</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-foreground">
-                        {property.university || '–'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">universidade</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Room list */}
+              {/* ── O que os estudantes vão ver ── */}
               <div>
-                <p className="text-sm font-semibold text-foreground mb-3">Quartos a publicar</p>
-                <div className="space-y-2">
-                  {rooms.map(room => (
-                    <div key={room.tempId} className="flex items-center gap-3 p-3 border border-border rounded-xl">
-                      <button
-                        onClick={() => toggleRoomPublish(room.tempId)}
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                          room.publishNow ? 'bg-green-500 border-green-500' : 'border-muted-foreground/40'
-                        }`}
-                      >
-                        {room.publishNow && <Check className="w-3.5 h-3.5 text-white" />}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">{room.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          €{room.price}/mês{room.utilities > 0 ? ` + €${room.utilities} desp.` : ''}
-                          {room.availableFrom ? ` · desde ${new Date(room.availableFrom).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
-                        </p>
-                      </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        room.publishNow ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'
-                      }`}>
-                        {room.publishNow ? 'Publicar' : 'Rascunho'}
-                      </span>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">O que os estudantes vão ver</p>
+                <div className="border border-border rounded-xl overflow-hidden">
+                  <div className="relative h-36">
+                    <img
+                      src={PROPERTY_IMAGES[selectedPropertyPhoto]}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="absolute bottom-3 left-4 text-white">
+                      <p className="font-bold text-lg">{property.title || 'Sem título'}</p>
+                      <p className="text-xs text-white/80">{property.address && `${property.address} · `}{property.city}</p>
                     </div>
-                  ))}
+                    {property.utilitiesIncluded && (
+                      <div className="absolute top-3 right-3 px-2 py-1 bg-green-500 text-white rounded-full text-[10px] font-semibold shadow">
+                        Despesas incluídas
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 bg-card">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                      {property.university && (
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <GraduationCap className="w-3.5 h-3.5" />
+                          {property.university}
+                          {property.distanceToUniversity ? ` · ${property.distanceToUniversity}km` : ''}
+                        </span>
+                      )}
+                      {property.amenities.wifi && <span className="text-xs text-muted-foreground">Wi-Fi</span>}
+                      {property.amenities.parking && <span className="text-xs text-muted-foreground">Estacionamento</span>}
+                      {property.amenities.laundry && <span className="text-xs text-muted-foreground">Lavandaria</span>}
+                    </div>
+                    {(rules.studentsOnly || rules.noParties || rules.noPets || rules.noSmoking || rules.quietHours) && (
+                      <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border">
+                        <span className="text-[10px] text-muted-foreground mr-0.5">Regras visíveis:</span>
+                        {rules.studentsOnly && <span className="text-[10px] px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded-full">Só estudantes</span>}
+                        {rules.noParties && <span className="text-[10px] px-2 py-0.5 bg-muted text-foreground border border-border rounded-full">Sem festas</span>}
+                        {rules.noPets && <span className="text-[10px] px-2 py-0.5 bg-muted text-foreground border border-border rounded-full">Sem animais</span>}
+                        {rules.noSmoking && <span className="text-[10px] px-2 py-0.5 bg-muted text-foreground border border-border rounded-full">Não fumadores</span>}
+                        {rules.quietHours && <span className="text-[10px] px-2 py-0.5 bg-muted text-foreground border border-border rounded-full">{rules.quietHours}</span>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Rules summary */}
-              {(rules.studentsOnly || rules.noParties || rules.noPets || rules.noSmoking || rules.quietHours) && (
-                <div className="p-4 bg-muted/40 rounded-xl">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">Regras ativas</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {rules.studentsOnly && <span className="text-xs px-2 py-1 bg-card border border-border rounded-full">Só estudantes</span>}
-                    {rules.noParties && <span className="text-xs px-2 py-1 bg-card border border-border rounded-full">Sem festas</span>}
-                    {rules.noPets && <span className="text-xs px-2 py-1 bg-card border border-border rounded-full">Sem animais</span>}
-                    {rules.noSmoking && <span className="text-xs px-2 py-1 bg-card border border-border rounded-full">Não fumadores</span>}
-                    {rules.quietHours && <span className="text-xs px-2 py-1 bg-card border border-border rounded-full">{rules.quietHours}</span>}
+              {/* ── Quartos que serão publicados ── */}
+              {(() => {
+                const toPublish = rooms.filter(r => r.publishNow);
+                const inDraft = rooms.filter(r => !r.publishNow);
+                return (
+                  <div className="space-y-4">
+                    {/* Published rooms */}
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-green-600" />
+                        <span className="text-green-700">Quartos que serão publicados ({toPublish.length})</span>
+                      </p>
+                      {toPublish.length === 0 ? (
+                        <div className="p-3 border border-dashed border-border rounded-xl text-center">
+                          <p className="text-xs text-muted-foreground">Nenhum quarto marcado para publicar — todos ficarão em rascunho.</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Podes publicar individualmente na lista de quartos (Passo 2) ou usar "Publicar tudo" abaixo.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {toPublish.map(room => (
+                            <div key={room.tempId} className="flex items-center gap-3 p-3 border border-green-200 bg-green-50/50 rounded-xl">
+                              <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                                <Check className="w-3.5 h-3.5 text-white" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-foreground">{room.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  €{room.price}/mês{room.utilities > 0 ? ` + €${room.utilities} desp.` : ''}
+                                  {room.availableFrom ? ` · desde ${new Date(room.availableFrom).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => toggleRoomPublish(room.tempId)}
+                                title="Mover para rascunho"
+                                className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted transition-colors"
+                              >
+                                Mover para rascunho
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Draft rooms */}
+                    {inDraft.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                          <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
+                          Quartos que ficam em rascunho ({inDraft.length})
+                        </p>
+                        <div className="space-y-2">
+                          {inDraft.map(room => (
+                            <div key={room.tempId} className="flex items-center gap-3 p-3 border border-border bg-muted/20 rounded-xl">
+                              <div className="w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center flex-shrink-0">
+                                <EyeOff className="w-3 h-3 text-muted-foreground/50" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-foreground">{room.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  €{room.price}/mês
+                                  {room.availableFrom ? ` · desde ${new Date(room.availableFrom).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => toggleRoomPublish(room.tempId)}
+                                title="Marcar para publicar"
+                                className="text-xs text-primary hover:text-primary/80 px-2 py-1 rounded-lg hover:bg-primary/5 transition-colors"
+                              >
+                                Publicar
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Suspension / block banners for restricted landlords */}
               {isSuspended && (
@@ -1378,24 +1463,33 @@ export function NewListing() {
                 </div>
               )}
 
-              {/* Action cards — 3 explicit options */}
+              {/* Action cards */}
               <div className="space-y-3 pt-2">
-                {/* Option 1: Save as draft */}
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Escolhe como avançar</p>
+
+                {/* Option 1: Save as draft — highlighted as safe default */}
                 <button
                   onClick={() => buildAndSave('draft')}
                   disabled={isSuspended}
-                  className={`w-full p-4 border-2 border-border rounded-2xl text-left transition-all group flex items-start gap-4 ${isSuspended ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary/40 hover:bg-muted/30'}`}
+                  className={`w-full p-4 border-2 rounded-2xl text-left transition-all group flex items-start gap-4 ${
+                    isSuspended
+                      ? 'border-border opacity-50 cursor-not-allowed'
+                      : 'border-blue-300 bg-blue-50/60 hover:bg-blue-50 cursor-pointer'
+                  }`}
                 >
-                  <Save className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0 group-hover:text-primary transition-colors" />
-                  <div>
-                    <p className="font-semibold text-foreground mb-0.5">Guardar rascunho</p>
+                  <Save className={`w-5 h-5 mt-0.5 flex-shrink-0 ${isSuspended ? 'text-muted-foreground' : 'text-blue-600'}`} />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="font-semibold text-foreground">Guardar como rascunho</p>
+                      <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">Opção segura</span>
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      Guarda tudo como rascunho. Nada fica visível para estudantes — podes publicar mais tarde.
+                      Nada fica visível para estudantes. Podes rever e publicar quando estiveres pronto.
                     </p>
                   </div>
                 </button>
 
-                {/* Option 2: Publish selected (only shown if some rooms have publishNow=true) */}
+                {/* Option 2: Publish selected */}
                 {rooms.length > 1 && (
                   <button
                     disabled={isSuspended || isBlocked || missingFields.length > 0 || selectedCount === 0}
@@ -1408,11 +1502,11 @@ export function NewListing() {
                   >
                     <Eye className={`w-5 h-5 mt-0.5 flex-shrink-0 ${missingFields.length > 0 || selectedCount === 0 ? 'text-muted-foreground' : 'text-amber-600'}`} />
                     <div>
-                      <p className="font-semibold text-foreground mb-0.5">Publicar apenas selecionados</p>
+                      <p className="font-semibold text-foreground mb-0.5">Publicar quartos selecionados</p>
                       <p className="text-xs text-muted-foreground">
                         {selectedCount === 0
-                          ? 'Seleciona pelo menos um quarto na lista acima'
-                          : `${selectedCount} quarto${selectedCount > 1 ? 's' : ''} publicado${selectedCount > 1 ? 's' : ''}, ${rooms.length - selectedCount} ficam em rascunho.`}
+                          ? 'Marca pelo menos um quarto para publicar na lista acima.'
+                          : `${selectedCount} quarto${selectedCount > 1 ? 's' : ''} ficam visíveis; ${rooms.length - selectedCount} ficam em rascunho.`}
                       </p>
                     </div>
                   </button>
@@ -1433,7 +1527,7 @@ export function NewListing() {
                     <p className="font-semibold text-foreground mb-0.5">Publicar tudo agora</p>
                     <p className="text-xs text-muted-foreground">
                       {missingFields.length > 0
-                        ? 'Preenche os campos obrigatórios antes de publicar'
+                        ? 'Preenche os campos em falta antes de publicar.'
                         : `Todos os ${rooms.length} quarto${rooms.length !== 1 ? 's' : ''} ficam visíveis para estudantes imediatamente.`}
                     </p>
                   </div>
@@ -1461,7 +1555,7 @@ export function NewListing() {
                 className="hidden sm:flex"
               >
                 <Save className="w-4 h-4 mr-1.5" />
-                Guardar rascunho
+                Guardar como rascunho
               </Button>
 
               {step < 4 && (

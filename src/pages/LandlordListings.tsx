@@ -727,6 +727,50 @@ export function LandlordListings() {
                                       </span>
                                     </div>
                                   )}
+
+                                  {/* Availability microcopy for landlord */}
+                                  {(() => {
+                                    const avDate = new Date(room.availableFrom);
+                                    const now = new Date();
+                                    const diffDays = Math.ceil((avDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                                    const monthLabel = avDate.toLocaleDateString('pt-PT', { month: 'long' });
+                                    if (room.status === 'occupied' && diffDays > 0 && diffDays <= 60) {
+                                      return (
+                                        <div className="mt-1.5 flex flex-col gap-0.5">
+                                          <span className="flex items-center gap-1 text-xs text-amber-700 font-medium">
+                                            <Calendar className="w-3 h-3" />
+                                            Este quarto fica livre em {monthLabel}
+                                          </span>
+                                          <span className="text-[10px] text-muted-foreground pl-4">Podes preparar a republicação</span>
+                                        </div>
+                                      );
+                                    }
+                                    if (room.status === 'occupied' && diffDays > 0 && diffDays <= 30) {
+                                      return (
+                                        <span className="mt-1 flex items-center gap-1 text-[10px] text-blue-600">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+                                          Lembrete ativo 30 dias antes
+                                        </span>
+                                      );
+                                    }
+                                    if (room.status === 'available' && diffDays <= 0) {
+                                      return (
+                                        <span className="mt-1 flex items-center gap-1 text-xs text-green-700 font-medium">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                                          Disponível já — pronto para novo inquilino
+                                        </span>
+                                      );
+                                    }
+                                    if (room.status === 'available' && diffDays > 0) {
+                                      return (
+                                        <span className="mt-1 flex items-center gap-1 text-xs text-green-700">
+                                          <Calendar className="w-3 h-3" />
+                                          Livre a partir de {monthLabel}
+                                        </span>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
 
                                 <p className="font-bold text-primary">€{room.price}</p>
