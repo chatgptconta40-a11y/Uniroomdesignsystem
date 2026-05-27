@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState, type ElementType } from 'react';
 import { useNavigate } from 'react-router';
 import {
   FileText,
@@ -15,6 +15,12 @@ import {
   ArrowRight,
   Sparkles,
   Search,
+  CalendarDays,
+  Euro,
+  Building2,
+  ShieldCheck,
+  ChevronRight,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -37,6 +43,15 @@ function fmt(date: Date | string | undefined): string {
   });
 }
 
+function fmtMonth(date: Date | string | undefined): string {
+  if (!date) return 'Sem data';
+
+  return new Date(date).toLocaleDateString('pt-PT', {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('pt-PT', {
     hour: '2-digit',
@@ -46,7 +61,7 @@ function fmtTime(iso: string): string {
 
 interface TimelineStep {
   key: string;
-  icon: React.ElementType;
+  icon: ElementType;
   label: string;
   sublabel?: string;
   date?: string;
@@ -57,28 +72,29 @@ interface TimelineStep {
 }
 
 function buildTimeline(app: Application): TimelineStep[] {
-  const steps: TimelineStep[] = [];
-
-  steps.push({
-    key: 'sent',
-    icon: Send,
-    label: 'Candidatura enviada',
-    date: fmt(app.createdAt),
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-100',
-    done: true,
-  });
+  const steps: TimelineStep[] = [
+    {
+      key: 'sent',
+      icon: Send,
+      label: 'Candidatura enviada',
+      date: fmt(app.createdAt),
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-100',
+      done: true,
+    },
+  ];
 
   const isReviewing = ['under_review', 'accepted', 'confirmed', 'rejected'].includes(app.status);
 
   steps.push({
     key: 'review',
     icon: Clock,
-    label: isReviewing ? 'Em análise pelo senhorio' : 'Aguarda análise',
+    label: isReviewing ? 'Em análise pelo senhorio' : 'A aguardar análise',
     date: isReviewing ? fmt(app.reviewedAt || app.updatedAt) : undefined,
-    color: isReviewing ? 'text-amber-600' : 'text-gray-300',
+    color: isReviewing ? 'text-amber-600' : 'text-gray-400',
     bgColor: isReviewing ? 'bg-amber-100' : 'bg-gray-100',
     done: isReviewing,
+    pending: !isReviewing,
   });
 
   if (app.visitDate) {
@@ -105,7 +121,7 @@ function buildTimeline(app: Application): TimelineStep[] {
     steps.push({
       key: 'accepted',
       icon: CheckCircle,
-      label: 'Aceite pelo senhorio!',
+      label: 'Aceite pelo senhorio',
       date: fmt(app.reviewedAt),
       color: 'text-green-600',
       bgColor: 'bg-green-100',
@@ -127,7 +143,7 @@ function buildTimeline(app: Application): TimelineStep[] {
       icon: XCircle,
       label: 'Candidatura cancelada',
       date: fmt(app.updatedAt),
-      color: 'text-gray-400',
+      color: 'text-gray-500',
       bgColor: 'bg-gray-100',
       done: true,
     });
@@ -139,17 +155,17 @@ function buildTimeline(app: Application): TimelineStep[] {
       icon: Sparkles,
       label: 'Estadia confirmada',
       date: fmt(app.confirmedAt),
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
+      color: 'text-emerald-600',
+      bgColor: 'bg-emerald-100',
       done: true,
     });
   } else if (app.status === 'accepted') {
     steps.push({
       key: 'confirm_pending',
       icon: ArrowRight,
-      label: 'A aguardar a tua confirmação',
-      color: 'text-gray-400',
-      bgColor: 'bg-gray-100',
+      label: 'Confirma para garantir o quarto',
+      color: 'text-green-700',
+      bgColor: 'bg-green-100',
       done: false,
       pending: true,
     });
@@ -168,13 +184,29 @@ const STATUS_LABEL: Record<ApplicationStatus, string> = {
 };
 
 const STATUS_COLOR: Record<ApplicationStatus, string> = {
-  pending: 'bg-gray-100 text-gray-600',
-  under_review: 'bg-blue-100 text-blue-700',
-  accepted: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-600',
-  withdrawn: 'bg-gray-100 text-gray-400',
-  confirmed: 'bg-emerald-100 text-emerald-700',
+  pending: 'bg-amber-50 text-amber-700 border-amber-200',
+  under_review: 'bg-blue-50 text-blue-700 border-blue-200',
+  accepted: 'bg-green-50 text-green-700 border-green-200',
+  rejected: 'bg-red-50 text-red-700 border-red-200',
+  withdrawn: 'bg-gray-50 text-gray-500 border-gray-200',
+  confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
+
+function getNextStepText(app: Application): string {
+  if (app.status === 'pending') return 'Aguardar a análise do senhorio.';
+  if (app.status === 'under_review') return 'O senhorio está a avaliar a candidatura.';
+  if (app.status === 'accepted') return 'Confirma a estadia para garantir o quarto.';
+  if (app.status === 'confirmed') return 'A estadia já está ativa. Consulta “A Minha Casa”.';
+  if (app.status === 'rejected') return 'Podes procurar quartos semelhantes.';
+  return 'Candidatura cancelada.';
+}
+
+function getStatusBorder(status: ApplicationStatus): string {
+  if (status === 'accepted') return 'ring-2 ring-green-300 border-green-200';
+  if (status === 'confirmed') return 'ring-2 ring-emerald-300 border-emerald-200';
+  if (status === 'rejected') return 'border-red-200';
+  return '';
+}
 
 export function Applications() {
   const { user } = useAuth();
@@ -281,6 +313,16 @@ export function Applications() {
     }
   };
 
+  const handleViewProperty = (app: Application) => {
+    if (app.propertyId) {
+      navigate(`/property/${app.propertyId}`);
+      return;
+    }
+
+    const room = app.roomId ? getRoom(app.roomId) : undefined;
+    if (room) navigate(`/property/${room.propertyId}`);
+  };
+
   const filterTabs: Array<{ key: 'all' | ApplicationStatus; label: string; count: number }> = [
     { key: 'all', label: 'Todas', count: counts.all },
     { key: 'pending', label: 'Pendentes', count: counts.pending },
@@ -304,17 +346,45 @@ export function Applications() {
 
   return (
     <div className="min-h-screen bg-background py-8">
-      <div className="max-w-4xl mx-auto px-4 md:px-6">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
         <div className="mb-8">
-          <div className="flex items-center gap-4 mb-2">
-            <FileText className="w-8 h-8 text-primary" />
-            <h1 className="text-3xl font-bold text-foreground">As Minhas Candidaturas</h1>
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
+            <div>
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                  <FileText className="w-6 h-6" />
+                </div>
+
+                <div>
+                  <h1 className="text-3xl font-bold text-foreground">As Minhas Candidaturas</h1>
+                  <p className="text-muted-foreground">
+                    {applications.length === 0
+                      ? 'Ainda não fizeste candidaturas'
+                      : `${applications.length} ${applications.length === 1 ? 'candidatura' : 'candidaturas'}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 min-w-full lg:min-w-[420px]">
+              <Card className="p-4">
+                <p className="text-xs text-muted-foreground mb-1">Ativas</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {counts.pending + counts.under_review + counts.accepted}
+                </p>
+              </Card>
+
+              <Card className="p-4">
+                <p className="text-xs text-muted-foreground mb-1">Aceites</p>
+                <p className="text-2xl font-bold text-green-700">{counts.accepted}</p>
+              </Card>
+
+              <Card className="p-4">
+                <p className="text-xs text-muted-foreground mb-1">Confirmadas</p>
+                <p className="text-2xl font-bold text-emerald-700">{counts.confirmed}</p>
+              </Card>
+            </div>
           </div>
-          <p className="text-muted-foreground">
-            {applications.length === 0
-              ? 'Ainda não fizeste candidaturas'
-              : `${applications.length} ${applications.length === 1 ? 'candidatura' : 'candidaturas'}`}
-          </p>
         </div>
 
         {applications.length === 0 ? (
@@ -324,7 +394,7 @@ export function Applications() {
               Ainda não tens candidaturas
             </h2>
             <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-              Quando te candidatares a um quarto, poderás acompanhar o estado e gerir tudo aqui.
+              Quando te candidatares a um quarto, poderás acompanhar o estado, falar com o senhorio e confirmar a estadia aqui.
             </p>
             <Button onClick={() => navigate('/search')}>
               <Search className="w-4 h-4 mr-2" />
@@ -367,10 +437,10 @@ export function Applications() {
                 <p className="text-muted-foreground">Nenhuma candidatura nesta categoria.</p>
               </Card>
             ) : (
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {filteredApplications.map(application => {
                   const room = application.roomId ? getRoom(application.roomId) : undefined;
-                  const property = application.propertyId ? getProperty(application.propertyId) : undefined;
+                  const property = application.propertyId ? getProperty(application.propertyId) : room ? getProperty(room.propertyId) : undefined;
                   const images = room?.images.length ? room.images : property?.images || [];
                   const coverImage = images[0];
                   const title = room?.title || application.accommodationId || 'Quarto';
@@ -378,20 +448,21 @@ export function Applications() {
                   const city = property?.city || '';
                   const zone = property?.zone || '';
                   const price = room?.price || 0;
+                  const utilities = room?.utilities || 0;
+                  const totalPrice = price + utilities;
                   const timeline = buildTimeline(application);
                   const isAccepted = application.status === 'accepted';
                   const isConfirmed = application.status === 'confirmed';
                   const isCancelled = application.status === 'withdrawn' || application.status === 'rejected';
+                  const nextStepText = getNextStepText(application);
 
                   return (
                     <Card
                       key={application.id}
-                      className={`overflow-hidden transition-all ${
-                        isAccepted ? 'ring-2 ring-green-400 border-green-200' : ''
-                      }`}
+                      className={`overflow-hidden transition-all ${getStatusBorder(application.status)}`}
                     >
                       {isAccepted && (
-                        <div className="bg-green-50 border-b border-green-200 px-6 py-3 flex items-center gap-3">
+                        <div className="bg-green-50 border-b border-green-200 px-5 py-3 flex items-center gap-3">
                           <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                           <div className="flex-1">
                             <span className="font-semibold text-green-800">Candidatura aceite!</span>
@@ -403,7 +474,7 @@ export function Applications() {
                       )}
 
                       {isConfirmed && (
-                        <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-3 flex items-center gap-3">
+                        <div className="bg-emerald-50 border-b border-emerald-200 px-5 py-3 flex items-center gap-3">
                           <Sparkles className="w-5 h-5 text-emerald-600 flex-shrink-0" />
                           <span className="font-semibold text-emerald-800">
                             Estadia confirmada. Tens uma casa ativa!
@@ -411,62 +482,63 @@ export function Applications() {
                         </div>
                       )}
 
-                      <div className="flex flex-col md:flex-row">
+                      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr]">
                         {coverImage && (
-                          <div
+                          <button
+                            type="button"
                             onClick={() => handleViewTarget(application)}
-                            className="w-full md:w-52 h-44 md:h-auto flex-shrink-0 cursor-pointer overflow-hidden bg-muted"
+                            className="w-full h-56 md:h-full min-h-[260px] cursor-pointer overflow-hidden bg-muted text-left"
                           >
                             <img
                               src={coverImage}
                               alt={title}
-                              className="w-full h-full object-cover hover:scale-105 transition-transform"
+                              className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                             />
-                          </div>
+                          </button>
                         )}
 
-                        <div className="flex-1 p-5 min-w-0">
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="flex-1 min-w-0">
+                        <div className="p-5 min-w-0">
+                          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-4">
+                            <div className="min-w-0 flex-1">
                               <button
                                 onClick={() => handleViewTarget(application)}
-                                className="font-semibold text-foreground hover:text-primary text-left block truncate mb-0.5"
+                                className="text-xl font-bold text-foreground hover:text-primary text-left block line-clamp-1 mb-1"
                               >
                                 {title}
                               </button>
 
                               {propertyTitle && (
-                                <p className="text-xs font-medium text-primary mb-1 truncate">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewProperty(application)}
+                                  className="text-sm font-semibold text-primary hover:underline mb-1 block line-clamp-1"
+                                >
                                   {propertyTitle}
-                                </p>
+                                </button>
                               )}
 
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span className="truncate">
-                                  {zone}
-                                  {zone && city ? ', ' : ''}
-                                  {city}
-                                </span>
-                              </div>
-
-                              <div className="flex items-baseline gap-1.5 mt-1.5">
-                                <span className="text-xl font-bold text-foreground">€{price}</span>
-                                <span className="text-xs text-muted-foreground">/mês</span>
-                                {application.moveInDate && (
-                                  <span className="text-xs text-muted-foreground ml-2">
-                                    · Entrada:{' '}
-                                    {new Date(application.moveInDate).toLocaleDateString('pt-PT', {
-                                      month: 'long',
-                                      year: 'numeric',
-                                    })}
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                                {(zone || city) && (
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <MapPin className="w-4 h-4" />
+                                    {zone}{zone && city ? ', ' : ''}{city}
                                   </span>
                                 )}
+
+                                <span className="inline-flex items-center gap-1.5">
+                                  <CalendarDays className="w-4 h-4" />
+                                  Entrada: {fmtMonth(application.moveInDate)}
+                                </span>
+
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Euro className="w-4 h-4" />
+                                  €{totalPrice}/mês
+                                </span>
                               </div>
                             </div>
 
                             <span
-                              className={`px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0 ${
+                              className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex-shrink-0 w-fit ${
                                 STATUS_COLOR[application.status]
                               }`}
                             >
@@ -474,55 +546,115 @@ export function Applications() {
                             </span>
                           </div>
 
-                          {application.message && (
-                            <p className="text-xs text-muted-foreground italic line-clamp-2 mb-3 bg-muted/40 rounded-lg px-3 py-2">
-                              “{application.message}”
-                            </p>
-                          )}
-
-                          <div className="mb-4 space-y-2">
-                            {timeline.map((step, index) => {
-                              const Icon = step.icon;
-
-                              return (
-                                <div key={step.key} className="flex items-start gap-2.5">
-                                  <div className="flex flex-col items-center flex-shrink-0">
-                                    <div
-                                      className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                        step.done || step.pending ? step.bgColor : 'bg-gray-100'
-                                      }`}
-                                    >
-                                      <Icon className={`w-3 h-3 ${step.color}`} />
-                                    </div>
-                                    {index < timeline.length - 1 && (
-                                      <div
-                                        className={`w-px flex-1 min-h-[8px] mt-0.5 ${
-                                          step.done ? 'bg-border' : 'bg-gray-100'
-                                        }`}
-                                      />
-                                    )}
-                                  </div>
-
-                                  <div className="pb-1.5 min-w-0">
-                                    <span
-                                      className={`text-xs font-medium ${
-                                        step.pending ? 'text-gray-400' : 'text-foreground'
-                                      }`}
-                                    >
-                                      {step.label}
-                                    </span>
-                                    {step.sublabel && (
-                                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-                                        {step.sublabel}
-                                      </p>
-                                    )}
-                                    {step.date && (
-                                      <p className="text-[11px] text-muted-foreground">{step.date}</p>
-                                    )}
-                                  </div>
+                          <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4 mb-4">
+                            <div>
+                              {application.message ? (
+                                <div className="rounded-xl bg-muted/40 border border-border px-4 py-3 mb-4">
+                                  <p className="text-xs font-semibold text-muted-foreground mb-1">
+                                    Mensagem enviada
+                                  </p>
+                                  <p className="text-sm text-foreground italic line-clamp-3">
+                                    “{application.message}”
+                                  </p>
                                 </div>
-                              );
-                            })}
+                              ) : (
+                                <div className="rounded-xl bg-muted/40 border border-border px-4 py-3 mb-4">
+                                  <p className="text-sm text-muted-foreground">
+                                    Não enviaste mensagem de apresentação nesta candidatura.
+                                  </p>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="rounded-xl bg-muted/30 p-3">
+                                  <p className="text-xs text-muted-foreground mb-1">Preço base</p>
+                                  <p className="font-bold text-foreground">€{price}/mês</p>
+                                </div>
+
+                                <div className="rounded-xl bg-muted/30 p-3">
+                                  <p className="text-xs text-muted-foreground mb-1">Despesas</p>
+                                  <p className="font-bold text-foreground">
+                                    {utilities > 0 ? `+€${utilities}` : 'Incluídas'}
+                                  </p>
+                                </div>
+
+                                <div className="rounded-xl bg-muted/30 p-3">
+                                  <p className="text-xs text-muted-foreground mb-1">Próximo passo</p>
+                                  <p className="font-bold text-foreground line-clamp-1">
+                                    {application.status === 'accepted' ? 'Confirmar' : STATUS_LABEL[application.status]}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-border bg-card p-4">
+                              <p className="text-xs font-semibold text-muted-foreground mb-3">
+                                Estado da candidatura
+                              </p>
+
+                              <div className="space-y-2">
+                                {timeline.map((step, index) => {
+                                  const Icon = step.icon;
+
+                                  return (
+                                    <div key={step.key} className="flex items-start gap-2.5">
+                                      <div className="flex flex-col items-center flex-shrink-0">
+                                        <div
+                                          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                            step.done || step.pending ? step.bgColor : 'bg-gray-100'
+                                          }`}
+                                        >
+                                          <Icon className={`w-3 h-3 ${step.color}`} />
+                                        </div>
+
+                                        {index < timeline.length - 1 && (
+                                          <div
+                                            className={`w-px flex-1 min-h-[12px] mt-0.5 ${
+                                              step.done ? 'bg-border' : 'bg-gray-100'
+                                            }`}
+                                          />
+                                        )}
+                                      </div>
+
+                                      <div className="pb-1.5 min-w-0">
+                                        <span
+                                          className={`text-xs font-medium ${
+                                            step.pending ? 'text-gray-500' : 'text-foreground'
+                                          }`}
+                                        >
+                                          {step.label}
+                                        </span>
+
+                                        {step.sublabel && (
+                                          <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                                            {step.sublabel}
+                                          </p>
+                                        )}
+
+                                        {step.date && (
+                                          <p className="text-[11px] text-muted-foreground">{step.date}</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="rounded-xl bg-primary/5 border border-primary/15 px-4 py-3 mb-4 flex items-start gap-3">
+                            {application.status === 'accepted' ? (
+                              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                            ) : application.status === 'rejected' || application.status === 'withdrawn' ? (
+                              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <Clock className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                            )}
+
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">Próximo passo</p>
+                              <p className="text-sm text-muted-foreground">{nextStepText}</p>
+                            </div>
                           </div>
 
                           <div className="flex flex-wrap gap-2">
@@ -563,6 +695,17 @@ export function Applications() {
                               >
                                 <ExternalLink className="w-4 h-4 mr-2" />
                                 Ver quarto
+                              </Button>
+                            )}
+
+                            {property && (
+                              <Button
+                                onClick={() => handleViewProperty(application)}
+                                variant="outline"
+                                size="sm"
+                              >
+                                <Building2 className="w-4 h-4 mr-2" />
+                                Ver casa
                               </Button>
                             )}
 
