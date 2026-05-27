@@ -1,15 +1,9 @@
-// Maintenance requests — localStorage first + Supabase background.
-// Keeps the same synchronous API, but guarantees that requests created by the
-// student appear to the landlord after refresh in Figma Make.
+// Maintenance requests — localStorage only.
+// Student reports are persisted locally and shown to the landlord through the same localStorage key.
 
 import { MaintenanceRequest, MaintenanceStatus } from '../types/maintenance';
-import { supabase } from '../lib/supabase';
 
 const MAINTENANCE_STORAGE_KEY = 'uniroom_maintenance_requests';
-
-const cache = new Map<string, MaintenanceRequest>();
-let hydrated = false;
-let hydratePromise: Promise<void> | null = null;
 
 function safeParse<T>(value: string | null, fallback: T): T {
   try {
@@ -17,19 +11,6 @@ function safeParse<T>(value: string | null, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-function readLocal(): MaintenanceRequest[] {
-  return safeParse<any[]>(localStorage.getItem(MAINTENANCE_STORAGE_KEY), [])
-    .filter(item => item?.id)
-    .map(normalizeRequest);
-}
-
-function writeLocal(): void {
-  localStorage.setItem(
-    MAINTENANCE_STORAGE_KEY,
-    JSON.stringify(Array.from(cache.values())),
-  );
 }
 
 function toDate(value: unknown, fallback = new Date()): Date {
@@ -41,115 +22,43 @@ function toDate(value: unknown, fallback = new Date()): Date {
 function normalizeRequest(value: any): MaintenanceRequest {
   return {
     id: String(value.id),
-    userId: String(value.userId ?? value.user_id ?? ''),
-    accommodationId: String(value.accommodationId ?? value.accommodation_id ?? value.property_id ?? ''),
-    landlordId: String(value.landlordId ?? value.landlord_id ?? ''),
+    userId: String(value.userId ?? ''),
+    accommodationId: String(value.accommodationId ?? ''),
+    landlordId: String(value.landlordId ?? ''),
     category: value.category ?? 'other',
     title: value.title ?? '',
     description: value.description ?? '',
     urgency: value.urgency ?? 'medium',
     status: value.status ?? 'pending',
-    photoUrl: value.photoUrl ?? value.photo_url ?? undefined,
-    createdAt: toDate(value.createdAt ?? value.created_at),
-    updatedAt: toDate(value.updatedAt ?? value.updated_at),
-    resolvedAt: value.resolvedAt || value.resolved_at ? toDate(value.resolvedAt ?? value.resolved_at) : undefined,
+    photoUrl: value.photoUrl ?? undefined,
+    createdAt: toDate(value.createdAt),
+    updatedAt: toDate(value.updatedAt),
+    resolvedAt: value.resolvedAt ? toDate(value.resolvedAt) : undefined,
   };
 }
 
-function rowToRequest(row: any): MaintenanceRequest {
-  return normalizeRequest({
-    id: row.id,
-    userId: row.user_id,
-    accommodationId: row.accommodation_id ?? row.property_id ?? '',
-    landlordId: row.landlord_id,
-    category: row.category,
-    title: row.title,
-    description: row.description,
-    urgency: row.urgency,
-    status: row.status,
-    photoUrl: row.photo_url,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    resolvedAt: row.resolved_at,
-  });
+function readLocal(): MaintenanceRequest[] {
+  const stored = safeParse<any[]>(localStorage.getItem(MAINTENANCE_STORAGE_KEY), []);
+
+  if (!Array.isArray(stored)) return [];
+
+  return stored
+    .filter(item => item?.id)
+    .map(normalizeRequest);
 }
 
-function requestToRow(request: MaintenanceRequest): Record<string, unknown> {
-  return {
-    id: request.id,
-    user_id: request.userId,
-    property_id: request.accommodationId || null,
-    accommodation_id: request.accommodationId || null,
-    landlord_id: request.landlordId,
-    category: request.category,
-    title: request.title,
-    description: request.description,
-    urgency: request.urgency,
-    status: request.status,
-    photo_url: request.photoUrl ?? null,
-    resolved_at: request.resolvedAt ? request.resolvedAt.toISOString() : null,
-  };
+function writeLocal(requests: MaintenanceRequest[]): void {
+  localStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(requests));
 }
-
-function loadLocalState(): void {
-  cache.clear();
-
-  readLocal().forEach(request => {
-    cache.set(request.id, request);
-  });
-}
-
-function mergeRequest(request: MaintenanceRequest): void {
-  const current = cache.get(request.id);
-
-  if (!current || request.updatedAt >= current.updatedAt) {
-    cache.set(request.id, request);
-  }
-}
-
-async function hydrate(): Promise<void> {
-  if (hydrated) return;
-  if (hydratePromise) return hydratePromise;
-
-  hydratePromise = (async () => {
-    loadLocalState();
-
-    const { data, error } = await supabase
-      .from('maintenance_requests')
-      .select('*');
-
-    if (error) {
-      console.warn('Maintenance hydrate:', error.message);
-      hydrated = true;
-      return;
-    }
-
-    (data ?? []).forEach(row => {
-      mergeRequest(rowToRequest(row));
-    });
-
-    writeLocal();
-    hydrated = true;
-  })();
-
-  return hydratePromise;
-}
-
-loadLocalState();
-void hydrate();
 
 export function getMaintenanceRequests(userId: string): MaintenanceRequest[] {
-  loadLocalState();
-
-  return Array.from(cache.values())
+  return readLocal()
     .filter(request => request.userId === userId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 export function getMaintenanceRequestsForLandlord(landlordId: string): MaintenanceRequest[] {
-  loadLocalState();
-
-  return Array.from(cache.values())
+  return readLocal()
     .filter(request => request.landlordId === landlordId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
@@ -164,12 +73,10 @@ export function createMaintenanceRequest(
   urgency: string,
   photoUrl?: string,
 ): MaintenanceRequest {
-  loadLocalState();
-
-  const id = `maint_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const all = readLocal();
 
   const request: MaintenanceRequest = {
-    id,
+    id: `maint_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     userId,
     accommodationId,
     landlordId,
@@ -183,54 +90,29 @@ export function createMaintenanceRequest(
     updatedAt: new Date(),
   };
 
-  cache.set(id, request);
-  writeLocal();
-
-  void supabase
-    .from('maintenance_requests')
-    .insert(requestToRow(request))
-    .then(({ error }) => {
-      if (error) console.warn('Maintenance insert error:', error.message);
-    });
+  writeLocal([request, ...all]);
 
   return request;
 }
 
 export function updateMaintenanceStatus(requestId: string, status: MaintenanceStatus): boolean {
-  loadLocalState();
+  const all = readLocal();
+  const index = all.findIndex(request => request.id === requestId);
 
-  const request = cache.get(requestId);
-  if (!request) return false;
+  if (index < 0) return false;
 
   const resolvedAt = status === 'resolved' || status === 'closed'
     ? new Date()
-    : request.resolvedAt;
+    : all[index].resolvedAt;
 
-  const updated: MaintenanceRequest = {
-    ...request,
+  all[index] = {
+    ...all[index],
     status,
     updatedAt: new Date(),
     resolvedAt,
   };
 
-  cache.set(requestId, updated);
-  writeLocal();
-
-  const patch: Record<string, unknown> = {
-    status,
-  };
-
-  if (status === 'resolved' || status === 'closed') {
-    patch.resolved_at = resolvedAt!.toISOString();
-  }
-
-  void supabase
-    .from('maintenance_requests')
-    .update(patch)
-    .eq('id', requestId)
-    .then(({ error }) => {
-      if (error) console.warn('Maintenance update error:', error.message);
-    });
+  writeLocal(all);
 
   return true;
 }
@@ -253,7 +135,5 @@ export function getMaintenanceStats(landlordId: string) {
 }
 
 export async function refreshMaintenanceState(): Promise<void> {
-  hydrated = false;
-  hydratePromise = null;
-  await hydrate();
+  return Promise.resolve();
 }
