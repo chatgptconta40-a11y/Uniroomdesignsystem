@@ -50,313 +50,313 @@ function AppShell() {
     <>
       <div className="min-h-screen flex flex-col">
         <Routes>
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/register" element={<Register />} />
-                  <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
 
-                  <Route
-                    path="/"
-                    element={
-                      <>
-                        <Navbar />
-                        <Home />
-                      </>
-                    }
-                  />
+          <Route
+            path="/"
+            element={
+              <>
+                <Navbar />
+                <Home />
+              </>
+            }
+          />
 
-                  <Route
-                    path="/dashboard"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Navbar />
-                        <Dashboard />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Navbar />
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/onboarding"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Onboarding />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/onboarding"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Onboarding />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/profile"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Navbar />
-                        <Profile />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Navbar />
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/search"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Navbar />
-                        <SearchRooms />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/search"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Navbar />
+                <SearchRooms />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/accommodation/:id"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Navbar />
-                        <AccommodationDetail />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/accommodation/:id"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Navbar />
+                <AccommodationDetail />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/property/:id"
-                    element={
-                      <>
-                        <Navbar />
-                        <PropertyDetail />
-                      </>
-                    }
-                  />
+          <Route
+            path="/property/:id"
+            element={
+              <>
+                <Navbar />
+                <PropertyDetail />
+              </>
+            }
+          />
 
-                  <Route
-                    path="/room/:id"
-                    element={
-                      <>
-                        <Navbar />
-                        <RoomDetail />
-                      </>
-                    }
-                  />
+          <Route
+            path="/room/:id"
+            element={
+              <>
+                <Navbar />
+                <RoomDetail />
+              </>
+            }
+          />
 
-                  <Route
-                    path="/favorites"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Navbar />
-                        <Favorites />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/favorites"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Navbar />
+                <Favorites />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/applications"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Navbar />
-                        <Applications />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/applications"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Navbar />
+                <Applications />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/messages"
-                    element={
-                      <ProtectedRoute allowedTypes={['student', 'landlord']}>
-                        <Navbar />
-                        <Messages />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
+                <Navbar />
+                <Messages />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/verification"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Navbar />
-                        <Verification />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/verification"
+            element={
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
+                <Navbar />
+                <Verification />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/my-home"
-                    element={
-                      <ProtectedRoute allowedTypes={['student']}>
-                        <Navbar />
-                        <MyHome />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/my-home"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Navbar />
+                <MyHome />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/landlord/dashboard"
-                    element={
-                      <ProtectedRoute allowedTypes={['landlord']}>
-                        <Navbar />
-                        <LandlordDashboard />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/landlord/dashboard"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navbar />
+                <LandlordDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/landlord/listings"
-                    element={
-                      <ProtectedRoute allowedTypes={['landlord']}>
-                        <Navbar />
-                        <LandlordListings />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/landlord/listings"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navbar />
+                <LandlordListings />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/landlord/properties"
-                    element={
-                      <ProtectedRoute allowedTypes={['landlord']}>
-                        <Navigate to="/landlord/listings" replace />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/landlord/properties"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navigate to="/landlord/listings" replace />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/landlord/new-listing"
-                    element={
-                      <ProtectedRoute allowedTypes={['landlord']}>
-                        <Navbar />
-                        <NewListing />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/landlord/new-listing"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navbar />
+                <NewListing />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/landlord/applications"
-                    element={
-                      <ProtectedRoute allowedTypes={['landlord']}>
-                        <Navbar />
-                        <LandlordApplications />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/landlord/applications"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navbar />
+                <LandlordApplications />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/landlord/analytics"
-                    element={
-                      <ProtectedRoute allowedTypes={['landlord']}>
-                        <Navbar />
-                        <LandlordAnalytics />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/landlord/analytics"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navbar />
+                <LandlordAnalytics />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/landlord/maintenance"
-                    element={
-                      <ProtectedRoute allowedTypes={['landlord']}>
-                        <Navbar />
-                        <LandlordMaintenance />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/landlord/maintenance"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navbar />
+                <LandlordMaintenance />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/landlord/property/:id"
-                    element={
-                      <ProtectedRoute allowedTypes={['landlord']}>
-                        <Navbar />
-                        <LandlordPropertyDetail />
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/landlord/property/:id"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navbar />
+                <LandlordPropertyDetail />
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/admin"
-                    element={
-                      <ProtectedRoute allowedTypes={['admin']}>
-                        <AdminLayout>
-                          <AdminDashboard />
-                        </AdminLayout>
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedTypes={['admin']}>
+                <AdminLayout>
+                  <AdminDashboard />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/admin/users"
-                    element={
-                      <ProtectedRoute allowedTypes={['admin']}>
-                        <AdminLayout>
-                          <AdminUsers />
-                        </AdminLayout>
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute allowedTypes={['admin']}>
+                <AdminLayout>
+                  <AdminUsers />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/admin/properties"
-                    element={
-                      <ProtectedRoute allowedTypes={['admin']}>
-                        <AdminLayout>
-                          <AdminProperties />
-                        </AdminLayout>
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/admin/properties"
+            element={
+              <ProtectedRoute allowedTypes={['admin']}>
+                <AdminLayout>
+                  <AdminProperties />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/admin/reports"
-                    element={
-                      <ProtectedRoute allowedTypes={['admin']}>
-                        <AdminLayout>
-                          <AdminReports />
-                        </AdminLayout>
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/admin/reports"
+            element={
+              <ProtectedRoute allowedTypes={['admin']}>
+                <AdminLayout>
+                  <AdminReports />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/admin/audit"
-                    element={
-                      <ProtectedRoute allowedTypes={['admin']}>
-                        <AdminLayout>
-                          <AdminAudit />
-                        </AdminLayout>
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/admin/audit"
+            element={
+              <ProtectedRoute allowedTypes={['admin']}>
+                <AdminLayout>
+                  <AdminAudit />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/admin/analytics"
-                    element={
-                      <ProtectedRoute allowedTypes={['admin']}>
-                        <AdminLayout>
-                          <AdminAnalytics />
-                        </AdminLayout>
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/admin/analytics"
+            element={
+              <ProtectedRoute allowedTypes={['admin']}>
+                <AdminLayout>
+                  <AdminAnalytics />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route
-                    path="/admin/settings"
-                    element={
-                      <ProtectedRoute allowedTypes={['admin']}>
-                        <AdminLayout>
-                          <AdminSettings />
-                        </AdminLayout>
-                      </ProtectedRoute>
-                    }
-                  />
+          <Route
+            path="/admin/settings"
+            element={
+              <ProtectedRoute allowedTypes={['admin']}>
+                <AdminLayout>
+                  <AdminSettings />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
 
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-
-                <Toaster position="top-right" richColors />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </div>
 
-      <CompareBar onCompare={() => setShowCompareModal(true)} />
-
-      {showCompareModal && compareItems.length >= 2 && (
-        <CompareModal
+      {compareItems.length > 0 && (
+        <CompareBar
           items={compareItems}
-          onClose={() => setShowCompareModal(false)}
-          onRemove={(roomId) => {
-            removeFromCompare(roomId);
-            if (compareItems.length <= 2) setShowCompareModal(false);
-          }}
+          onRemove={removeFromCompare}
+          onCompare={() => setShowCompareModal(true)}
         />
       )}
+
+      <CompareModal
+        open={showCompareModal}
+        onOpenChange={setShowCompareModal}
+        items={compareItems}
+        onRemove={removeFromCompare}
+      />
     </>
   );
 }
@@ -370,6 +370,7 @@ export default function App() {
             <FavoritesProvider>
               <CompareProvider>
                 <AppShell />
+                <Toaster richColors position="top-right" />
               </CompareProvider>
             </FavoritesProvider>
           </AccommodationsProvider>
