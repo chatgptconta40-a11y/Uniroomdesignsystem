@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle,
@@ -18,6 +18,7 @@ import {
   getPaymentMethodLabel,
   getPaymentMethodMainValue,
   upsertDefaultPaymentMethod,
+  refreshHousingFinanceState,
 } from '../data/mockHousingFinance';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -39,6 +40,16 @@ export function LandlordDashboard() {
   const maintenanceStats = getMaintenanceStats(user?.id || '');
   const financeSummary = getLandlordFinanceSummary(user?.id || '');
   const defaultPaymentMethod = financeSummary.methods.find(method => method.isDefault) || financeSummary.methods[0];
+
+  useEffect(() => {
+    if (!user) return;
+
+    refreshHousingFinanceState()
+      .then(() => setFinanceRefreshKey(key => key + 1))
+      .catch(error => {
+        console.warn('Erro ao sincronizar dados financeiros:', error);
+      });
+  }, [user?.id]);
 
   // ── All stats derived from PropertiesContext ─────────────────────────────────
   const myProperties = properties.filter(p => p.landlordId === user?.id && p.status !== 'archived');
