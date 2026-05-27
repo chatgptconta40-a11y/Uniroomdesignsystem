@@ -114,7 +114,7 @@ export function RoomCard({
     navigate(`/property/${property.id}`);
   };
 
-  const handleFavoriteClick = async (event: MouseEvent) => {
+  const handleFavoriteClick = (event: MouseEvent) => {
     event.stopPropagation();
 
     if (!user) {
@@ -122,7 +122,7 @@ export function RoomCard({
       return;
     }
 
-    await toggleFavorite(room.id, property.id);
+    toggleFavorite(room.id, property.id);
   };
 
   const roomTypeBadge = (() => {
