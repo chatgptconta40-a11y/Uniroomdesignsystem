@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, AuthContextType, RegisterData, UserType } from '../types/auth';
 import { StudentProfile } from '../types/profile';
-import { mockUsers } from '../data/mockUsers';
 import { getProfile, saveProfile } from '../data/mockProfiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
@@ -37,8 +36,12 @@ function safeParse<T>(value: string | null, fallback: T): T {
 }
 
 function initializeStorage() {
+  /*
+    Sem mock users.
+    A lista local só nasce vazia e vai sendo preenchida por registo/login real.
+  */
   if (!localStorage.getItem(USERS_KEY)) {
-    localStorage.setItem(USERS_KEY, JSON.stringify(mockUsers));
+    localStorage.setItem(USERS_KEY, JSON.stringify([]));
   }
 }
 
@@ -69,7 +72,7 @@ function mapDbProfile(profile: DbProfile): User {
   };
 }
 
-function mapFallbackUser(user: User): User {
+function mapStoredUser(user: User): User {
   const localProfile = getLocalProfileState(user.id);
 
   return {
@@ -85,9 +88,10 @@ function setStoredUser(user: User) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
 }
 
-function persistFallbackUser(user: User) {
-  const normalized = mapFallbackUser(user);
+function persistLocalUser(user: User) {
+  const normalized = mapStoredUser(user);
   setStoredUser(normalized);
+  updateLocalUserList(normalized);
   return normalized;
 }
 
@@ -118,7 +122,7 @@ async function fetchSupabaseProfile(userId: string, fallbackEmail?: string): Pro
     .maybeSingle();
 
   if (error) {
-    console.error('[UniRoom] Falha ao carregar perfil Supabase:', error.message);
+    console.warn('[UniRoom] Falha ao carregar perfil Supabase:', error.message);
     return null;
   }
 
@@ -160,29 +164,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const storedUser = localStorage.getItem(STORAGE_KEY);
 
       /*
-        LocalStorage primeiro:
-        a UI não fica dependente do Supabase para saber quem é o utilizador
-        nem para mostrar o perfil preenchido no onboarding.
+        LocalStorage primeiro.
       */
       if (storedUser && mounted) {
-        setUser(mapFallbackUser(JSON.parse(storedUser)));
+        setUser(mapStoredUser(JSON.parse(storedUser)));
       }
 
+      /*
+        Supabase só tenta hidratar por cima.
+        Se falhar, a app continua com localStorage.
+      */
       if (isSupabaseConfigured && supabase) {
         const { data } = await supabase.auth.getSession();
         const sessionUser = data.session?.user;
 
         if (sessionUser) {
           const profile = await fetchSupabaseProfile(sessionUser.id, sessionUser.email);
+
           if (mounted && profile) {
-            setUser(profile);
-            setStoredUser(profile);
-            updateLocalUserList(profile);
+            const normalized = persistLocalUser(profile);
+            setUser(normalized);
           }
         }
-
-        if (mounted) setLoading(false);
-        return;
       }
 
       if (mounted) setLoading(false);
@@ -208,9 +211,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const profile = await fetchSupabaseProfile(session.user.id, session.user.email);
 
       if (profile) {
-        setUser(profile);
-        setStoredUser(profile);
-        updateLocalUserList(profile);
+        const normalized = persistLocalUser(profile);
+        setUser(normalized);
       }
     });
 
@@ -223,49 +225,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     setLoading(true);
 
+    /*
+      Primeiro tenta login Supabase, porque contas reais vêm daí.
+      Mas se falhar, tenta utilizadores criados localmente.
+    */
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (error || !data.user) {
-        /*
-          Fallback local para não bloquear o protótipo.
-        */
-        const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
-        const foundUser = allUsers.find(item => item.email === email && item.password === password);
+      if (!error && data.user) {
+        const profile = await fetchSupabaseProfile(data.user.id, data.user.email || email);
 
-        if (foundUser) {
-          const normalized = persistFallbackUser(foundUser);
+        if (profile) {
+          const normalized = persistLocalUser(profile);
           setUser(normalized);
           setLoading(false);
+
           return { success: true, user: normalized };
         }
-
-        setLoading(false);
-        return { success: false, error: 'Email ou palavra-passe incorretos' };
       }
-
-      const profile = await fetchSupabaseProfile(data.user.id, data.user.email || email);
-
-      if (!profile) {
-        setLoading(false);
-        return { success: false, error: 'Não foi possível carregar o perfil desta conta.' };
-      }
-
-      setUser(profile);
-      setStoredUser(profile);
-      updateLocalUserList(profile);
-      setLoading(false);
-
-      return { success: true, user: profile };
     }
-
-    await new Promise(resolve => setTimeout(resolve, 300));
 
     const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
     const foundUser = allUsers.find(item => item.email === email && item.password === password);
 
     if (foundUser) {
-      const normalized = persistFallbackUser(foundUser);
+      const normalized = persistLocalUser(foundUser);
       setUser(normalized);
       setLoading(false);
 
@@ -291,42 +275,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      if (error || !authData.user) {
-        setLoading(false);
-        return { success: false, error: error?.message || 'Erro ao criar conta' };
+      if (!error && authData.user) {
+        await supabase
+          .from('profiles')
+          .upsert({
+            id: authData.user.id,
+            email: data.email,
+            full_name: data.name,
+            type: data.type,
+            onboarding_completed: data.type !== 'student',
+          }, { onConflict: 'id' });
+
+        const newUser = await fetchSupabaseProfile(authData.user.id, data.email);
+
+        if (newUser) {
+          const storedUser: User = {
+            ...newUser,
+            password: data.password,
+          };
+
+          const normalized = persistLocalUser(storedUser);
+          setUser(normalized);
+          setLoading(false);
+
+          return { success: true, user: normalized };
+        }
       }
 
-      await supabase
-        .from('profiles')
-        .upsert({
-          id: authData.user.id,
-          email: data.email,
-          full_name: data.name,
-          type: data.type,
-          onboarding_completed: data.type !== 'student',
-        }, { onConflict: 'id' });
-
-      const newUser = await fetchSupabaseProfile(authData.user.id, data.email);
-
-      if (!newUser) {
-        setLoading(false);
-        return { success: false, error: 'Conta criada, mas não foi possível carregar o perfil.' };
+      if (error) {
+        console.warn('[UniRoom] Registo Supabase falhou, a tentar modo local:', error.message);
       }
-
-      const storedUser: User = {
-        ...newUser,
-        password: data.password,
-      };
-
-      setUser(newUser);
-      setStoredUser(storedUser);
-      updateLocalUserList(storedUser);
-      setLoading(false);
-
-      return { success: true, user: newUser };
     }
-
-    await new Promise(resolve => setTimeout(resolve, 300));
 
     const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
 
@@ -348,10 +327,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createdAt: new Date(),
     };
 
-    allUsers.push(newUser);
-    localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
-
-    const normalized = persistFallbackUser(newUser);
+    const normalized = persistLocalUser(newUser);
     setUser(normalized);
     setLoading(false);
 
@@ -372,13 +348,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     /*
-      Regra principal do projeto agora:
-      o perfil do estudante é guardado sempre primeiro em localStorage.
-      Isto garante compatibilidade, onboarding, candidatura e modal de candidatura
-      mesmo que o Supabase demore ou falhe.
+      Guardar sempre em localStorage primeiro.
     */
     saveProfile(profileToSave);
 
+    /*
+      Supabase é sincronização em background.
+      Falhar aqui não bloqueia a app nem apaga dados locais.
+    */
     if (isSupabaseConfigured && supabase) {
       const personalPayload = {
         user_id: user.id,
@@ -425,7 +402,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         amenities: profileToSave.preferences.amenities || {},
       };
 
-      const operations = await Promise.all([
+      Promise.all([
         supabase.from('personal_profiles').upsert(personalPayload, { onConflict: 'user_id' }),
         supabase.from('lifestyle_profiles').upsert(lifestylePayload, { onConflict: 'user_id' }),
         supabase.from('accommodation_preferences').upsert(preferencesPayload, { onConflict: 'user_id' }),
@@ -436,13 +413,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             onboarding_completed: true,
           })
           .eq('id', user.id),
-      ]);
-
-      const failed = operations.find(result => result.error);
-
-      if (failed?.error) {
-        console.warn('[UniRoom] Perfil guardado localmente, mas Supabase falhou:', failed.error.message);
-      }
+      ]).then(results => {
+        const failed = results.find(result => result.error);
+        if (failed?.error) {
+          console.warn('[UniRoom] Perfil guardado localmente, mas Supabase falhou:', failed.error.message);
+        }
+      });
     }
 
     const updatedUser: User = {
@@ -452,9 +428,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileCompleteness: profileToSave.completeness,
     };
 
-    setUser(updatedUser);
-    setStoredUser(updatedUser);
-    updateLocalUserList(updatedUser);
+    const normalized = persistLocalUser(updatedUser);
+    setUser(normalized);
 
     return { success: true };
   };

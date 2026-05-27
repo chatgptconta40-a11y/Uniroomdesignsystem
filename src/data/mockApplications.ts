@@ -1,9 +1,8 @@
-// Applications, Notifications & ActiveHomes — localStorage first + Supabase background.
-// This file keeps the synchronous API used by the UI, but makes the important
-// flow robust inside Figma Make: application -> accepted -> confirmed -> my-home.
+// Applications, Notifications & ActiveHomes — localStorage first.
+// Safe version for Figma Make: no Supabase calls from this file, so the UI does not
+// break because of missing/renamed Supabase columns while the product logic stays stable.
 
 import { Application, Notification, ActiveHome } from '../types/accommodation';
-import { supabase } from '../lib/supabase';
 import { getProperty, getRoom } from './mockProperties';
 
 const PROPERTIES_REFRESH_EVENT = 'uniroom:properties-updated';
@@ -12,16 +11,9 @@ const APPLICATIONS_STORAGE_KEY = 'uniroom_applications';
 const NOTIFICATIONS_STORAGE_KEY = 'uniroom_notifications';
 const ACTIVE_HOMES_STORAGE_KEY = 'uniroom_active_homes';
 
-// ─── Caches ────────────────────────────────────────────────────────────────
-
 const applicationsCache = new Map<string, Application>();
 const notificationsCache = new Map<string, Notification>();
 const activeHomesCache = new Map<string, ActiveHome>();
-
-let hydrated = false;
-let hydratePromise: Promise<void> | null = null;
-
-// ─── LocalStorage helpers ──────────────────────────────────────────────────
 
 function safeParse<T>(value: string | null, fallback: T): T {
   try {
@@ -47,14 +39,14 @@ function toDate(value: unknown, fallback = new Date()): Date {
 
 function normalizeApplication(value: any): Application {
   return {
-    id: value.id,
-    userId: value.userId,
-    accommodationId: value.accommodationId ?? value.propertyId ?? '',
-    propertyId: value.propertyId,
+    id: String(value.id),
+    userId: String(value.userId),
+    accommodationId: String(value.accommodationId ?? value.propertyId ?? value.roomId ?? ''),
     roomId: value.roomId,
-    landlordId: value.landlordId,
+    propertyId: value.propertyId,
+    landlordId: String(value.landlordId ?? ''),
     landlordName: value.landlordName,
-    status: value.status,
+    status: value.status ?? 'pending',
     message: value.message ?? '',
     moveInDate: value.moveInDate ? toDate(value.moveInDate) : undefined,
     createdAt: toDate(value.createdAt),
@@ -70,10 +62,10 @@ function normalizeApplication(value: any): Application {
 
 function normalizeNotification(value: any): Notification {
   return {
-    id: value.id,
-    userId: value.userId,
-    type: value.type,
-    title: value.title,
+    id: String(value.id),
+    userId: String(value.userId),
+    type: value.type ?? 'application_update',
+    title: value.title ?? '',
     message: value.message ?? '',
     link: value.link,
     read: !!value.read,
@@ -83,16 +75,16 @@ function normalizeNotification(value: any): Notification {
 
 function normalizeActiveHome(value: any): ActiveHome {
   return {
-    id: value.id,
-    studentId: value.studentId,
-    propertyId: value.propertyId,
-    roomId: value.roomId,
-    applicationId: value.applicationId ?? '',
-    landlordId: value.landlordId,
+    id: String(value.id),
+    studentId: String(value.studentId),
+    propertyId: String(value.propertyId),
+    roomId: String(value.roomId),
+    applicationId: String(value.applicationId ?? ''),
+    landlordId: String(value.landlordId ?? ''),
     landlordName: value.landlordName ?? 'Senhorio',
     moveInDate: toDate(value.moveInDate),
     contractEndDate: toDate(value.contractEndDate),
-    paymentDay: value.paymentDay ?? 5,
+    paymentDay: Number(value.paymentDay ?? 5),
     createdAt: toDate(value.createdAt),
     propertyTitle: value.propertyTitle,
     roomTitle: value.roomTitle,
@@ -102,32 +94,28 @@ function normalizeActiveHome(value: any): ActiveHome {
 }
 
 function loadLocalState(): void {
-  const localApps = readLocalArray<any>(APPLICATIONS_STORAGE_KEY);
-  const localNotifs = readLocalArray<any>(NOTIFICATIONS_STORAGE_KEY);
-  const localHomes = readLocalArray<any>(ACTIVE_HOMES_STORAGE_KEY);
-
   applicationsCache.clear();
-  localApps
-    .filter(app => app?.id && app?.userId)
-    .forEach(app => {
-      const normalized = normalizeApplication(app);
-      applicationsCache.set(normalized.id, normalized);
+  readLocalArray<any>(APPLICATIONS_STORAGE_KEY)
+    .filter(item => item?.id && item?.userId)
+    .forEach(item => {
+      const app = normalizeApplication(item);
+      applicationsCache.set(app.id, app);
     });
 
   notificationsCache.clear();
-  localNotifs
-    .filter(notif => notif?.id && notif?.userId)
-    .forEach(notif => {
-      const normalized = normalizeNotification(notif);
-      notificationsCache.set(normalized.id, normalized);
+  readLocalArray<any>(NOTIFICATIONS_STORAGE_KEY)
+    .filter(item => item?.id && item?.userId)
+    .forEach(item => {
+      const notification = normalizeNotification(item);
+      notificationsCache.set(notification.id, notification);
     });
 
   activeHomesCache.clear();
-  localHomes
-    .filter(home => home?.id && home?.studentId)
-    .forEach(home => {
-      const normalized = normalizeActiveHome(home);
-      activeHomesCache.set(normalized.id, normalized);
+  readLocalArray<any>(ACTIVE_HOMES_STORAGE_KEY)
+    .filter(item => item?.id && item?.studentId)
+    .forEach(item => {
+      const home = normalizeActiveHome(item);
+      activeHomesCache.set(home.id, home);
     });
 }
 
@@ -143,215 +131,8 @@ function saveActiveHomesLocal(): void {
   writeLocalArray(ACTIVE_HOMES_STORAGE_KEY, Array.from(activeHomesCache.values()));
 }
 
-function saveAllLocal(): void {
-  saveApplicationsLocal();
-  saveNotificationsLocal();
-  saveActiveHomesLocal();
-}
-
-function mergeApplication(app: Application): void {
-  const current = applicationsCache.get(app.id);
-
-  if (!current) {
-    applicationsCache.set(app.id, app);
-    return;
-  }
-
-  /*
-    localStorage wins when it has a more advanced status than Supabase,
-    because Figma preview can reload before Supabase hydration catches up.
-  */
-  const localRank = getStatusRank(current.status);
-  const remoteRank = getStatusRank(app.status);
-
-  if (remoteRank > localRank) {
-    applicationsCache.set(app.id, app);
-    return;
-  }
-
-  if (remoteRank === localRank && app.updatedAt > current.updatedAt) {
-    applicationsCache.set(app.id, app);
-  }
-}
-
-function mergeActiveHome(home: ActiveHome): void {
-  const current = activeHomesCache.get(home.id);
-
-  if (!current || home.createdAt >= current.createdAt) {
-    activeHomesCache.set(home.id, home);
-  }
-}
-
-function mergeNotification(notification: Notification): void {
-  const current = notificationsCache.get(notification.id);
-
-  if (!current || notification.createdAt >= current.createdAt) {
-    notificationsCache.set(notification.id, notification);
-  }
-}
-
-function getStatusRank(status: Application['status']): number {
-  const ranks: Record<Application['status'], number> = {
-    pending: 1,
-    under_review: 2,
-    accepted: 3,
-    confirmed: 4,
-    rejected: 4,
-    withdrawn: 4,
-  };
-
-  return ranks[status] ?? 0;
-}
-
-// ─── Supabase row mappers ──────────────────────────────────────────────────
-
-function rowToApplication(row: any): Application {
-  return {
-    id: row.id,
-    userId: row.user_id,
-    accommodationId: row.property_id ?? row.room_id ?? '',
-    propertyId: row.property_id ?? undefined,
-    roomId: row.room_id ?? undefined,
-    landlordId: row.landlord_id,
-    landlordName: row.landlord_name ?? undefined,
-    status: row.status,
-    message: row.message ?? '',
-    moveInDate: row.move_in_date ? new Date(row.move_in_date) : undefined,
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
-    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at) : undefined,
-    confirmedAt: row.confirmed_at ? new Date(row.confirmed_at) : undefined,
-    linkedCandidateId: row.linked_candidate_id ?? undefined,
-    visitDate: row.visit_date ?? undefined,
-    visitFormat: row.visit_format ?? undefined,
-    visitNote: row.visit_note ?? undefined,
-  };
-}
-
-function rowToNotification(row: any): Notification {
-  return {
-    id: row.id,
-    userId: row.user_id,
-    type: row.type,
-    title: row.title,
-    message: row.message ?? '',
-    link: row.link ?? undefined,
-    read: !!row.read,
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-  };
-}
-
-function rowToActiveHome(row: any): ActiveHome {
-  const room = row.room_id ? getRoom(row.room_id) : null;
-  const property = row.property_id ? getProperty(row.property_id) : null;
-
-  return {
-    id: row.id,
-    studentId: row.student_id,
-    propertyId: row.property_id,
-    roomId: row.room_id,
-    applicationId: row.application_id ?? '',
-    landlordId: row.landlord_id,
-    landlordName: row.landlord_name ?? 'Senhorio',
-    moveInDate: row.move_in_date ? new Date(row.move_in_date) : new Date(),
-    contractEndDate: row.contract_end_date ? new Date(row.contract_end_date) : new Date(),
-    paymentDay: row.payment_day ?? 5,
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    propertyTitle: property?.title,
-    roomTitle: room?.title,
-    monthlyRent: row.monthly_rent ? Number(row.monthly_rent) : room?.price,
-    utilities: row.utilities ? Number(row.utilities) : room?.utilities,
-  };
-}
-
-// ─── Hydration ─────────────────────────────────────────────────────────────
-
-async function hydrate(): Promise<void> {
-  if (hydrated) return;
-  if (hydratePromise) return hydratePromise;
-
-  hydratePromise = (async () => {
-    /*
-      1) Load localStorage immediately. This is the source of truth for the UI.
-      2) Try Supabase in background.
-      3) Merge Supabase data without deleting local confirmed homes.
-    */
-    loadLocalState();
-
-    const [appsRes, notifsRes, homesRes] = await Promise.all([
-      supabase.from('applications').select('*'),
-      supabase.from('notifications').select('*'),
-      supabase.from('active_homes').select('*'),
-    ]);
-
-    if (appsRes.error) {
-      console.error('mockApplications hydrate apps:', appsRes.error.message);
-    } else {
-      (appsRes.data ?? []).forEach(row => mergeApplication(rowToApplication(row)));
-    }
-
-    if (notifsRes.error) {
-      console.error('mockApplications hydrate notifs:', notifsRes.error.message);
-    } else {
-      (notifsRes.data ?? []).forEach(row => mergeNotification(rowToNotification(row)));
-    }
-
-    if (homesRes.error) {
-      console.error('mockApplications hydrate homes:', homesRes.error.message);
-    } else {
-      (homesRes.data ?? []).forEach(row => mergeActiveHome(rowToActiveHome(row)));
-    }
-
-    saveAllLocal();
-    hydrated = true;
-  })();
-
-  return hydratePromise;
-}
-
-loadLocalState();
-void hydrate();
-
-// ─── Persistence helpers ───────────────────────────────────────────────────
-
 function notifyPropertiesUpdated(): void {
   window.dispatchEvent(new CustomEvent(PROPERTIES_REFRESH_EVENT));
-}
-
-function persistApp(id: string, patch: Record<string, unknown>): void {
-  void supabase.from('applications').update(patch).eq('id', id).then(({ error }) => {
-    if (error) console.error('Application persist error:', error.message);
-  });
-}
-
-function insertApplication(app: Application): void {
-  void supabase.from('applications').insert({
-    id: app.id,
-    user_id: app.userId,
-    property_id: app.propertyId ?? null,
-    room_id: app.roomId ?? null,
-    landlord_id: app.landlordId,
-    status: app.status,
-    message: app.message,
-    move_in_date: app.moveInDate ? app.moveInDate.toISOString().slice(0, 10) : null,
-    linked_candidate_id: app.linkedCandidateId ?? null,
-  }).then(({ error }) => {
-    if (error) console.error('Application insert error:', error.message);
-  });
-}
-
-function insertNotification(notif: Notification): void {
-  void supabase.from('notifications').insert({
-    id: notif.id,
-    user_id: notif.userId,
-    type: notif.type,
-    title: notif.title,
-    message: notif.message,
-    link: notif.link ?? null,
-    read: notif.read,
-  }).then(({ error }) => {
-    if (error) console.error('Notification insert error:', error.message);
-  });
 }
 
 function addNotification(
@@ -361,7 +142,7 @@ function addNotification(
   message: string,
   link?: string,
 ): void {
-  const notif: Notification = {
+  const notification: Notification = {
     id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     userId,
     type,
@@ -372,40 +153,8 @@ function addNotification(
     createdAt: new Date(),
   };
 
-  notificationsCache.set(notif.id, notif);
+  notificationsCache.set(notification.id, notification);
   saveNotificationsLocal();
-  insertNotification(notif);
-}
-
-function updateRoomInDb(roomId: string, patch: Record<string, unknown>): void {
-  void supabase.from('rooms').update(patch).eq('id', roomId).then(({ error }) => {
-    if (error) console.error('Room update error:', error.message);
-    else notifyPropertiesUpdated();
-  });
-}
-
-function insertActiveHome(home: ActiveHome): void {
-  void supabase.from('active_homes').insert({
-    id: home.id,
-    student_id: home.studentId,
-    property_id: home.propertyId,
-    room_id: home.roomId,
-    application_id: home.applicationId,
-    landlord_id: home.landlordId,
-    move_in_date: home.moveInDate.toISOString().slice(0, 10),
-    contract_end_date: home.contractEndDate.toISOString().slice(0, 10),
-    payment_day: home.paymentDay,
-    monthly_rent: home.monthlyRent ?? null,
-    utilities: home.utilities ?? null,
-  }).then(({ error }) => {
-    if (error) console.error('ActiveHome insert error:', error.message);
-  });
-}
-
-function deleteActiveHomeFromDb(homeId: string): void {
-  void supabase.from('active_homes').delete().eq('id', homeId).then(({ error }) => {
-    if (error) console.error('ActiveHome delete error:', error.message);
-  });
 }
 
 function rejectCompetingApplications(accepted: Application): void {
@@ -424,11 +173,10 @@ function rejectCompetingApplications(accepted: Application): void {
       updatedAt: new Date(),
     };
 
-    applicationsCache.set(app.id, next);
-    persistApp(app.id, { status: 'rejected', reviewed_at: next.reviewedAt!.toISOString() });
+    applicationsCache.set(next.id, next);
 
     addNotification(
-      app.userId,
+      next.userId,
       'application_update',
       'Quarto reservado por outro candidato',
       'A tua candidatura foi encerrada porque o quarto foi reservado por outro candidato.',
@@ -439,13 +187,15 @@ function rejectCompetingApplications(accepted: Application): void {
   saveApplicationsLocal();
 }
 
+loadLocalState();
+
 // ─── Read API ─────────────────────────────────────────────────────────────
 
 export function getApplicationsForUser(userId: string): Application[] {
   loadLocalState();
 
   return Array.from(applicationsCache.values())
-    .filter(application => application.userId === userId)
+    .filter(app => app.userId === userId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
@@ -453,7 +203,7 @@ export function getApplicationsForLandlord(landlordId: string): Application[] {
   loadLocalState();
 
   return Array.from(applicationsCache.values())
-    .filter(application => application.landlordId === landlordId)
+    .filter(app => app.landlordId === landlordId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
@@ -519,7 +269,6 @@ export function createApplication(
 
   applicationsCache.set(id, newApp);
   saveApplicationsLocal();
-  insertApplication(newApp);
 
   addNotification(
     userId,
@@ -538,15 +287,13 @@ export function updateApplicationLinkCandidateId(applicationId: string, linkedCa
   const app = applicationsCache.get(applicationId);
   if (!app) return;
 
-  const next = {
+  applicationsCache.set(applicationId, {
     ...app,
     linkedCandidateId,
     updatedAt: new Date(),
-  };
+  });
 
-  applicationsCache.set(applicationId, next);
   saveApplicationsLocal();
-  persistApp(applicationId, { linked_candidate_id: linkedCandidateId });
 }
 
 export function updateApplicationStatus(
@@ -573,17 +320,7 @@ export function updateApplicationStatus(
   applicationsCache.set(applicationId, next);
   saveApplicationsLocal();
 
-  const patch: Record<string, unknown> = {
-    status,
-    updated_at: next.updatedAt.toISOString(),
-  };
-
-  if (shouldReview) patch.reviewed_at = reviewedAt!.toISOString();
-
-  persistApp(applicationId, patch);
-
   if (status === 'accepted') {
-    if (next.roomId) updateRoomInDb(next.roomId, { status: 'reserved', reserved_by: next.userId });
     rejectCompetingApplications(next);
   }
 
@@ -615,6 +352,8 @@ export function updateApplicationStatus(
     }
   }
 
+  notifyPropertiesUpdated();
+
   return true;
 }
 
@@ -642,20 +381,6 @@ export function syncVisitData(
 
   applicationsCache.set(applicationId, next);
   saveApplicationsLocal();
-
-  const patch: Record<string, unknown> = {
-    visit_date: visitDate,
-    visit_format: visitFormat,
-    visit_note: visitNote ?? null,
-    updated_at: next.updatedAt.toISOString(),
-  };
-
-  if (shouldMoveToReview) {
-    patch.status = 'under_review';
-    patch.reviewed_at = next.reviewedAt!.toISOString();
-  }
-
-  persistApp(applicationId, patch);
 
   const d = new Date(visitDate);
   const dateStr = d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' });
@@ -702,18 +427,6 @@ export function confirmStay(applicationId: string): ActiveHome | null {
   applicationsCache.set(applicationId, next);
   saveApplicationsLocal();
 
-  persistApp(applicationId, {
-    status: 'confirmed',
-    confirmed_at: confirmedAt.toISOString(),
-    updated_at: next.updatedAt.toISOString(),
-  });
-
-  updateRoomInDb(app.roomId, {
-    status: 'occupied',
-    occupied_by: app.userId,
-    reserved_by: null,
-  });
-
   const home: ActiveHome = {
     id: `home_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     studentId: app.userId,
@@ -732,20 +445,14 @@ export function confirmStay(applicationId: string): ActiveHome | null {
     utilities: room?.utilities,
   };
 
-  /*
-    Produto real: o estudante só deve ter uma casa ativa.
-    Substituímos qualquer active_home anterior imediatamente em localStorage.
-  */
-  for (const h of Array.from(activeHomesCache.values())) {
-    if (h.studentId === app.userId) {
-      activeHomesCache.delete(h.id);
-      deleteActiveHomeFromDb(h.id);
+  for (const existingHome of Array.from(activeHomesCache.values())) {
+    if (existingHome.studentId === app.userId) {
+      activeHomesCache.delete(existingHome.id);
     }
   }
 
   activeHomesCache.set(home.id, home);
   saveActiveHomesLocal();
-  insertActiveHome(home);
 
   addNotification(
     app.userId,
@@ -794,16 +501,11 @@ export function markNotificationAsRead(notificationId: string): boolean {
   });
 
   saveNotificationsLocal();
-
-  void supabase.from('notifications').update({ read: true }).eq('id', notificationId);
-
   return true;
 }
 
 export function markAllNotificationsAsRead(userId: string): void {
   loadLocalState();
-
-  const ids: string[] = [];
 
   for (const [id, notification] of notificationsCache) {
     if (notification.userId === userId && !notification.read) {
@@ -811,16 +513,10 @@ export function markAllNotificationsAsRead(userId: string): void {
         ...notification,
         read: true,
       });
-
-      ids.push(id);
     }
   }
 
   saveNotificationsLocal();
-
-  if (ids.length > 0) {
-    void supabase.from('notifications').update({ read: true }).in('id', ids);
-  }
 }
 
 // ─── Active homes ──────────────────────────────────────────────────────────
@@ -843,7 +539,6 @@ export function removeActiveHome(studentId: string, propertyId: string, roomId: 
       home.roomId === roomId
     ) {
       activeHomesCache.delete(id);
-      deleteActiveHomeFromDb(id);
       removed = true;
     }
   }
@@ -857,7 +552,5 @@ export function removeActiveHome(studentId: string, propertyId: string, roomId: 
 }
 
 export async function refreshApplicationsState(): Promise<void> {
-  hydrated = false;
-  hydratePromise = null;
-  await hydrate();
+  loadLocalState();
 }

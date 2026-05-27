@@ -2,13 +2,10 @@
 // Keeps the same synchronous API, but guarantees that requests created by the
 // student appear to the landlord after refresh in Figma Make.
 
-import {
-  MaintenanceRequest,
-  MaintenanceStatus,
-} from "../types/maintenance";
-import { supabase } from "../lib/supabase";
+import { MaintenanceRequest, MaintenanceStatus } from '../types/maintenance';
+import { supabase } from '../lib/supabase';
 
-const MAINTENANCE_STORAGE_KEY = "uniroom_maintenance_requests";
+const MAINTENANCE_STORAGE_KEY = 'uniroom_maintenance_requests';
 
 const cache = new Map<string, MaintenanceRequest>();
 let hydrated = false;
@@ -16,18 +13,15 @@ let hydratePromise: Promise<void> | null = null;
 
 function safeParse<T>(value: string | null, fallback: T): T {
   try {
-    return value ? (JSON.parse(value) as T) : fallback;
+    return value ? JSON.parse(value) as T : fallback;
   } catch {
     return fallback;
   }
 }
 
 function readLocal(): MaintenanceRequest[] {
-  return safeParse<any[]>(
-    localStorage.getItem(MAINTENANCE_STORAGE_KEY),
-    [],
-  )
-    .filter((item) => item?.id)
+  return safeParse<any[]>(localStorage.getItem(MAINTENANCE_STORAGE_KEY), [])
+    .filter(item => item?.id)
     .map(normalizeRequest);
 }
 
@@ -47,28 +41,18 @@ function toDate(value: unknown, fallback = new Date()): Date {
 function normalizeRequest(value: any): MaintenanceRequest {
   return {
     id: String(value.id),
-    userId: String(value.userId ?? value.user_id ?? ""),
-    accommodationId: String(
-      value.accommodationId ??
-        value.accommodation_id ??
-        value.property_id ??
-        "",
-    ),
-    landlordId: String(
-      value.landlordId ?? value.landlord_id ?? "",
-    ),
-    category: value.category ?? "other",
-    title: value.title ?? "",
-    description: value.description ?? "",
-    urgency: value.urgency ?? "medium",
-    status: value.status ?? "pending",
+    userId: String(value.userId ?? value.user_id ?? ''),
+    accommodationId: String(value.accommodationId ?? value.accommodation_id ?? value.property_id ?? ''),
+    landlordId: String(value.landlordId ?? value.landlord_id ?? ''),
+    category: value.category ?? 'other',
+    title: value.title ?? '',
+    description: value.description ?? '',
+    urgency: value.urgency ?? 'medium',
+    status: value.status ?? 'pending',
     photoUrl: value.photoUrl ?? value.photo_url ?? undefined,
     createdAt: toDate(value.createdAt ?? value.created_at),
     updatedAt: toDate(value.updatedAt ?? value.updated_at),
-    resolvedAt:
-      value.resolvedAt || value.resolved_at
-        ? toDate(value.resolvedAt ?? value.resolved_at)
-        : undefined,
+    resolvedAt: value.resolvedAt || value.resolved_at ? toDate(value.resolvedAt ?? value.resolved_at) : undefined,
   };
 }
 
@@ -76,8 +60,7 @@ function rowToRequest(row: any): MaintenanceRequest {
   return normalizeRequest({
     id: row.id,
     userId: row.user_id,
-    accommodationId:
-      row.accommodation_id ?? row.property_id ?? "",
+    accommodationId: row.accommodation_id ?? row.property_id ?? '',
     landlordId: row.landlord_id,
     category: row.category,
     title: row.title,
@@ -91,9 +74,7 @@ function rowToRequest(row: any): MaintenanceRequest {
   });
 }
 
-function requestToRow(
-  request: MaintenanceRequest,
-): Record<string, unknown> {
+function requestToRow(request: MaintenanceRequest): Record<string, unknown> {
   return {
     id: request.id,
     user_id: request.userId,
@@ -106,16 +87,14 @@ function requestToRow(
     urgency: request.urgency,
     status: request.status,
     photo_url: request.photoUrl ?? null,
-    resolved_at: request.resolvedAt
-      ? request.resolvedAt.toISOString()
-      : null,
+    resolved_at: request.resolvedAt ? request.resolvedAt.toISOString() : null,
   };
 }
 
 function loadLocalState(): void {
   cache.clear();
 
-  readLocal().forEach((request) => {
+  readLocal().forEach(request => {
     cache.set(request.id, request);
   });
 }
@@ -136,16 +115,16 @@ async function hydrate(): Promise<void> {
     loadLocalState();
 
     const { data, error } = await supabase
-      .from("maintenance_requests")
-      .select("*");
+      .from('maintenance_requests')
+      .select('*');
 
     if (error) {
-      console.warn("Maintenance hydrate:", error.message);
+      console.warn('Maintenance hydrate:', error.message);
       hydrated = true;
       return;
     }
 
-    (data ?? []).forEach((row) => {
+    (data ?? []).forEach(row => {
       mergeRequest(rowToRequest(row));
     });
 
@@ -159,28 +138,20 @@ async function hydrate(): Promise<void> {
 loadLocalState();
 void hydrate();
 
-export function getMaintenanceRequests(
-  userId: string,
-): MaintenanceRequest[] {
+export function getMaintenanceRequests(userId: string): MaintenanceRequest[] {
   loadLocalState();
 
   return Array.from(cache.values())
-    .filter((request) => request.userId === userId)
-    .sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-    );
+    .filter(request => request.userId === userId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
-export function getMaintenanceRequestsForLandlord(
-  landlordId: string,
-): MaintenanceRequest[] {
+export function getMaintenanceRequestsForLandlord(landlordId: string): MaintenanceRequest[] {
   loadLocalState();
 
   return Array.from(cache.values())
-    .filter((request) => request.landlordId === landlordId)
-    .sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-    );
+    .filter(request => request.landlordId === landlordId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 export function createMaintenanceRequest(
@@ -206,7 +177,7 @@ export function createMaintenanceRequest(
     title,
     description,
     urgency: urgency as any,
-    status: "pending",
+    status: 'pending',
     photoUrl,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -216,32 +187,24 @@ export function createMaintenanceRequest(
   writeLocal();
 
   void supabase
-    .from("maintenance_requests")
+    .from('maintenance_requests')
     .insert(requestToRow(request))
     .then(({ error }) => {
-      if (error)
-        console.warn(
-          "Maintenance insert error:",
-          error.message,
-        );
+      if (error) console.warn('Maintenance insert error:', error.message);
     });
 
   return request;
 }
 
-export function updateMaintenanceStatus(
-  requestId: string,
-  status: MaintenanceStatus,
-): boolean {
+export function updateMaintenanceStatus(requestId: string, status: MaintenanceStatus): boolean {
   loadLocalState();
 
   const request = cache.get(requestId);
   if (!request) return false;
 
-  const resolvedAt =
-    status === "resolved" || status === "closed"
-      ? new Date()
-      : request.resolvedAt;
+  const resolvedAt = status === 'resolved' || status === 'closed'
+    ? new Date()
+    : request.resolvedAt;
 
   const updated: MaintenanceRequest = {
     ...request,
@@ -257,20 +220,16 @@ export function updateMaintenanceStatus(
     status,
   };
 
-  if (status === "resolved" || status === "closed") {
+  if (status === 'resolved' || status === 'closed') {
     patch.resolved_at = resolvedAt!.toISOString();
   }
 
   void supabase
-    .from("maintenance_requests")
+    .from('maintenance_requests')
     .update(patch)
-    .eq("id", requestId)
+    .eq('id', requestId)
     .then(({ error }) => {
-      if (error)
-        console.warn(
-          "Maintenance update error:",
-          error.message,
-        );
+      if (error) console.warn('Maintenance update error:', error.message);
     });
 
   return true;
@@ -281,20 +240,14 @@ export function getMaintenanceStats(landlordId: string) {
 
   return {
     total: all.length,
-    pending: all.filter(
-      (request) => request.status === "pending",
-    ).length,
-    inProgress: all.filter(
-      (request) => request.status === "in_progress",
-    ).length,
-    resolved: all.filter(
-      (request) => request.status === "resolved",
-    ).length,
+    pending: all.filter(request => request.status === 'pending').length,
+    inProgress: all.filter(request => request.status === 'in_progress').length,
+    resolved: all.filter(request => request.status === 'resolved').length,
     highUrgency: all.filter(
-      (request) =>
-        request.urgency === "high" &&
-        request.status !== "resolved" &&
-        request.status !== "closed",
+      request =>
+        request.urgency === 'high' &&
+        request.status !== 'resolved' &&
+        request.status !== 'closed',
     ).length,
   };
 }
