@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, AuthContextType, RegisterData, UserType } from '../types/auth';
 import { StudentProfile } from '../types/profile';
-import { mockUsers, mockStudentProfiles, mockLandlordProfiles } from '../data/mockUsers';
-import { saveProfile } from '../data/mockProfiles';
+import { mockUsers } from '../data/mockUsers';
+import { getProfile, saveProfile } from '../data/mockProfiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,39 +28,84 @@ const defaultCompleteness = {
   overall: 0,
 };
 
+function safeParse<T>(value: string | null, fallback: T): T {
+  try {
+    return value ? JSON.parse(value) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function initializeStorage() {
   if (!localStorage.getItem(USERS_KEY)) {
     localStorage.setItem(USERS_KEY, JSON.stringify(mockUsers));
   }
 }
 
+function getLocalProfileState(userId: string) {
+  const profile = getProfile(userId);
+
+  return {
+    onboardingCompleted: Boolean(profile?.onboardingCompleted),
+    profileCompleteness: profile?.completeness || defaultCompleteness,
+    profileName: profile?.personal?.fullName,
+  };
+}
+
 function mapDbProfile(profile: DbProfile): User {
-  const onboardingDone = Boolean(profile.onboarding_completed);
+  const localProfile = getLocalProfileState(profile.id);
+  const onboardingDone = Boolean(profile.onboarding_completed || localProfile.onboardingCompleted);
 
   return {
     id: profile.id,
-    name: profile.full_name || profile.email,
+    name: localProfile.profileName || profile.full_name || profile.email,
     email: profile.email,
     type: profile.type,
     verified: Boolean(profile.verified),
     status: profile.status || 'active',
     onboardingCompleted: onboardingDone,
-    profileCompleteness: defaultCompleteness,
+    profileCompleteness: localProfile.profileCompleteness,
     createdAt: profile.created_at ? new Date(profile.created_at) : new Date(),
   };
 }
 
 function mapFallbackUser(user: User): User {
+  const localProfile = getLocalProfileState(user.id);
+
   return {
     ...user,
-    onboardingCompleted: user.type === 'student' || Boolean(user.onboardingCompleted),
-    profileCompleteness: user.profileCompleteness || {
-      personal: user.type === 'student' ? 100 : 0,
-      lifestyle: user.type === 'student' ? 100 : 0,
-      preferences: user.type === 'student' ? 100 : 0,
-      overall: user.type === 'student' ? 100 : 0,
-    },
+    name: localProfile.profileName || user.name,
+    onboardingCompleted: Boolean(user.onboardingCompleted || localProfile.onboardingCompleted),
+    profileCompleteness: localProfile.profileCompleteness || user.profileCompleteness || defaultCompleteness,
+    createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
   };
+}
+
+function setStoredUser(user: User) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+}
+
+function persistFallbackUser(user: User) {
+  const normalized = mapFallbackUser(user);
+  setStoredUser(normalized);
+  return normalized;
+}
+
+function updateLocalUserList(user: User): void {
+  const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
+  const existingIndex = allUsers.findIndex(item => item.id === user.id || item.email === user.email);
+
+  if (existingIndex >= 0) {
+    allUsers[existingIndex] = {
+      ...allUsers[existingIndex],
+      ...user,
+      createdAt: user.createdAt,
+    };
+  } else {
+    allUsers.push(user);
+  }
+
+  localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
 }
 
 async function fetchSupabaseProfile(userId: string, fallbackEmail?: string): Promise<User | null> {
@@ -77,33 +122,29 @@ async function fetchSupabaseProfile(userId: string, fallbackEmail?: string): Pro
     return null;
   }
 
-  if (data) return mapDbProfile(data as DbProfile);
+  if (data) {
+    return mapDbProfile(data as DbProfile);
+  }
 
   const { data: authData } = await supabase.auth.getUser();
   const authUser = authData.user;
+
   if (!authUser) return null;
+
+  const localProfile = getLocalProfileState(authUser.id);
+  const type = (authUser.user_metadata?.type as UserType) || 'student';
 
   return {
     id: authUser.id,
-    name: authUser.user_metadata?.full_name || fallbackEmail || authUser.email || 'Utilizador',
+    name: localProfile.profileName || authUser.user_metadata?.full_name || fallbackEmail || authUser.email || 'Utilizador',
     email: authUser.email || fallbackEmail || '',
-    type: (authUser.user_metadata?.type as UserType) || 'student',
+    type,
     verified: Boolean(authUser.email_confirmed_at),
     status: 'active',
-    onboardingCompleted: ((authUser.user_metadata?.type as UserType) || 'student') === 'student',
-    profileCompleteness: defaultCompleteness,
+    onboardingCompleted: Boolean(localProfile.onboardingCompleted || type !== 'student'),
+    profileCompleteness: localProfile.profileCompleteness,
     createdAt: authUser.created_at ? new Date(authUser.created_at) : new Date(),
   };
-}
-
-function persistFallbackUser(user: User) {
-  const normalized = mapFallbackUser(user);
-  setStoredUser(normalized);
-  return normalized;
-}
-
-function setStoredUser(user: User) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -116,29 +157,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function loadSession() {
       initializeStorage();
 
+      const storedUser = localStorage.getItem(STORAGE_KEY);
+
+      /*
+        LocalStorage primeiro:
+        a UI não fica dependente do Supabase para saber quem é o utilizador
+        nem para mostrar o perfil preenchido no onboarding.
+      */
+      if (storedUser && mounted) {
+        setUser(mapFallbackUser(JSON.parse(storedUser)));
+      }
+
       if (isSupabaseConfigured && supabase) {
         const { data } = await supabase.auth.getSession();
         const sessionUser = data.session?.user;
 
         if (sessionUser) {
           const profile = await fetchSupabaseProfile(sessionUser.id, sessionUser.email);
-          if (mounted && profile) setUser(profile);
+          if (mounted && profile) {
+            setUser(profile);
+            setStoredUser(profile);
+            updateLocalUserList(profile);
+          }
         }
 
         if (mounted) setLoading(false);
         return;
       }
 
-      const storedUser = localStorage.getItem(STORAGE_KEY);
-      if (storedUser && mounted) {
-        setUser(mapFallbackUser(JSON.parse(storedUser)));
-      }
       if (mounted) setLoading(false);
     }
 
     loadSession();
 
-    if (!supabase) return () => { mounted = false; };
+    if (!supabase) {
+      return () => {
+        mounted = false;
+      };
+    }
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
@@ -150,7 +206,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const profile = await fetchSupabaseProfile(session.user.id, session.user.email);
-      if (profile) setUser(profile);
+
+      if (profile) {
+        setUser(profile);
+        setStoredUser(profile);
+        updateLocalUserList(profile);
+      }
     });
 
     return () => {
@@ -166,30 +227,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error || !data.user) {
+        /*
+          Fallback local para não bloquear o protótipo.
+        */
+        const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
+        const foundUser = allUsers.find(item => item.email === email && item.password === password);
+
+        if (foundUser) {
+          const normalized = persistFallbackUser(foundUser);
+          setUser(normalized);
+          setLoading(false);
+          return { success: true, user: normalized };
+        }
+
         setLoading(false);
         return { success: false, error: 'Email ou palavra-passe incorretos' };
       }
 
       const profile = await fetchSupabaseProfile(data.user.id, data.user.email || email);
+
       if (!profile) {
         setLoading(false);
         return { success: false, error: 'Não foi possível carregar o perfil desta conta.' };
       }
 
       setUser(profile);
+      setStoredUser(profile);
+      updateLocalUserList(profile);
       setLoading(false);
+
       return { success: true, user: profile };
     }
 
     await new Promise(resolve => setTimeout(resolve, 300));
 
-    const allUsers: User[] = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-    const foundUser = allUsers.find(u => u.email === email && u.password === password);
+    const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
+    const foundUser = allUsers.find(item => item.email === email && item.password === password);
 
     if (foundUser) {
       const normalized = persistFallbackUser(foundUser);
       setUser(normalized);
       setLoading(false);
+
       return { success: true, user: normalized };
     }
 
@@ -219,40 +298,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: authData.user.id,
+          email: data.email,
           full_name: data.name,
           type: data.type,
           onboarding_completed: data.type !== 'student',
-        })
-        .eq('id', authData.user.id);
+        }, { onConflict: 'id' });
 
       const newUser = await fetchSupabaseProfile(authData.user.id, data.email);
+
       if (!newUser) {
         setLoading(false);
         return { success: false, error: 'Conta criada, mas não foi possível carregar o perfil.' };
       }
 
+      const storedUser: User = {
+        ...newUser,
+        password: data.password,
+      };
+
       setUser(newUser);
+      setStoredUser(storedUser);
+      updateLocalUserList(storedUser);
       setLoading(false);
+
       return { success: true, user: newUser };
     }
 
     await new Promise(resolve => setTimeout(resolve, 300));
 
-    const allUsers: User[] = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
 
-    if (allUsers.some(u => u.email === data.email)) {
+    if (allUsers.some(item => item.email === data.email)) {
       setLoading(false);
       return { success: false, error: 'Este email já está registado' };
     }
 
     const newUser: User = {
-      id: String(allUsers.length + 1),
+      id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: data.name,
       email: data.email,
       password: data.password,
       type: data.type,
       verified: false,
+      status: 'active',
       onboardingCompleted: data.type !== 'student',
       profileCompleteness: defaultCompleteness,
       createdAt: new Date(),
@@ -260,12 +350,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     allUsers.push(newUser);
     localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
-
-    if (data.type === 'student') {
-      mockStudentProfiles.push({ userId: newUser.id });
-    } else if (data.type === 'landlord') {
-      mockLandlordProfiles.push({ userId: newUser.id });
-    }
 
     const normalized = persistFallbackUser(newUser);
     setUser(normalized);
@@ -286,6 +370,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       preferences: { ...profile.preferences, userId: user.id },
       onboardingCompleted: true,
     };
+
+    /*
+      Regra principal do projeto agora:
+      o perfil do estudante é guardado sempre primeiro em localStorage.
+      Isto garante compatibilidade, onboarding, candidatura e modal de candidatura
+      mesmo que o Supabase demore ou falhe.
+    */
+    saveProfile(profileToSave);
 
     if (isSupabaseConfigured && supabase) {
       const personalPayload = {
@@ -347,11 +439,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ]);
 
       const failed = operations.find(result => result.error);
+
       if (failed?.error) {
-        return { success: false, error: failed.error.message };
+        console.warn('[UniRoom] Perfil guardado localmente, mas Supabase falhou:', failed.error.message);
       }
-    } else {
-      saveProfile(profileToSave);
     }
 
     const updatedUser: User = {
@@ -363,6 +454,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setUser(updatedUser);
     setStoredUser(updatedUser);
+    updateLocalUserList(updatedUser);
 
     return { success: true };
   };
@@ -371,6 +463,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (supabase) {
       await supabase.auth.signOut();
     }
+
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
   };
@@ -394,8 +487,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
+
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
+
   return context;
 }

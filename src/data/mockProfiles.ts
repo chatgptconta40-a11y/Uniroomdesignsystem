@@ -1,120 +1,123 @@
 import { StudentProfile } from '../types/profile';
 
-// Storage key
 export const PROFILES_STORAGE_KEY = 'uniroom_student_profiles';
 export const PROFILE_COMPLETED_STORAGE_PREFIX = 'uniroom_profile_completed_';
 
-// Student profile records
-export const mockProfiles: StudentProfile[] = [
-  {
-    personal: {
-      userId: '1',
-      fullName: 'João Silva',
-      age: 20,
-      gender: 'male',
-      course: 'Engenharia Informática',
-      institution: 'Universidade de Lisboa',
-      yearOfStudy: 2,
-      hometown: 'Porto',
-      bio: 'Estudante de Engenharia apaixonado por tecnologia e desporto.',
-      languages: ['Português', 'Inglês', 'Espanhol'],
-    },
-    lifestyle: {
-      userId: '1',
-      bedtime: 'moderate',
-      wakeupTime: 'moderate',
-      schedule: 'flexible',
-      cleanliness: 4,
-      cleaningFrequency: 'weekly',
-      noiseTolerance: 3,
-      musicVolume: 'moderate',
-      guestsFrequency: 'sometimes',
-      guestsAcceptance: 4,
-      smoking: false,
-      pets: false,
-      cooking: 'often',
-      personality: 'moderate',
-      socialPreference: 'moderate',
-    },
-    preferences: {
-      userId: '1',
-      maxBudget: 400,
-      preferredCities: ['Lisboa', 'Cascais'],
-      maxDistanceFromUniversity: 5,
-      moveInDate: new Date('2026-09-01'),
-      stayDuration: 10,
-      roomType: 'private',
-      amenities: {
-        furnished: true,
-        wifi: true,
-        utilitiesIncluded: false,
-        kitchen: true,
-        washingMachine: true,
-        balcony: false,
-        parking: false,
-      },
-    },
-    completeness: {
-      personal: 35,
-      lifestyle: 0,
-      preferences: 0,
-      overall: 12,
-    },
-    onboardingCompleted: false,
-  },
-];
+/*
+  Perfil do estudante — localStorage first/only.
+
+  Importante:
+  - Não há perfis mockados por defeito.
+  - O perfil só existe depois de o estudante preencher o onboarding/perfil.
+  - A compatibilidade lê daqui através de getProfile(userId).
+*/
+
+export const mockProfiles: StudentProfile[] = [];
+
+function safeParse<T>(value: string | null, fallback: T): T {
+  try {
+    return value ? JSON.parse(value) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readProfiles(): StudentProfile[] {
+  const profiles = safeParse<StudentProfile[]>(
+    localStorage.getItem(PROFILES_STORAGE_KEY),
+    [],
+  );
+
+  return Array.isArray(profiles) ? profiles : [];
+}
+
+function writeProfiles(profiles: StudentProfile[]): void {
+  localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+}
 
 export function getProfileCompletedStorageKey(userId: string): string {
   return `${PROFILE_COMPLETED_STORAGE_PREFIX}${userId}`;
 }
 
-// Helper functions
 export function getProfile(userId: string): StudentProfile | null {
-  const profiles: StudentProfile[] = JSON.parse(
-    localStorage.getItem(PROFILES_STORAGE_KEY) || JSON.stringify(mockProfiles)
-  );
-  return profiles.find(p => p.personal.userId === userId) || null;
+  if (!userId) return null;
+
+  const profiles = readProfiles();
+
+  return profiles.find(profile => profile.personal?.userId === userId) || null;
 }
 
 export function saveProfile(profile: StudentProfile): void {
-  const profiles: StudentProfile[] = JSON.parse(
-    localStorage.getItem(PROFILES_STORAGE_KEY) || JSON.stringify(mockProfiles)
-  );
+  const userId = profile.personal?.userId;
 
-  const index = profiles.findIndex(p => p.personal.userId === profile.personal.userId);
-
-  if (index >= 0) {
-    profiles[index] = profile;
-  } else {
-    profiles.push(profile);
+  if (!userId) {
+    console.warn('[UniRoom] Tentativa de guardar perfil sem userId.');
+    return;
   }
 
-  localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+  const profiles = readProfiles();
+  const index = profiles.findIndex(item => item.personal?.userId === userId);
+
+  const normalizedProfile: StudentProfile = {
+    ...profile,
+    personal: {
+      ...profile.personal,
+      userId,
+    },
+    lifestyle: {
+      ...profile.lifestyle,
+      userId,
+    },
+    preferences: {
+      ...profile.preferences,
+      userId,
+    },
+    completeness: profile.completeness || calculateCompleteness(profile),
+  };
+
+  if (index >= 0) {
+    profiles[index] = normalizedProfile;
+  } else {
+    profiles.push(normalizedProfile);
+  }
+
+  writeProfiles(profiles);
 
   const completedEnough = Boolean(
-    profile.onboardingCompleted &&
-    profile.completeness?.personal >= 80 &&
-    profile.completeness?.lifestyle >= 80 &&
-    profile.completeness?.preferences >= 80 &&
-    profile.completeness?.overall >= 80
+    normalizedProfile.onboardingCompleted &&
+    (normalizedProfile.completeness?.personal ?? 0) >= 80 &&
+    (normalizedProfile.completeness?.lifestyle ?? 0) >= 80 &&
+    (normalizedProfile.completeness?.preferences ?? 0) >= 80 &&
+    (normalizedProfile.completeness?.overall ?? 0) >= 80
   );
 
   if (completedEnough) {
-    localStorage.setItem(getProfileCompletedStorageKey(profile.personal.userId), 'true');
+    localStorage.setItem(getProfileCompletedStorageKey(userId), 'true');
   } else {
-    localStorage.removeItem(getProfileCompletedStorageKey(profile.personal.userId));
+    localStorage.removeItem(getProfileCompletedStorageKey(userId));
   }
+}
+
+export function deleteProfile(userId: string): void {
+  const profiles = readProfiles().filter(profile => profile.personal?.userId !== userId);
+  writeProfiles(profiles);
+  localStorage.removeItem(getProfileCompletedStorageKey(userId));
+}
+
+export function getAllProfiles(): StudentProfile[] {
+  return readProfiles();
 }
 
 export function hasCompletedCompatibilityProfile(userId?: string | null): boolean {
   if (!userId) return false;
-  try {
-    if (localStorage.getItem(getProfileCompletedStorageKey(userId)) === 'true') return true;
-  } catch {
-    // ignore
+
+  if (localStorage.getItem(getProfileCompletedStorageKey(userId)) === 'true') {
+    return true;
   }
+
   const profile = getProfile(userId);
   if (!profile) return false;
+
   return Boolean(
     profile.onboardingCompleted &&
     (profile.completeness?.personal ?? 0) >= 80 &&
@@ -129,34 +132,64 @@ export function calculateCompleteness(profile: Partial<StudentProfile>): Student
   const lifestyle = profile.lifestyle || {};
   const preferences = profile.preferences || {};
 
-  // Personal completeness
-  const personalFields = ['fullName', 'age', 'course', 'institution', 'yearOfStudy', 'hometown', 'bio', 'languages'];
-  const personalCompleted = personalFields.filter(field => {
-    const value = personal[field as keyof typeof personal];
+  const hasValue = (value: unknown) => {
+    if (Array.isArray(value)) return value.length > 0;
     return value !== undefined && value !== null && value !== '';
-  }).length;
-  const personalScore = Math.round((personalCompleted / personalFields.length) * 100);
+  };
 
-  // Lifestyle completeness
-  const lifestyleFields = [
-    'bedtime', 'wakeupTime', 'schedule', 'cleanliness', 'cleaningFrequency',
-    'noiseTolerance', 'musicVolume', 'guestsFrequency', 'guestsAcceptance',
-    'smoking', 'pets', 'cooking', 'personality', 'socialPreference'
+  const personalFields = [
+    'fullName',
+    'age',
+    'gender',
+    'course',
+    'institution',
+    'yearOfStudy',
+    'hometown',
+    'bio',
+    'languages',
   ];
-  const lifestyleCompleted = lifestyleFields.filter(field => {
-    const value = lifestyle[field as keyof typeof lifestyle];
-    return value !== undefined && value !== null && value !== '';
-  }).length;
+
+  const lifestyleFields = [
+    'bedtime',
+    'wakeupTime',
+    'schedule',
+    'cleanliness',
+    'cleaningFrequency',
+    'noiseTolerance',
+    'musicVolume',
+    'guestsFrequency',
+    'guestsAcceptance',
+    'smoking',
+    'pets',
+    'cooking',
+    'personality',
+    'socialPreference',
+  ];
+
+  const preferencesFields = [
+    'maxBudget',
+    'preferredCities',
+    'maxDistanceFromUniversity',
+    'moveInDate',
+    'stayDuration',
+    'roomType',
+  ];
+
+  const personalCompleted = personalFields.filter(field =>
+    hasValue(personal[field as keyof typeof personal]),
+  ).length;
+
+  const lifestyleCompleted = lifestyleFields.filter(field =>
+    hasValue(lifestyle[field as keyof typeof lifestyle]),
+  ).length;
+
+  const preferencesCompleted = preferencesFields.filter(field =>
+    hasValue(preferences[field as keyof typeof preferences]),
+  ).length;
+
+  const personalScore = Math.round((personalCompleted / personalFields.length) * 100);
   const lifestyleScore = Math.round((lifestyleCompleted / lifestyleFields.length) * 100);
-
-  // Preferences completeness
-  const preferencesFields = ['maxBudget', 'preferredCities', 'maxDistanceFromUniversity', 'moveInDate', 'stayDuration', 'roomType'];
-  const preferencesCompleted = preferencesFields.filter(field => {
-    const value = preferences[field as keyof typeof preferences];
-    return value !== undefined && value !== null && value !== '' && (Array.isArray(value) ? value.length > 0 : true);
-  }).length;
   const preferencesScore = Math.round((preferencesCompleted / preferencesFields.length) * 100);
-
   const overall = Math.round((personalScore + lifestyleScore + preferencesScore) / 3);
 
   return {
