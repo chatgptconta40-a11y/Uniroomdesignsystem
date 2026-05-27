@@ -5,18 +5,20 @@ import {
   Calendar,
   CheckCircle,
   Clock,
+  Copy,
+  CreditCard,
   FileText,
   Flame,
   Home as HomeIcon,
   MapPin,
   MessageCircle,
+  Receipt,
   ShieldCheck,
+  Upload,
   Users,
   Wifi,
   Wrench,
   ArrowRight,
-  Receipt,
-  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -28,22 +30,21 @@ import { StartConversationModal } from '../components/StartConversationModal';
 import { getMaintenanceRequests } from '../data/mockMaintenance';
 import { getHouseGroupConversation, getMessagesForConversation } from '../data/mockMessages';
 import { getActiveHomeForStudent, getApplicationsForUser, confirmStay } from '../data/mockApplications';
-import { Accommodation, ActiveHome } from '../types/accommodation';
+import {
+  formatCurrency,
+  getContractStatusLabel,
+  getOrCreateRentalContract,
+  getPaymentMethodForHome,
+  getPaymentMethodLabel,
+  getPaymentMethodMainValue,
+  getPaymentStatusLabel,
+  getRentPaymentsForHome,
+  uploadPaymentProof,
+} from '../data/mockHousingFinance';
+import { Accommodation } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
 
-const PAYMENTS_KEY = 'uniroom_active_home_payments';
 const HOUSEMATES_KEY = 'uniroom_active_home_housemates';
-
-interface MockPayment {
-  id: string;
-  activeHomeId: string;
-  month: string;
-  dueDate: string;
-  paidAt?: string;
-  amount: number;
-  status: 'paid' | 'pending' | 'late';
-  receiptUrl?: string;
-}
 
 interface MockHousemate {
   id: string;
@@ -68,46 +69,6 @@ function getDaysSince(date: Date | string) {
     0,
     Math.floor((new Date().getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24)),
   );
-}
-
-function getMonthsLabel(date: Date | string) {
-  return new Intl.DateTimeFormat('pt-PT', {
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(date));
-}
-
-function readPayments(activeHome: ActiveHome, monthlyTotal: number): MockPayment[] {
-  const stored = localStorage.getItem(PAYMENTS_KEY);
-  const all: MockPayment[] = stored ? JSON.parse(stored) : [];
-  const existing = all.filter(payment => payment.activeHomeId === activeHome.id);
-
-  if (existing.length > 0) {
-    return existing;
-  }
-
-  const base = new Date(activeHome.moveInDate);
-  const generated: MockPayment[] = [0, 1, 2].map(offset => {
-    const dueDate = new Date(base);
-    dueDate.setMonth(base.getMonth() + offset);
-    dueDate.setDate(activeHome.paymentDay);
-
-    const isFirst = offset === 0;
-
-    return {
-      id: `pay_${activeHome.id}_${offset}`,
-      activeHomeId: activeHome.id,
-      month: getMonthsLabel(dueDate),
-      dueDate: dueDate.toISOString(),
-      paidAt: isFirst ? new Date(dueDate).toISOString() : undefined,
-      amount: monthlyTotal,
-      status: isFirst ? 'paid' : 'pending',
-      receiptUrl: isFirst ? '#recibo-demo' : undefined,
-    };
-  });
-
-  localStorage.setItem(PAYMENTS_KEY, JSON.stringify([...all, ...generated]));
-  return generated;
 }
 
 function readHousemates(propertyId: string, currentRoomNumber: string): MockHousemate[] {
@@ -153,6 +114,7 @@ export function MyHome() {
   const [showContactModal, setShowContactModal] = useState(false);
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
+  const [, setFinanceRefreshKey] = useState(0);
 
   const activeHome = useMemo(() => {
     if (!user || user.type !== 'student') {
@@ -332,11 +294,17 @@ export function MyHome() {
   }
 
   const { property, room, accommodation, activeHomeData } = activeHome;
-  const monthlyTotal = room.price + (room.utilities || 0);
-  const payments = readPayments(activeHomeData, monthlyTotal);
+  const monthlyRent = activeHomeData.monthlyRent ?? room.price;
+  const utilitiesAmount = activeHomeData.utilities ?? room.utilities ?? 0;
+  const monthlyTotal = monthlyRent + utilitiesAmount;
+  const paymentMethod = getPaymentMethodForHome(activeHomeData);
+  const contract = getOrCreateRentalContract(activeHomeData, monthlyRent, utilitiesAmount);
+  const rentPayments = getRentPaymentsForHome(activeHomeData, monthlyRent, utilitiesAmount);
   const housemates = readHousemates(property.id, room.roomNumber);
-  const nextPayment = payments.find(payment => payment.status !== 'paid') || payments[0];
-  const paidPayments = payments.filter(payment => payment.status === 'paid');
+  const nextPayment = rentPayments.find(payment => payment.status !== 'paid') || rentPayments[0];
+  const paidPayments = rentPayments.filter(payment => payment.status === 'paid');
+  const paymentsWithProof = rentPayments.filter(payment => Boolean(payment.proofUrl));
+
   const visibleMaintenanceRequests = maintenanceRequests.filter(request =>
     request.accommodationId === room.id ||
     request.accommodationId === accommodation.id ||
@@ -348,6 +316,27 @@ export function MyHome() {
   const urgentRequests = visibleMaintenanceRequests.filter(
     request => request.urgency === 'high' && request.status !== 'resolved' && request.status !== 'closed',
   ).length;
+
+  const handleCopyPaymentData = async () => {
+    const value = getPaymentMethodMainValue(paymentMethod);
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      alert('Dados de pagamento copiados.');
+    } catch {
+      alert(value);
+    }
+  };
+
+  const handleUploadPaymentProof = (paymentId: string) => {
+    const updated = uploadPaymentProof(paymentId, `comprovativo-${new Date().toISOString().slice(0, 10)}.pdf`);
+
+    if (updated) {
+      setFinanceRefreshKey(key => key + 1);
+      alert('Comprovativo enviado ao senhorio.');
+    }
+  };
 
   const amenities = [
     { label: 'WiFi', value: property.amenities.wifi ? 'Incluído' : 'Não incluído', icon: Wifi },
@@ -376,7 +365,7 @@ export function MyHome() {
               </Badge>
             </div>
             <p className="text-muted-foreground">
-              Gere a tua estadia, pagamentos, colegas de casa e pedidos de manutenção.
+              Gere a tua estadia, pagamentos, contrato, colegas de casa e pedidos de manutenção.
             </p>
           </div>
 
@@ -435,11 +424,11 @@ export function MyHome() {
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="p-4 bg-muted/40 rounded-lg">
                   <p className="text-xs text-muted-foreground mb-1">Renda mensal</p>
-                  <p className="text-2xl font-bold text-foreground">€{room.price}</p>
+                  <p className="text-2xl font-bold text-foreground">{formatCurrency(monthlyRent)}</p>
                 </div>
                 <div className="p-4 bg-muted/40 rounded-lg">
                   <p className="text-xs text-muted-foreground mb-1">Despesas</p>
-                  <p className="text-2xl font-bold text-foreground">€{room.utilities || 0}</p>
+                  <p className="text-2xl font-bold text-foreground">{formatCurrency(utilitiesAmount)}</p>
                 </div>
               </div>
 
@@ -547,7 +536,6 @@ export function MyHome() {
             {(() => {
               const houseChat = getHouseGroupConversation(property.id, user?.id || '');
               if (!houseChat) return null;
-
               const lastMessages = getMessagesForConversation(houseChat.id).slice(-3);
 
               return (
@@ -644,75 +632,221 @@ export function MyHome() {
             </Card>
 
             <Card className="p-6">
-              <h3 className="text-lg font-bold text-foreground mb-4">Resumo financeiro</h3>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Pagamentos</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Consulta o valor mensal e envia comprovativos ao senhorio.
+                  </p>
+                </div>
+                <CreditCard className="w-5 h-5 text-primary" />
+              </div>
+
               <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 mb-4">
                 <p className="text-xs text-muted-foreground mb-1">
                   {nextPayment?.status === 'paid' ? 'Último pagamento' : 'Próximo pagamento'}
                 </p>
-                <p className="text-3xl font-bold text-foreground">€{nextPayment?.amount || monthlyTotal}</p>
+                <p className="text-3xl font-bold text-foreground">
+                  {formatCurrency(nextPayment?.totalAmount || monthlyTotal)}
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Renda + despesas · dia {activeHomeData.paymentDay} de cada mês
+                  Renda {formatCurrency(monthlyRent)} + despesas {formatCurrency(utilitiesAmount)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Dia limite: {activeHomeData.paymentDay} de cada mês
                 </p>
               </div>
 
+              <div className="rounded-lg border border-border bg-muted/20 p-4 mb-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {getPaymentMethodLabel(paymentMethod)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Pagamento feito fora da plataforma.
+                    </p>
+                  </div>
+                  <Badge variant="outline">Informativo</Badge>
+                </div>
+
+                <div className="rounded-lg bg-card border border-border p-3 mb-3">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {paymentMethod.methodType === 'iban'
+                      ? 'IBAN'
+                      : paymentMethod.methodType === 'mbway'
+                      ? 'Número MB WAY'
+                      : paymentMethod.methodType === 'multibanco_reference'
+                      ? 'Entidade e referência'
+                      : 'Instruções'}
+                  </p>
+                  <p className="text-sm font-semibold text-foreground break-all">
+                    {getPaymentMethodMainValue(paymentMethod)}
+                  </p>
+                  {paymentMethod.holderName && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Titular: {paymentMethod.holderName}
+                    </p>
+                  )}
+                </div>
+
+                <Button variant="outline" size="sm" className="w-full" onClick={handleCopyPaymentData}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copiar dados de pagamento
+                </Button>
+              </div>
+
               <div className="space-y-3">
-                {payments.map(payment => (
-                  <div key={payment.id} className="flex items-center justify-between gap-3 text-sm">
-                    <div>
-                      <p className="font-medium text-foreground">{payment.month}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {payment.status === 'paid' && payment.paidAt
-                          ? `Pago em ${formatDate(payment.paidAt)}`
-                          : `Vence em ${formatDate(payment.dueDate)}`}
-                      </p>
+                {rentPayments.map(payment => (
+                  <div key={payment.id} className="rounded-lg border border-border p-3">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {new Date(payment.periodMonth).toLocaleDateString('pt-PT', {
+                            month: 'long',
+                            year: 'numeric',
+                          })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Vence em {formatDate(payment.dueDate)}
+                        </p>
+                      </div>
+
+                      <Badge
+                        variant={
+                          payment.status === 'paid'
+                            ? 'success'
+                            : payment.status === 'late'
+                            ? 'outline'
+                            : 'warning'
+                        }
+                      >
+                        {getPaymentStatusLabel(payment.status)}
+                      </Badge>
                     </div>
-                    <Badge
-                      variant={
-                        payment.status === 'paid'
-                          ? 'success'
-                          : payment.status === 'late'
-                          ? 'outline'
-                          : 'warning'
-                      }
-                    >
-                      {payment.status === 'paid' ? 'Pago' : payment.status === 'late' ? 'Em atraso' : 'Pendente'}
-                    </Badge>
+
+                    <div className="flex items-center justify-between text-sm mb-3">
+                      <span className="text-muted-foreground">Total</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(payment.totalAmount)}
+                      </span>
+                    </div>
+
+                    {payment.proofFileName ? (
+                      <div className="rounded-lg bg-green-50 border border-green-100 px-3 py-2">
+                        <p className="text-xs font-medium text-green-800">
+                          Comprovativo enviado
+                        </p>
+                        <p className="text-xs text-green-700">
+                          {payment.proofFileName}
+                        </p>
+                      </div>
+                    ) : payment.status !== 'paid' ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handleUploadPaymentProof(payment.id)}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Carregar comprovativo
+                      </Button>
+                    ) : null}
                   </div>
                 ))}
               </div>
             </Card>
 
             <Card className="p-6">
-              <h3 className="text-lg font-bold text-foreground mb-4">Contrato e recibos</h3>
-              <div className="space-y-3 text-sm mb-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Quarto</span>
-                  <span className="font-semibold text-foreground">{room.roomNumber}</span>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Contrato e recibos</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Documentos associados à tua estadia.
+                  </p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Tipo</span>
-                  <span className="font-semibold text-foreground">Individual</span>
+                <FileText className="w-5 h-5 text-primary" />
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/20 p-4 mb-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{contract.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Nº {contract.contractNumber}
+                    </p>
+                  </div>
+
+                  <Badge variant={contract.status === 'active' ? 'success' : 'outline'}>
+                    {getContractStatusLabel(contract.status)}
+                  </Badge>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Moradores</span>
-                  <span className="font-semibold text-foreground">{housemates.length + 1}/{property.totalRooms}</span>
+
+                <div className="space-y-2 text-sm mb-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Início</span>
+                    <span className="font-semibold text-foreground">
+                      {formatDate(contract.startDate)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Fim</span>
+                    <span className="font-semibold text-foreground">
+                      {contract.endDate ? formatDate(contract.endDate) : 'Sem data definida'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Caução</span>
+                    <span className="font-semibold text-foreground">
+                      {formatCurrency(contract.depositAmount)}
+                    </span>
+                  </div>
                 </div>
+
+                {contract.fileUrl ? (
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => alert('A abrir contrato demonstrativo.')}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Ver contrato
+                    </Button>
+
+                    <p className="text-xs text-muted-foreground">
+                      Ficheiro: {contract.fileName}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+                    <p className="text-xs font-medium text-amber-800">
+                      Contrato ainda não disponível
+                    </p>
+                    <p className="text-xs text-amber-700">
+                      O senhorio ainda não adicionou o contrato.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Button variant="outline" className="w-full justify-start">
-                  <FileText className="w-4 h-4 mr-2" />
-                  Contrato ativo
-                </Button>
                 <Button variant="outline" className="w-full justify-start" disabled={paidPayments.length === 0}>
                   <Receipt className="w-4 h-4 mr-2" />
-                  {paidPayments.length} recibo{paidPayments.length === 1 ? '' : 's'} disponível
+                  {paidPayments.length} recibo{paidPayments.length === 1 ? '' : 's'} pago{paidPayments.length === 1 ? '' : 's'}
                 </Button>
-                <Button variant="outline" className="w-full justify-start">
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Método de pagamento
+
+                <Button variant="outline" className="w-full justify-start" disabled={paymentsWithProof.length === 0}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  {paymentsWithProof.length} comprovativo{paymentsWithProof.length === 1 ? '' : 's'} enviado{paymentsWithProof.length === 1 ? '' : 's'}
                 </Button>
               </div>
+
+              <p className="text-xs text-muted-foreground mt-4">
+                A UniRoom não processa pagamentos diretamente. Usa os dados indicados pelo senhorio e guarda sempre comprovativo.
+              </p>
             </Card>
           </div>
         </div>
