@@ -72,19 +72,52 @@ export function getStoredLandlordProfiles(): LandlordProfile[] {
     }));
 }
 
+function liveArray<T>(reader: () => T[]): T[] {
+  return new Proxy([] as T[], {
+    get(_target, prop) {
+      const current = reader();
+      const value = (current as any)[prop as any];
+
+      if (typeof value === 'function') {
+        return value.bind(current);
+      }
+
+      return value;
+    },
+    ownKeys() {
+      return Reflect.ownKeys(reader() as any);
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      const current = reader() as any;
+      const descriptor = Object.getOwnPropertyDescriptor(current, prop);
+
+      return descriptor || {
+        configurable: true,
+        enumerable: true,
+        writable: false,
+        value: current[prop as any],
+      };
+    },
+  });
+}
+
 /*
   Compatibilidade com imports antigos.
-  Importante: já não existem utilizadores hardcoded aqui.
-  Estes arrays são apenas uma fotografia do localStorage no carregamento do módulo.
+  Importante:
+  - não há users hardcoded
+  - estes arrays são "live": cada .find/.filter/.map lê novamente do localStorage
 */
-export const mockUsers: User[] = getStoredUsers();
-export const mockCredentials = mockUsers
-  .filter(user => Boolean(user.password))
-  .map(user => ({
-    id: user.id,
-    email: user.email,
-    password: user.password!,
-  }));
+export const mockUsers: User[] = liveArray(getStoredUsers);
 
-export const mockStudentProfiles: StudentProfile[] = getStoredStudentProfiles();
-export const mockLandlordProfiles: LandlordProfile[] = getStoredLandlordProfiles();
+export const mockCredentials: Array<{ id: string; email: string; password: string }> = liveArray(() =>
+  getStoredUsers()
+    .filter(user => Boolean(user.password))
+    .map(user => ({
+      id: user.id,
+      email: user.email,
+      password: user.password!,
+    })),
+);
+
+export const mockStudentProfiles: StudentProfile[] = liveArray(getStoredStudentProfiles);
+export const mockLandlordProfiles: LandlordProfile[] = liveArray(getStoredLandlordProfiles);
