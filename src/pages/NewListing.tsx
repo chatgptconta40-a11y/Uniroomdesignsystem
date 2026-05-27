@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ArrowLeft,
@@ -17,7 +17,6 @@ import {
   AlertCircle,
   CheckCircle,
   X,
-
   Wifi,
   WashingMachine,
   ChefHat,
@@ -93,7 +92,19 @@ interface HouseRules {
   preferredGender: 'any' | 'male' | 'female';
 }
 
-// ─── Defaults ─────────────────────────────────────────────────────────────────
+type StepNumber = 1 | 2 | 3 | 4;
+
+const PROPERTY_IMAGES = [
+  'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&q=80',
+  'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&q=80',
+  'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=1200&q=80',
+];
+
+const ROOM_PHOTOS = [
+  'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=800&q=80',
+  'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&q=80',
+  'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=800&q=80',
+];
 
 const defaultProperty: PropertyDraft = {
   title: '',
@@ -144,9 +155,16 @@ const emptyRoom = (): RoomDraft => ({
   publishNow: false,
 });
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+const STEPS: Array<{ number: StepNumber; title: string; icon: React.ElementType }> = [
+  { number: 1, title: 'Propriedade', icon: Home },
+  { number: 2, title: 'Quartos', icon: BedDouble },
+  { number: 3, title: 'Regras', icon: Shield },
+  { number: 4, title: 'Publicar', icon: CheckCircle },
+];
 
-function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+// ─── Small UI helpers ─────────────────────────────────────────────────────────
+
+function FieldLabel({ children, required }: { children: ReactNode; required?: boolean }) {
   return (
     <label className="block text-sm font-medium text-foreground mb-1.5">
       {children}
@@ -161,7 +179,12 @@ function inputCls(error?: boolean | string) {
   }`;
 }
 
-function Toggle({ checked, onChange, label, icon: Icon }: {
+function Toggle({
+  checked,
+  onChange,
+  label,
+  icon: Icon,
+}: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
@@ -174,19 +197,23 @@ function Toggle({ checked, onChange, label, icon: Icon }: {
       className={`flex items-center gap-3 w-full p-3 rounded-xl border-2 text-left transition-all ${
         checked
           ? 'border-primary bg-primary/5 text-primary'
-          : 'border-border bg-card text-foreground hover:border-border/60'
+          : 'border-border bg-card text-foreground hover:border-primary/40'
       }`}
     >
       {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
       <span className="text-sm font-medium flex-1">{label}</span>
-      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-        checked ? 'bg-primary border-primary' : 'border-muted-foreground/40'
-      }`}>
+      <div
+        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+          checked ? 'bg-primary border-primary' : 'border-muted-foreground/40'
+        }`}
+      >
         {checked && <Check className="w-3 h-3 text-white" />}
       </div>
     </button>
   );
 }
+
+// ─── Room modal ───────────────────────────────────────────────────────────────
 
 interface RoomFormModalProps {
   initial?: RoomDraft;
@@ -196,6 +223,7 @@ interface RoomFormModalProps {
 
 function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
   const [form, setForm] = useState<RoomDraft>(initial ?? emptyRoom());
+  const [selectedPhoto, setSelectedPhoto] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const todayIso = new Date().toISOString().split('T')[0];
@@ -217,29 +245,21 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
     const title = form.title.trim();
     const size = form.size === '' ? undefined : Number(form.size);
 
-    if (title.length < 3) {
-      errs.title = 'Dá um nome claro ao quarto.';
-    }
-    if (!form.price) {
-      errs.price = 'Indica a renda mensal.';
-    } else if (form.price < 100) {
-      errs.price = 'A renda parece demasiado baixa. Confirma o valor.';
-    } else if (form.price > 1200) {
-      errs.price = 'A renda parece demasiado alta para quarto universitário.';
-    }
-    if (form.utilities < 0) {
-      errs.utilities = 'As despesas não podem ser negativas.';
-    } else if (form.utilities > 400) {
-      errs.utilities = 'Confirma o valor das despesas mensais.';
-    }
+    if (title.length < 3) errs.title = 'Dá um nome claro ao quarto.';
+    if (!form.price) errs.price = 'Indica a renda mensal.';
+    else if (form.price < 100) errs.price = 'A renda parece demasiado baixa. Confirma o valor.';
+    else if (form.price > 1200) errs.price = 'A renda parece demasiado alta para quarto universitário.';
+
+    if (form.utilities < 0) errs.utilities = 'As despesas não podem ser negativas.';
+    else if (form.utilities > 400) errs.utilities = 'Confirma o valor das despesas mensais.';
+
     if (size !== undefined && (Number.isNaN(size) || size < 6 || size > 80)) {
       errs.size = 'A área deve estar entre 6m² e 80m².';
     }
-    if (!form.availableFrom) {
-      errs.availableFrom = 'Indica a data de disponibilidade.';
-    } else if (form.availableFrom < todayIso) {
-      errs.availableFrom = 'A data não pode ser anterior a hoje.';
-    }
+
+    if (!form.availableFrom) errs.availableFrom = 'Indica a data de disponibilidade.';
+    else if (form.availableFrom < todayIso) errs.availableFrom = 'A data não pode ser anterior a hoje.';
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -248,13 +268,6 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
     if (!validate()) return;
     onSave({ ...form, title: form.title.trim() });
   };
-
-  const ROOM_PHOTOS = [
-    'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400&q=80',
-    'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400&q=80',
-    'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=400&q=80',
-  ];
-  const [selectedPhoto, setSelectedPhoto] = useState(0);
 
   return (
     <>
@@ -271,7 +284,6 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
           </div>
 
           <div className="space-y-5">
-            {/* Title */}
             <div>
               <FieldLabel required>Nome do quarto</FieldLabel>
               <input
@@ -283,7 +295,6 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
               {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
             </div>
 
-            {/* Price + Utilities */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <FieldLabel required>Renda (€/mês)</FieldLabel>
@@ -301,6 +312,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                 </div>
                 {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price}</p>}
               </div>
+
               <div>
                 <FieldLabel>Despesas (€/mês)</FieldLabel>
                 <div className="relative">
@@ -319,7 +331,6 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
               </div>
             </div>
 
-            {/* Area + Type */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <FieldLabel>Área (m²)</FieldLabel>
@@ -334,6 +345,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                 />
                 {errors.size && <p className="text-xs text-red-500 mt-1">{errors.size}</p>}
               </div>
+
               <div>
                 <FieldLabel>Tipo</FieldLabel>
                 <select
@@ -348,7 +360,6 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
               </div>
             </div>
 
-            {/* Bed + Bathroom */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <FieldLabel>Cama</FieldLabel>
@@ -362,6 +373,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                   <option value="bunk">Beliche</option>
                 </select>
               </div>
+
               <div>
                 <FieldLabel required>Disponível a partir de</FieldLabel>
                 <input
@@ -375,7 +387,6 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
               </div>
             </div>
 
-            {/* Toggles */}
             <div>
               <FieldLabel>Características</FieldLabel>
               <div className="grid grid-cols-3 gap-2">
@@ -387,14 +398,15 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
                   <button
                     key={opt.key}
                     type="button"
-                    onClick={() => set({ [opt.key]: !form[opt.key as keyof RoomDraft] } as any)}
+                    onClick={() => set({ [opt.key]: !form[opt.key as keyof RoomDraft] } as Partial<RoomDraft>)}
                     className={`p-2.5 border-2 rounded-lg text-xs font-medium transition-all ${
                       form[opt.key as keyof RoomDraft]
                         ? 'border-primary bg-primary/5 text-primary'
                         : 'border-border text-muted-foreground hover:border-primary/40'
                     }`}
                   >
-                    {form[opt.key as keyof RoomDraft] ? '✓ ' : ''}{opt.label}
+                    {form[opt.key as keyof RoomDraft] ? '✓ ' : ''}
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -402,53 +414,36 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
 
             <div>
               <FieldLabel>Foto do quarto</FieldLabel>
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 {ROOM_PHOTOS.map((url, i) => (
                   <button
-                    key={i}
+                    key={url}
                     type="button"
                     onClick={() => setSelectedPhoto(i)}
                     className={`relative w-24 h-16 rounded-lg overflow-hidden border-2 transition-all ${
-                      selectedPhoto === i ? 'border-primary' : 'border-border'
+                      selectedPhoto === i ? 'border-primary ring-2 ring-primary/30' : 'border-border'
                     }`}
                   >
                     <img src={url} alt="" className="w-full h-full object-cover" />
                     {selectedPhoto === i && (
                       <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                        <Check className="w-4 h-4 text-white" />
+                        <Check className="w-4 h-4 text-white drop-shadow" />
                       </div>
                     )}
                   </button>
                 ))}
-                <div className="w-24 h-16 rounded-lg border-2 border-dashed border-border flex items-center justify-center text-muted-foreground">
-                  <Camera className="w-5 h-5" />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">Adiciona fotografias do quarto para aumentar as candidaturas</p>
-            </div>
 
-            {/* Publish now toggle */}
-            <div className={`p-3 rounded-xl border-2 flex items-center gap-3 cursor-pointer transition-all ${
-              form.publishNow ? 'border-green-400 bg-green-50' : 'border-border'
-            }`} onClick={() => set({ publishNow: !form.publishNow })}>
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                form.publishNow ? 'bg-green-500 border-green-500' : 'border-muted-foreground/40'
-              }`}>
-                {form.publishNow && <Check className="w-3 h-3 text-white" />}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">Publicar imediatamente</p>
-                <p className="text-xs text-muted-foreground">Sem check: fica em rascunho</p>
+                <div className="w-24 h-16 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground">
+                  <Camera className="w-4 h-4" />
+                  <span className="text-[10px]">Upload</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex gap-3 mt-6 pt-5 border-t border-border">
-            <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
-            <Button variant="primary" className="flex-1" onClick={handleSave}>
-              <Check className="w-4 h-4 mr-1.5" />
-              {initial ? 'Guardar alterações' : 'Adicionar quarto'}
-            </Button>
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+            <Button variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button onClick={handleSave}>{initial ? 'Guardar alterações' : 'Adicionar quarto'}</Button>
           </div>
         </Card>
       </div>
@@ -456,41 +451,25 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
   );
 }
 
-// ─── Steps ────────────────────────────────────────────────────────────────────
-
-const STEPS = [
-  { number: 1, title: 'Propriedade', icon: Home },
-  { number: 2, title: 'Quartos', icon: BedDouble },
-  { number: 3, title: 'Regras', icon: Shield },
-  { number: 4, title: 'Publicação', icon: Eye },
-];
-
-const UNIVERSITIES = ['ESTGV', 'UBI', 'IPG', 'UC', 'UA', 'UP', 'UL', 'UM'];
-
-const PROPERTY_IMAGES = [
-  'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&q=80',
-  'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&q=80',
-  'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80',
-];
-
-// ─── Main component ────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function NewListing() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { addProperty, addRoom } = useProperties();
-  const isBlocked = user ? isUserBlockedFromPublishing(user.id) : false;
-  const isSuspended = user ? isUserSuspended(user.id) : false;
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<StepNumber>(1);
   const [property, setProperty] = useState<PropertyDraft>(defaultProperty);
-  const [rooms, setRooms] = useState<RoomDraft[]>([]);
   const [rules, setRules] = useState<HouseRules>(defaultRules);
-  const [selectedPropertyPhoto, setSelectedPropertyPhoto] = useState(0);
-
+  const [rooms, setRooms] = useState<RoomDraft[]>([]);
+  const [propertyErrors, setPropertyErrors] = useState<Record<string, string>>({});
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<RoomDraft | null>(null);
-  const [propertyErrors, setPropertyErrors] = useState<Record<string, string>>({});
+  const [selectedPropertyPhoto, setSelectedPropertyPhoto] = useState(0);
+  const [saving, setSaving] = useState(false);
+
+  const isSuspended = !!user && isUserSuspended(user.id);
+  const isBlocked = !!user && isUserBlockedFromPublishing(user.id);
 
   const setP = (updates: Partial<PropertyDraft>) => {
     setProperty(prev => ({ ...prev, ...updates }));
@@ -503,40 +482,28 @@ export function NewListing() {
       });
     }
   };
-  const setR = (updates: Partial<HouseRules>) => setRules(prev => ({ ...prev, ...updates }));
 
-  // ── Validation: step 1 ──
+  const setR = (updates: Partial<HouseRules>) => {
+    setRules(prev => ({ ...prev, ...updates }));
+  };
+
   const validateStep1 = () => {
     const errs: Record<string, string> = {};
-    const distance = property.distanceToUniversity === '' ? NaN : Number(property.distanceToUniversity);
+    const distance = Number(property.distanceToUniversity);
     const walkTime = property.walkTimeMinutes === '' ? undefined : Number(property.walkTimeMinutes);
 
-    if (property.title.trim().length < 8) {
-      errs.title = 'Usa um título específico, com pelo menos 8 caracteres.';
-    }
-    if (property.description.trim().length < 40) {
-      errs.description = 'A descrição deve explicar o espaço, ambiente e condições.';
-    }
-    if (property.address.trim().length < 8) {
-      errs.address = 'Indica uma morada suficientemente completa.';
-    }
-    if (property.zone.trim().length < 2) {
-      errs.zone = 'Indica a zona ou bairro para melhorar a pesquisa.';
-    }
-    if (!property.city.trim()) {
-      errs.city = 'Indica a cidade.';
-    }
-    if (!property.university.trim()) {
-      errs.university = 'Seleciona a universidade de referência.';
-    }
-    if (Number.isNaN(distance)) {
-      errs.distanceToUniversity = 'Indica a distância aproximada à universidade.';
-    } else if (distance <= 0 || distance > 20) {
-      errs.distanceToUniversity = 'A distância deve estar entre 0.1km e 20km.';
-    }
+    if (property.title.trim().length < 8) errs.title = 'Dá um título claro com pelo menos 8 caracteres.';
+    if (property.description.trim().length < 40) errs.description = 'Escreve uma descrição um pouco mais completa.';
+    if (property.address.trim().length < 8) errs.address = 'Indica uma morada suficientemente completa.';
+    if (property.zone.trim().length < 2) errs.zone = 'Indica a zona ou bairro para melhorar a pesquisa.';
+    if (!property.city.trim()) errs.city = 'Indica a cidade.';
+    if (!property.university.trim()) errs.university = 'Seleciona a universidade de referência.';
+    if (Number.isNaN(distance)) errs.distanceToUniversity = 'Indica a distância aproximada à universidade.';
+    else if (distance <= 0 || distance > 20) errs.distanceToUniversity = 'A distância deve estar entre 0.1km e 20km.';
     if (walkTime !== undefined && (Number.isNaN(walkTime) || walkTime < 1 || walkTime > 120)) {
       errs.walkTimeMinutes = 'O tempo a pé deve estar entre 1 e 120 minutos.';
     }
+
     setPropertyErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -546,20 +513,22 @@ export function NewListing() {
       toast.error('A tua conta está suspensa. Não é possível continuar.');
       return;
     }
+
     if (step === 1 && !validateStep1()) {
       toast.error('Preenche os campos obrigatórios');
       return;
     }
+
     if (step === 2 && rooms.length === 0) {
       toast.error('Adiciona pelo menos um quarto');
       return;
     }
-    setStep(s => Math.min(s + 1, 4));
+
+    setStep(s => Math.min(s + 1, 4) as StepNumber);
   };
 
-  const handleBack = () => setStep(s => Math.max(s - 1, 1));
+  const handleBack = () => setStep(s => Math.max(s - 1, 1) as StepNumber);
 
-  // ── Room CRUD ──
   const handleAddRoom = (room: RoomDraft) => {
     setRooms(prev => [...prev, room]);
     setShowRoomModal(false);
@@ -567,13 +536,13 @@ export function NewListing() {
   };
 
   const handleEditRoom = (updated: RoomDraft) => {
-    setRooms(prev => prev.map(r => r.tempId === updated.tempId ? updated : r));
+    setRooms(prev => prev.map(room => room.tempId === updated.tempId ? updated : room));
     setEditingRoom(null);
     toast.success('Quarto atualizado');
   };
 
   const handleDeleteRoom = (tempId: string) => {
-    setRooms(prev => prev.filter(r => r.tempId !== tempId));
+    setRooms(prev => prev.filter(room => room.tempId !== tempId));
     toast.success('Quarto removido');
   };
 
@@ -584,29 +553,30 @@ export function NewListing() {
       title: `${room.title} (cópia)`,
       publishNow: false,
     };
+
     setRooms(prev => [...prev, duplicate]);
     toast.success(`"${duplicate.title}" duplicado — fica em rascunho`);
   };
 
   const toggleRoomPublish = (tempId: string) => {
-    setRooms(prev => prev.map(r =>
-      r.tempId === tempId ? { ...r, publishNow: !r.publishNow } : r,
+    setRooms(prev => prev.map(room =>
+      room.tempId === tempId ? { ...room, publishNow: !room.publishNow } : room,
     ));
   };
 
-  // ── Submission — three distinct modes ──────────────────────────────────────
-  // mode='draft'    → property=draft,  ALL rooms=draft  (publishNow ignored)
-  // mode='selected' → property=active, selected rooms=available, rest=draft
-  // mode='all'      → property=active, ALL rooms=available
-  const buildAndSave = (mode: 'draft' | 'selected' | 'all') => {
-    if (!user) return;
+  const buildAndSave = async (mode: 'draft' | 'selected' | 'all') => {
+    if (!user) {
+      toast.error('Tens de iniciar sessão para criar alojamentos.');
+      return;
+    }
 
-    // Suspended accounts cannot do anything — not even draft
+    if (saving) return;
+
     if (isUserSuspended(user.id)) {
       toast.error('A tua conta está suspensa. Não é possível criar ou guardar anúncios.');
       return;
     }
-    // Blocked accounts can only draft
+
     if (mode !== 'draft' && isUserBlockedFromPublishing(user.id)) {
       toast.error('A tua conta está bloqueada de publicar. Guarda como rascunho.');
       return;
@@ -632,7 +602,7 @@ export function NewListing() {
         return;
       }
 
-      const selectedRoomsCount = rooms.filter(r => r.publishNow).length;
+      const selectedRoomsCount = rooms.filter(room => room.publishNow).length;
       if (mode === 'selected' && selectedRoomsCount === 0) {
         setStep(4);
         toast.error('Seleciona pelo menos um quarto para publicar.');
@@ -640,123 +610,123 @@ export function NewListing() {
       }
     }
 
-    const propertyId = `prop-${Date.now()}`;
-    const now = new Date();
+    setSaving(true);
 
-    const ROOM_PHOTOS_LIST = [
-      'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400&q=80',
-      'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400&q=80',
-      'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=400&q=80',
-    ];
+    try {
+      const propertyId = `prop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const now = new Date();
 
-    const roomIds: string[] = [];
-    const roomsToCreate = rooms.map((r, i) => {
-      const roomId = `room-${Date.now()}-${i}`;
-      roomIds.push(roomId);
+      const roomIds: string[] = [];
+      const roomsToCreate = rooms.map((room, index) => {
+        const roomId = `room-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`;
+        roomIds.push(roomId);
 
-      const roomStatus =
-        mode === 'draft' ? 'draft' as const :
-        mode === 'all'   ? 'available' as const :
-        r.publishNow     ? 'available' as const : 'draft' as const;
+        const roomStatus =
+          mode === 'draft' ? 'draft' as const :
+          mode === 'all' ? 'available' as const :
+          room.publishNow ? 'available' as const : 'draft' as const;
 
-      return {
-        id: roomId,
-        propertyId,
+        return {
+          id: roomId,
+          propertyId,
+          landlordId: user.id,
+          roomNumber: `Q${index + 1}`,
+          title: room.title,
+          description: `${room.roomType === 'private' ? 'Quarto privado' : room.roomType === 'shared' ? 'Quarto partilhado' : 'Estúdio'}${room.privateBathroom ? ' com WC privativo' : ''}${room.size ? `, ${room.size}m²` : ''}.`,
+          images: [ROOM_PHOTOS[index % ROOM_PHOTOS.length]],
+          size: room.size ? Number(room.size) : undefined,
+          roomType: room.roomType,
+          maxOccupants: room.roomType === 'shared' ? 2 : 1,
+          privateBathroom: room.privateBathroom,
+          balcony: false,
+          desk: true,
+          wardrobe: true,
+          airConditioning: false,
+          price: room.price,
+          utilities: room.utilities > 0 ? room.utilities : undefined,
+          availableFrom: room.availableFrom ? new Date(room.availableFrom) : now,
+          minimumStay: 6,
+          status: roomStatus,
+          createdAt: now,
+          updatedAt: now,
+          views: 0,
+        };
+      });
+
+      const propertyStatus = mode === 'draft' ? 'draft' as const : 'active' as const;
+
+      const newProperty = {
+        id: propertyId,
         landlordId: user.id,
-        roomNumber: `Q${i + 1}`,
-        title: r.title,
-        description: `${r.roomType === 'private' ? 'Quarto privado' : r.roomType === 'shared' ? 'Quarto partilhado' : 'Estúdio'}${r.privateBathroom ? ' com WC privativo' : ''}${r.size ? `, ${r.size}m²` : ''}.`,
-        images: [ROOM_PHOTOS_LIST[i % ROOM_PHOTOS_LIST.length]],
-        size: r.size ? Number(r.size) : undefined,
-        roomType: r.roomType as 'private' | 'shared' | 'studio',
-        maxOccupants: r.roomType === 'shared' ? 2 : 1,
-        privateBathroom: r.privateBathroom,
-        balcony: false,
-        desk: true,
-        wardrobe: true,
-        airConditioning: false,
-        price: r.price,
-        utilities: r.utilities > 0 ? r.utilities : undefined,
-        availableFrom: new Date(r.availableFrom),
-        minimumStay: 6,
-        status: roomStatus,
+        title: property.title.trim(),
+        description: property.description.trim(),
+        address: property.address.trim(),
+        city: property.city.trim(),
+        zone: property.zone.trim() || property.city.trim(),
+        distanceToUniversity: Number(property.distanceToUniversity) || 0,
+        images: [PROPERTY_IMAGES[selectedPropertyPhoto]],
+        amenities: {
+          wifi: property.amenities.wifi,
+          parking: property.amenities.parking,
+          gym: false,
+          laundry: property.amenities.laundry,
+          kitchen: property.amenities.kitchen,
+          livingRoom: property.amenities.livingRoom,
+          backyard: property.amenities.backyard,
+          airConditioning: false,
+          heating: property.amenities.heating,
+          dishwasher: false,
+          microwave: false,
+          elevator: property.amenities.elevator,
+        },
+        houseRules: {
+          smoking: !rules.noSmoking,
+          pets: !rules.noPets,
+          parties: !rules.noParties,
+          studentsOnly: rules.studentsOnly,
+          quietHours: rules.quietHours || undefined,
+          cleaningPolicy: rules.cleaningPolicy || undefined,
+          visitorsPolicy: rules.visitorsPolicy || undefined,
+          preferredGender: rules.preferredGender,
+        },
+        totalRooms: rooms.length,
+        roomIds,
+        wholePropertyAvailable: false,
+        status: propertyStatus,
+        verified: false,
         createdAt: now,
         updatedAt: now,
         views: 0,
       };
-    });
 
-    const propertyStatus = mode === 'draft' ? 'draft' as const : 'active' as const;
+      await addProperty(newProperty);
+      await Promise.all(roomsToCreate.map(room => addRoom(room)));
+      window.dispatchEvent(new Event('uniroom:properties-updated'));
 
-    const newProperty = {
-      id: propertyId,
-      landlordId: user.id,
-      title: property.title,
-      description: property.description,
-      address: property.address,
-      city: property.city,
-      zone: property.zone || property.city,
-      distanceToUniversity: Number(property.distanceToUniversity) || 0,
-      images: [PROPERTY_IMAGES[selectedPropertyPhoto]],
-      amenities: {
-        wifi: property.amenities.wifi,
-        parking: property.amenities.parking,
-        gym: false,
-        laundry: property.amenities.laundry,
-        kitchen: property.amenities.kitchen,
-        livingRoom: property.amenities.livingRoom,
-        backyard: property.amenities.backyard,
-        airConditioning: false,
-        heating: property.amenities.heating,
-        dishwasher: false,
-        microwave: false,
-        elevator: property.amenities.elevator,
-      },
-      houseRules: {
-        smoking: !rules.noSmoking,
-        pets: !rules.noPets,
-        parties: !rules.noParties,
-        studentsOnly: rules.studentsOnly,
-        quietHours: rules.quietHours || undefined,
-        cleaningPolicy: rules.cleaningPolicy || undefined,
-        visitorsPolicy: rules.visitorsPolicy || undefined,
-        preferredGender: rules.preferredGender !== 'any' ? rules.preferredGender : undefined,
-      },
-      totalRooms: rooms.length,
-      roomIds,
-      wholePropertyAvailable: false,
-      status: propertyStatus,
-      verified: false,
-      createdAt: now,
-      updatedAt: now,
-      views: 0,
-    };
+      const publishedCount = roomsToCreate.filter(room => room.status === 'available').length;
 
-    addProperty(newProperty);
-    roomsToCreate.forEach(r => addRoom(r));
+      if (mode === 'draft') {
+        toast.success('Rascunho guardado!', {
+          description: 'Nada ficou visível para estudantes. Podes publicar quando estiveres pronto.',
+        });
+      } else if (mode === 'all') {
+        toast.success('Alojamento publicado!', {
+          description: `${rooms.length} quarto${rooms.length > 1 ? 's' : ''} visível${rooms.length > 1 ? 'is' : ''} para estudantes.`,
+        });
+      } else {
+        toast.success('Alojamento ativo com quartos selecionados!', {
+          description: `${publishedCount} publicado${publishedCount > 1 ? 's' : ''}, ${rooms.length - publishedCount} em rascunho.`,
+        });
+      }
 
-    const publishedCount = roomsToCreate.filter(r => r.status === 'available').length;
-
-    if (mode === 'draft') {
-      toast.success('Rascunho guardado!', {
-        description: 'Nada ficou visível para estudantes. Podes publicar quando estiveres pronto.',
-      });
-    } else if (mode === 'all') {
-      toast.success('Alojamento publicado!', {
-        description: `${rooms.length} quarto${rooms.length > 1 ? 's' : ''} visível${rooms.length > 1 ? 'is' : ''} para estudantes.`,
-      });
-    } else {
-      toast.success('Alojamento ativo com quartos selecionados!', {
-        description: `${publishedCount} publicado${publishedCount > 1 ? 's' : ''}, ${rooms.length - publishedCount} em rascunho.`,
-      });
+      setTimeout(() => navigate('/landlord/listings'), 900);
+    } finally {
+      setSaving(false);
     }
-
-    setTimeout(() => navigate('/landlord/listings'), 1200);
   };
 
-  const selectedCount = rooms.filter(r => r.publishNow).length;
+  const selectedCount = rooms.filter(room => room.publishNow).length;
 
-  // ── Missing fields for preview ──
   const missingFields: string[] = [];
   if (property.title.trim().length < 8) missingFields.push('Título da propriedade');
   if (property.description.trim().length < 40) missingFields.push('Descrição completa');
@@ -781,8 +751,6 @@ export function NewListing() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
-
-        {/* Header */}
         <div className="mb-6">
           <button
             onClick={() => navigate('/landlord/listings')}
@@ -791,11 +759,13 @@ export function NewListing() {
             <ArrowLeft className="w-4 h-4" />
             Voltar aos alojamentos
           </button>
+
           <h1 className="text-2xl font-bold text-foreground">Publicar nova propriedade</h1>
-          <p className="text-muted-foreground text-sm mt-1">Define a propriedade, os quartos e as regras antes de publicar.</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            Define a propriedade, os quartos e as regras antes de publicar.
+          </p>
         </div>
 
-        {/* Suspended — full page block */}
         {isSuspended && (
           <div className="mb-6 p-5 bg-red-50 border border-red-300 rounded-2xl flex items-start gap-4">
             <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -805,64 +775,56 @@ export function NewListing() {
               <p className="font-semibold text-red-800 mb-1">Conta suspensa — criação de anúncios bloqueada</p>
               <p className="text-sm text-red-700">
                 A tua conta está suspensa pela equipa UniRoom. Não podes criar, guardar ou publicar novos anúncios enquanto a suspensão estiver ativa.
-                Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span> para resolver.
               </p>
             </div>
           </div>
         )}
 
-        {/* Step indicator */}
         <div className={`flex items-center gap-0 mb-8 ${isSuspended ? 'opacity-40 pointer-events-none' : ''}`}>
-          {STEPS.map((s, i) => {
-            const Icon = s.icon;
-            const isDone = step > s.number;
-            const isActive = step === s.number;
+          {STEPS.map((item, index) => {
+            const Icon = item.icon;
+            const isDone = step > item.number;
+            const isActive = step === item.number;
+
             return (
-              <div key={s.number} className="flex items-center flex-1">
+              <div key={item.number} className="flex items-center flex-1">
                 <button
-                  onClick={() => isDone && setStep(s.number)}
-                  disabled={!isDone}
+                  type="button"
+                  onClick={() => isDone && setStep(item.number)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${
-                    isActive ? 'bg-primary text-white' :
-                    isDone ? 'bg-green-50 text-green-700 cursor-pointer hover:bg-green-100' :
-                    'text-muted-foreground cursor-default'
+                    isActive
+                      ? 'bg-primary text-white'
+                      : isDone
+                        ? 'bg-primary/10 text-primary cursor-pointer'
+                        : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    isActive ? 'bg-white/20' :
-                    isDone ? 'bg-green-200' :
-                    'bg-muted'
-                  }`}>
-                    {isDone ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
-                  </div>
-                  <span className="text-sm font-medium hidden sm:block">{s.title}</span>
+                  <Icon className="w-4 h-4" />
+                  <span className="hidden sm:inline text-sm font-medium">{item.title}</span>
                 </button>
-                {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-1 ${step > s.number ? 'bg-green-400' : 'bg-border'}`} />
+                {index < STEPS.length - 1 && (
+                  <div className={`h-0.5 flex-1 mx-2 ${step > item.number ? 'bg-primary' : 'bg-border'}`} />
                 )}
               </div>
             );
           })}
         </div>
 
-        <Card className={`p-6 md:p-8 ${isSuspended ? 'opacity-40 pointer-events-none select-none' : ''}`}>
-
-          {/* ─── STEP 1: Property info ─────────────────────────────── */}
+        <Card className="p-6">
           {step === 1 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-foreground mb-1">Detalhes da propriedade</h2>
-                <p className="text-sm text-muted-foreground">Informação geral da casa. Os quartos, rendas e disponibilidades serão definidos individualmente no passo seguinte.</p>
+                <h2 className="text-xl font-bold text-foreground mb-1">Dados da propriedade</h2>
+                <p className="text-sm text-muted-foreground">Esta informação será usada na pesquisa dos estudantes.</p>
               </div>
 
               <div>
-                <FieldLabel required>Título do anúncio</FieldLabel>
+                <FieldLabel required>Título</FieldLabel>
                 <input
                   className={inputCls(propertyErrors.title)}
                   value={property.title}
                   onChange={e => setP({ title: e.target.value })}
-                  placeholder="Ex: Apartamento T4 perto da ESTGV"
-                  maxLength={100}
+                  placeholder="Ex: Apartamento T3 perto da ESTGV"
                 />
                 {propertyErrors.title && <p className="text-xs text-red-500 mt-1">{propertyErrors.title}</p>}
               </div>
@@ -870,76 +832,67 @@ export function NewListing() {
               <div>
                 <FieldLabel required>Descrição</FieldLabel>
                 <textarea
-                  className={`${inputCls(propertyErrors.description)} resize-none`}
-                  rows={4}
+                  rows={5}
+                  className={inputCls(propertyErrors.description)}
                   value={property.description}
                   onChange={e => setP({ description: e.target.value })}
-                  placeholder="Descreve o espaço, a atmosfera, o que está incluído..."
-                  maxLength={800}
+                  placeholder="Descreve o alojamento, ambiente da casa, transportes, regras principais..."
                 />
-                <div className="flex items-center justify-between gap-3 mt-1">
-                  {propertyErrors.description ? (
-                    <p className="text-xs text-red-500">{propertyErrors.description}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Mínimo recomendado: 40 caracteres.</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">{property.description.length}/800</p>
-                </div>
+                {propertyErrors.description && <p className="text-xs text-red-500 mt-1">{propertyErrors.description}</p>}
               </div>
 
-              <div>
-                <FieldLabel required>Morada completa</FieldLabel>
-                <input
-                  className={inputCls(propertyErrors.address)}
-                  value={property.address}
-                  onChange={e => setP({ address: e.target.value })}
-                  placeholder="Rua, número, andar"
-                />
-                {propertyErrors.address && <p className="text-xs text-red-500 mt-1">{propertyErrors.address}</p>}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <FieldLabel required>Zona / Bairro</FieldLabel>
+                  <FieldLabel required>Morada</FieldLabel>
+                  <input
+                    className={inputCls(propertyErrors.address)}
+                    value={property.address}
+                    onChange={e => setP({ address: e.target.value })}
+                    placeholder="Rua, número, zona..."
+                  />
+                  {propertyErrors.address && <p className="text-xs text-red-500 mt-1">{propertyErrors.address}</p>}
+                </div>
+
+                <div>
+                  <FieldLabel required>Zona/Bairro</FieldLabel>
                   <input
                     className={inputCls(propertyErrors.zone)}
                     value={property.zone}
                     onChange={e => setP({ zone: e.target.value })}
-                    placeholder="Ex: Centro"
+                    placeholder="Ex: Centro, Marquês, Repeses..."
                   />
                   {propertyErrors.zone && <p className="text-xs text-red-500 mt-1">{propertyErrors.zone}</p>}
                 </div>
+              </div>
+
+              <div className="grid md:grid-cols-4 gap-4">
                 <div>
                   <FieldLabel required>Cidade</FieldLabel>
                   <input
                     className={inputCls(propertyErrors.city)}
                     value={property.city}
                     onChange={e => setP({ city: e.target.value })}
-                    placeholder="Viseu"
                   />
                   {propertyErrors.city && <p className="text-xs text-red-500 mt-1">{propertyErrors.city}</p>}
                 </div>
+
                 <div>
                   <FieldLabel required>Universidade</FieldLabel>
-                  <select
+                  <input
                     className={inputCls(propertyErrors.university)}
                     value={property.university}
                     onChange={e => setP({ university: e.target.value })}
-                  >
-                    {UNIVERSITIES.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
+                  />
                   {propertyErrors.university && <p className="text-xs text-red-500 mt-1">{propertyErrors.university}</p>}
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <FieldLabel required>Distância à universidade (km)</FieldLabel>
+                  <FieldLabel required>Distância (km)</FieldLabel>
                   <input
                     type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="20"
+                    min={0.1}
+                    max={20}
+                    step={0.1}
                     className={inputCls(propertyErrors.distanceToUniversity)}
                     value={property.distanceToUniversity}
                     onChange={e => setP({ distanceToUniversity: e.target.value ? Number(e.target.value) : '' })}
@@ -947,94 +900,52 @@ export function NewListing() {
                   />
                   {propertyErrors.distanceToUniversity && <p className="text-xs text-red-500 mt-1">{propertyErrors.distanceToUniversity}</p>}
                 </div>
+
                 <div>
-                  <FieldLabel>Tempo a pé (minutos)</FieldLabel>
+                  <FieldLabel>Tempo a pé (min)</FieldLabel>
                   <input
                     type="number"
-                    min="1"
-                    max="120"
+                    min={1}
+                    max={120}
                     className={inputCls(propertyErrors.walkTimeMinutes)}
                     value={property.walkTimeMinutes}
                     onChange={e => setP({ walkTimeMinutes: e.target.value ? Number(e.target.value) : '' })}
-                    placeholder="5"
+                    placeholder="8"
                   />
                   {propertyErrors.walkTimeMinutes && <p className="text-xs text-red-500 mt-1">{propertyErrors.walkTimeMinutes}</p>}
                 </div>
               </div>
 
-              {/* Utilities/bills */}
-              <div>
-                <FieldLabel>Despesas e contas</FieldLabel>
-                <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => setP({ utilitiesIncluded: !property.utilitiesIncluded })}
-                    className={`flex items-center gap-3 w-full p-3 rounded-xl border-2 text-left transition-all ${
-                      property.utilitiesIncluded
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-border text-foreground'
-                    }`}
-                  >
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                      property.utilitiesIncluded ? 'bg-primary border-primary' : 'border-muted-foreground/40'
-                    }`}>
-                      {property.utilitiesIncluded && <Check className="w-3 h-3 text-white" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">Despesas incluídas no preço</p>
-                      <p className="text-xs text-muted-foreground">Água, luz, gás, internet incluídos na renda</p>
-                    </div>
-                  </button>
-                  {property.utilitiesIncluded && (
-                    <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
-                      <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-green-700">Os estudantes verão <strong>"Despesas incluídas"</strong> em destaque nos teus quartos — aumenta a visibilidade do anúncio.</p>
-                    </div>
-                  )}
-                  <input
-                    className={inputCls()}
-                    value={property.utilitiesNotes}
-                    onChange={e => setP({ utilitiesNotes: e.target.value })}
-                    placeholder="Notas sobre contas, IVA, consumo extra (opcional)"
-                  />
-                </div>
-              </div>
-
-              {/* Property photo selection */}
               <div>
                 <FieldLabel>Foto da propriedade</FieldLabel>
                 <div className="flex gap-3 flex-wrap">
-                  {PROPERTY_IMAGES.map((url, i) => (
+                  {PROPERTY_IMAGES.map((url, index) => (
                     <button
-                      key={i}
+                      key={url}
                       type="button"
-                      onClick={() => setSelectedPropertyPhoto(i)}
-                      className={`relative w-28 h-20 rounded-xl overflow-hidden border-2 transition-all ${
-                        selectedPropertyPhoto === i ? 'border-primary ring-2 ring-primary/30' : 'border-border'
+                      onClick={() => setSelectedPropertyPhoto(index)}
+                      className={`relative w-32 h-20 rounded-xl overflow-hidden border-2 transition-all ${
+                        selectedPropertyPhoto === index ? 'border-primary ring-2 ring-primary/30' : 'border-border'
                       }`}
                     >
                       <img src={url} alt="" className="w-full h-full object-cover" />
-                      {selectedPropertyPhoto === i && (
+                      {selectedPropertyPhoto === index && (
                         <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
                           <Check className="w-5 h-5 text-white drop-shadow" />
                         </div>
                       )}
                     </button>
                   ))}
-                  <div className="w-28 h-20 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground">
-                    <Camera className="w-5 h-5" />
-                    <span className="text-[10px]">Fazer upload</span>
-                  </div>
                 </div>
               </div>
 
-              {/* Amenities */}
               <div>
                 <FieldLabel>Áreas comuns e comodidades</FieldLabel>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {AMENITY_OPTIONS.map(opt => {
                     const Icon = opt.icon;
                     const checked = property.amenities[opt.key];
+
                     return (
                       <button
                         key={opt.key}
@@ -1053,17 +964,36 @@ export function NewListing() {
                   })}
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setP({ utilitiesIncluded: !property.utilitiesIncluded })}
+                className={`flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                  property.utilitiesIncluded
+                    ? 'border-green-300 bg-green-50'
+                    : 'border-border hover:border-green-300'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${
+                  property.utilitiesIncluded ? 'bg-green-500 border-green-500' : 'border-muted-foreground/40'
+                }`}>
+                  {property.utilitiesIncluded && <Check className="w-3 h-3 text-white" />}
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Despesas incluídas no preço</p>
+                  <p className="text-xs text-muted-foreground">Água, luz, gás e internet incluídos na renda.</p>
+                </div>
+              </button>
             </div>
           )}
 
-          {/* ─── STEP 2: Rooms ────────────────────────────────────── */}
           {step === 2 && (
             <div className="space-y-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold text-foreground mb-1">Quartos</h2>
                   <p className="text-sm text-muted-foreground">
-                    Cada quarto tem renda, disponibilidade e estado de publicação próprios e independentes.
+                    Cada quarto tem renda, disponibilidade e estado de publicação próprios.
                   </p>
                 </div>
                 <Button onClick={() => setShowRoomModal(true)} size="sm">
@@ -1075,7 +1005,7 @@ export function NewListing() {
               <div className="flex items-start gap-2.5 p-3 bg-blue-50/70 border border-blue-100 rounded-xl">
                 <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-blue-700">
-                  Podes publicar alguns quartos agora e guardar outros como rascunho — por exemplo, se um quarto está ocupado ou ainda não está pronto para receber candidatos.
+                  Podes publicar alguns quartos agora e guardar outros como rascunho.
                 </p>
               </div>
 
@@ -1090,7 +1020,7 @@ export function NewListing() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {rooms.map((room, i) => (
+                  {rooms.map(room => (
                     <div
                       key={room.tempId}
                       className="flex items-center gap-4 p-4 border border-border rounded-xl bg-card hover:border-primary/30 transition-colors"
@@ -1143,12 +1073,14 @@ export function NewListing() {
                         </button>
                         <button
                           onClick={() => setEditingRoom(room)}
+                          title="Editar quarto"
                           className="w-8 h-8 rounded-lg border border-border hover:bg-muted flex items-center justify-center transition-colors"
                         >
                           <Pencil className="w-4 h-4 text-muted-foreground" />
                         </button>
                         <button
                           onClick={() => handleDeleteRoom(room.tempId)}
+                          title="Remover quarto"
                           className="w-8 h-8 rounded-lg border border-red-200 hover:bg-red-50 flex items-center justify-center transition-colors"
                         >
                           <Trash2 className="w-4 h-4 text-red-400" />
@@ -1170,9 +1102,11 @@ export function NewListing() {
               {rooms.length > 0 && (
                 <div className="p-4 bg-muted/40 rounded-xl text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{rooms.length} quarto{rooms.length !== 1 ? 's' : ''} adicionado{rooms.length !== 1 ? 's' : ''}</span>
+                    <span className="text-muted-foreground">
+                      {rooms.length} quarto{rooms.length !== 1 ? 's' : ''} adicionado{rooms.length !== 1 ? 's' : ''}
+                    </span>
                     <span className="font-medium text-foreground">
-                      {rooms.filter(r => r.publishNow).length} para publicar · {rooms.filter(r => !r.publishNow).length} em rascunho
+                      {rooms.filter(room => room.publishNow).length} para publicar · {rooms.filter(room => !room.publishNow).length} em rascunho
                     </span>
                   </div>
                 </div>
@@ -1180,21 +1114,22 @@ export function NewListing() {
             </div>
           )}
 
-          {/* ─── STEP 3: House rules ──────────────────────────────── */}
           {step === 3 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-foreground mb-1">Regras da casa</h2>
-                <p className="text-sm text-muted-foreground">As regras ativas ficam visíveis no anúncio e ajudam a filtrar candidatos desde o início.</p>
+                <p className="text-sm text-muted-foreground">
+                  As regras ativas ficam visíveis no anúncio e ajudam a filtrar candidatos.
+                </p>
               </div>
 
               <div>
                 <p className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide text-[11px]">Restrições</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Toggle checked={rules.studentsOnly} onChange={v => setR({ studentsOnly: v })} label="Apenas estudantes" icon={GraduationCap} />
-                  <Toggle checked={rules.noParties} onChange={v => setR({ noParties: v })} label="Sem festas" icon={PartyPopper} />
-                  <Toggle checked={rules.noPets} onChange={v => setR({ noPets: v })} label="Sem animais de estimação" icon={PawPrint} />
-                  <Toggle checked={rules.noSmoking} onChange={v => setR({ noSmoking: v })} label="Proibido fumar" icon={Cigarette} />
+                  <Toggle checked={rules.studentsOnly} onChange={value => setR({ studentsOnly: value })} label="Apenas estudantes" icon={GraduationCap} />
+                  <Toggle checked={rules.noParties} onChange={value => setR({ noParties: value })} label="Sem festas" icon={PartyPopper} />
+                  <Toggle checked={rules.noPets} onChange={value => setR({ noPets: value })} label="Sem animais de estimação" icon={PawPrint} />
+                  <Toggle checked={rules.noSmoking} onChange={value => setR({ noSmoking: value })} label="Proibido fumar" icon={Cigarette} />
                 </div>
               </div>
 
@@ -1215,6 +1150,7 @@ export function NewListing() {
                       placeholder="Ex: Silêncio após as 23h00"
                     />
                   </div>
+
                   <div>
                     <FieldLabel>
                       <div className="flex items-center gap-2">
@@ -1229,6 +1165,7 @@ export function NewListing() {
                       placeholder="Ex: Rotação semanal entre moradores"
                     />
                   </div>
+
                   <div>
                     <FieldLabel>
                       <div className="flex items-center gap-2">
@@ -1248,32 +1185,29 @@ export function NewListing() {
 
               <div>
                 <p className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide text-[11px]">Perfil do ocupante ideal</p>
-                <div>
-                  <FieldLabel>Género preferido</FieldLabel>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { value: 'any', label: 'Indiferente' },
-                      { value: 'male', label: 'Masculino' },
-                      { value: 'female', label: 'Feminino' },
-                    ].map(opt => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setR({ preferredGender: opt.value as HouseRules['preferredGender'] })}
-                        className={`p-2.5 border-2 rounded-xl text-sm font-medium transition-all ${
-                          rules.preferredGender === opt.value
-                            ? 'border-primary bg-primary/5 text-primary'
-                            : 'border-border text-foreground hover:border-primary/40'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
+                <FieldLabel>Género preferido</FieldLabel>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'any', label: 'Indiferente' },
+                    { value: 'male', label: 'Masculino' },
+                    { value: 'female', label: 'Feminino' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setR({ preferredGender: opt.value as HouseRules['preferredGender'] })}
+                      className={`p-2.5 border-2 rounded-xl text-sm font-medium transition-all ${
+                        rules.preferredGender === opt.value
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border text-foreground hover:border-primary/40'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Rules preview */}
               {(rules.studentsOnly || rules.noParties || rules.noPets || rules.noSmoking) && (
                 <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
                   <p className="text-xs font-semibold text-amber-800 mb-2">Regras ativas:</p>
@@ -1288,30 +1222,29 @@ export function NewListing() {
             </div>
           )}
 
-          {/* ─── STEP 4: Preview & Publish ────────────────────────── */}
           {step === 4 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-foreground mb-1">Pré-visualização e publicação</h2>
-                <p className="text-sm text-muted-foreground">Revê o que os estudantes vão ver. <strong>Sem pressas</strong> — podes guardar tudo como rascunho e publicar mais tarde.</p>
+                <p className="text-sm text-muted-foreground">
+                  Revê o que os estudantes vão ver. Podes guardar como rascunho e publicar mais tarde.
+                </p>
               </div>
 
-              {/* Missing field warnings */}
               {missingFields.length > 0 && (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="text-sm font-semibold text-amber-800 mb-1.5">Campos em falta:</p>
                     <ul className="space-y-0.5">
-                      {missingFields.map(f => (
-                        <li key={f} className="text-xs text-amber-700">· {f}</li>
+                      {missingFields.map(field => (
+                        <li key={field} className="text-xs text-amber-700">· {field}</li>
                       ))}
                     </ul>
                   </div>
                 </div>
               )}
 
-              {/* ── O que os estudantes vão ver ── */}
               <div>
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">O que os estudantes vão ver</p>
                 <div className="border border-border rounded-xl overflow-hidden">
@@ -1326,11 +1259,6 @@ export function NewListing() {
                       <p className="font-bold text-lg">{property.title || 'Sem título'}</p>
                       <p className="text-xs text-white/80">{property.address && `${property.address} · `}{property.city}</p>
                     </div>
-                    {property.utilitiesIncluded && (
-                      <div className="absolute top-3 right-3 px-2 py-1 bg-green-500 text-white rounded-full text-[10px] font-semibold shadow">
-                        Despesas incluídas
-                      </div>
-                    )}
                   </div>
                   <div className="p-4 bg-card">
                     <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
@@ -1345,6 +1273,7 @@ export function NewListing() {
                       {property.amenities.parking && <span className="text-xs text-muted-foreground">Estacionamento</span>}
                       {property.amenities.laundry && <span className="text-xs text-muted-foreground">Lavandaria</span>}
                     </div>
+
                     {(rules.studentsOnly || rules.noParties || rules.noPets || rules.noSmoking || rules.quietHours) && (
                       <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border">
                         <span className="text-[10px] text-muted-foreground mr-0.5">Regras visíveis:</span>
@@ -1359,22 +1288,22 @@ export function NewListing() {
                 </div>
               </div>
 
-              {/* ── Quartos que serão publicados ── */}
               {(() => {
-                const toPublish = rooms.filter(r => r.publishNow);
-                const inDraft = rooms.filter(r => !r.publishNow);
+                const toPublish = rooms.filter(room => room.publishNow);
+                const inDraft = rooms.filter(room => !room.publishNow);
+
                 return (
                   <div className="space-y-4">
-                    {/* Published rooms */}
                     <div>
                       <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
                         <Eye className="w-3.5 h-3.5 text-green-600" />
                         <span className="text-green-700">Quartos que serão publicados ({toPublish.length})</span>
                       </p>
+
                       {toPublish.length === 0 ? (
                         <div className="p-3 border border-dashed border-border rounded-xl text-center">
                           <p className="text-xs text-muted-foreground">Nenhum quarto marcado para publicar — todos ficarão em rascunho.</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Podes publicar individualmente na lista de quartos (Passo 2) ou usar "Publicar tudo" abaixo.</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Podes publicar individualmente na lista de quartos ou usar "Publicar tudo".</p>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -1392,7 +1321,6 @@ export function NewListing() {
                               </div>
                               <button
                                 onClick={() => toggleRoomPublish(room.tempId)}
-                                title="Mover para rascunho"
                                 className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted transition-colors"
                               >
                                 Mover para rascunho
@@ -1403,13 +1331,13 @@ export function NewListing() {
                       )}
                     </div>
 
-                    {/* Draft rooms */}
                     {inDraft.length > 0 && (
                       <div>
                         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
                           <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
                           Quartos que ficam em rascunho ({inDraft.length})
                         </p>
+
                         <div className="space-y-2">
                           {inDraft.map(room => (
                             <div key={room.tempId} className="flex items-center gap-3 p-3 border border-border bg-muted/20 rounded-xl">
@@ -1425,7 +1353,6 @@ export function NewListing() {
                               </div>
                               <button
                                 onClick={() => toggleRoomPublish(room.tempId)}
-                                title="Marcar para publicar"
                                 className="text-xs text-primary hover:text-primary/80 px-2 py-1 rounded-lg hover:bg-primary/5 transition-colors"
                               >
                                 Publicar
@@ -1439,40 +1366,38 @@ export function NewListing() {
                 );
               })()}
 
-              {/* Suspension / block banners for restricted landlords */}
               {isSuspended && (
                 <div className="p-4 bg-red-50 border border-red-300 rounded-xl flex items-start gap-3">
-                  <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600">⚠</div>
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="text-sm font-semibold text-red-800">Conta suspensa</p>
                     <p className="text-xs text-red-700 mt-0.5">
-                      A tua conta está suspensa pela equipa UniRoom. Não podes publicar novos anúncios. Podes guardar rascunhos para quando a suspensão for levantada. Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span>.
+                      Não podes publicar novos anúncios enquanto a suspensão estiver ativa.
                     </p>
                   </div>
                 </div>
               )}
+
               {!isSuspended && isBlocked && (
                 <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-start gap-3">
-                  <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-orange-600">⚠</div>
+                  <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="text-sm font-semibold text-orange-800">Publicação de anúncios bloqueada</p>
                     <p className="text-xs text-orange-700 mt-0.5">
-                      A tua conta está temporariamente bloqueada para publicar novos anúncios. Podes guardar rascunhos mas não publicar. Contacta o suporte UniRoom para resolver.
+                      Podes guardar rascunhos, mas não publicar.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Action cards */}
               <div className="space-y-3 pt-2">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Escolhe como avançar</p>
 
-                {/* Option 1: Save as draft — highlighted as safe default */}
                 <button
                   onClick={() => buildAndSave('draft')}
-                  disabled={isSuspended}
+                  disabled={isSuspended || saving}
                   className={`w-full p-4 border-2 rounded-2xl text-left transition-all group flex items-start gap-4 ${
-                    isSuspended
+                    isSuspended || saving
                       ? 'border-border opacity-50 cursor-not-allowed'
                       : 'border-blue-300 bg-blue-50/60 hover:bg-blue-50 cursor-pointer'
                   }`}
@@ -1489,13 +1414,12 @@ export function NewListing() {
                   </div>
                 </button>
 
-                {/* Option 2: Publish selected */}
                 {rooms.length > 1 && (
                   <button
-                    disabled={isSuspended || isBlocked || missingFields.length > 0 || selectedCount === 0}
+                    disabled={isSuspended || isBlocked || missingFields.length > 0 || selectedCount === 0 || saving}
                     onClick={() => buildAndSave('selected')}
                     className={`w-full p-4 border-2 rounded-2xl text-left transition-all flex items-start gap-4 ${
-                      isSuspended || isBlocked || missingFields.length > 0 || selectedCount === 0
+                      isSuspended || isBlocked || missingFields.length > 0 || selectedCount === 0 || saving
                         ? 'border-border bg-muted/10 opacity-50 cursor-not-allowed'
                         : 'border-amber-300 bg-amber-50/60 hover:bg-amber-50 cursor-pointer'
                     }`}
@@ -1512,19 +1436,20 @@ export function NewListing() {
                   </button>
                 )}
 
-                {/* Option 3: Publish all */}
                 <button
-                  disabled={isSuspended || isBlocked || missingFields.length > 0}
+                  disabled={isSuspended || isBlocked || missingFields.length > 0 || saving}
                   onClick={() => buildAndSave('all')}
                   className={`w-full p-4 border-2 rounded-2xl text-left transition-all flex items-start gap-4 ${
-                    isSuspended || isBlocked || missingFields.length > 0
+                    isSuspended || isBlocked || missingFields.length > 0 || saving
                       ? 'border-border bg-muted/20 opacity-60 cursor-not-allowed'
                       : 'border-primary bg-primary/5 hover:bg-primary/10 cursor-pointer'
                   }`}
                 >
                   <CheckCircle className={`w-5 h-5 mt-0.5 flex-shrink-0 ${missingFields.length > 0 ? 'text-muted-foreground' : 'text-primary'}`} />
                   <div>
-                    <p className="font-semibold text-foreground mb-0.5">Publicar tudo agora</p>
+                    <p className="font-semibold text-foreground mb-0.5">
+                      {saving ? 'A guardar...' : 'Publicar tudo agora'}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {missingFields.length > 0
                         ? 'Preenche os campos em falta antes de publicar.'
@@ -1536,10 +1461,9 @@ export function NewListing() {
             </div>
           )}
 
-          {/* Navigation */}
           <div className="flex items-center justify-between mt-8 pt-6 border-t border-border">
             {step > 1 ? (
-              <Button variant="outline" onClick={handleBack}>
+              <Button variant="outline" onClick={handleBack} disabled={saving}>
                 <ArrowLeft className="w-4 h-4 mr-1.5" />
                 Voltar
               </Button>
@@ -1547,29 +1471,28 @@ export function NewListing() {
               <div />
             )}
 
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                onClick={() => buildAndSave('draft')}
-                disabled={isSuspended}
-                className="hidden sm:flex"
-              >
-                <Save className="w-4 h-4 mr-1.5" />
-                Guardar como rascunho
-              </Button>
+            {step < 4 && (
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => buildAndSave('draft')}
+                  disabled={isSuspended || saving}
+                  className="hidden sm:flex"
+                >
+                  <Save className="w-4 h-4 mr-1.5" />
+                  Guardar como rascunho
+                </Button>
 
-              {step < 4 && (
-                <Button onClick={handleNext}>
+                <Button onClick={handleNext} disabled={saving}>
                   Continuar
                   <ArrowRight className="w-4 h-4 ml-1.5" />
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </Card>
       </div>
 
-      {/* Room add modal */}
       {showRoomModal && (
         <RoomFormModal
           onSave={handleAddRoom}
@@ -1577,7 +1500,6 @@ export function NewListing() {
         />
       )}
 
-      {/* Room edit modal */}
       {editingRoom && (
         <RoomFormModal
           initial={editingRoom}
