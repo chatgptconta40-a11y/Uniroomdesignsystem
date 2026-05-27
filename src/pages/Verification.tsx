@@ -11,15 +11,21 @@ import {
   AlertCircle,
   Clock,
   Building2,
+  XCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getVerificationStatus, updateVerificationStatus } from '../data/mockTrust';
+import {
+  getVerificationStatus,
+  updateVerificationStatus,
+  submitVerificationDocument,
+} from '../data/mockTrust';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import { toast } from 'sonner';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const ACADEMIC_DOMAINS = [
   '.edu',
   '.ac.',
@@ -32,6 +38,7 @@ const ACADEMIC_DOMAINS = [
   'unl.pt',
   'uc.pt',
   'ipv.pt',
+  'estgv.ipv.pt',
   'ipl.pt',
   'ipp.pt',
   'ipb.pt',
@@ -62,35 +69,40 @@ export function Verification() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const verification = getVerificationStatus(user?.id || '');
+  const [version, setVersion] = useState(0);
+  const verification = useMemo(
+    () => getVerificationStatus(user?.id || ''),
+    [user?.id, version],
+  );
+
   const isLandlord = user?.type === 'landlord';
 
   const initialStep = !verification?.emailVerified
     ? 1
     : !verification?.universityEmailVerified
-    ? 2
-    : !verification?.documentVerified
-    ? 3
-    : 3;
+      ? 2
+      : 3;
 
   const [currentStep, setCurrentStep] = useState<number>(initialStep);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(user?.email || verification?.personalEmail || '');
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [uniEmail, setUniEmail] = useState('');
+  const [uniEmail, setUniEmail] = useState(verification?.universityEmail || '');
   const [uniEmailError, setUniEmailError] = useState<string | null>(null);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [confirmOwnership, setConfirmOwnership] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [docUnderReview, setDocUnderReview] = useState<boolean>(!!verification?.documentVerified);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allDone = !!(
+  const allDone = Boolean(
     verification?.emailVerified &&
     verification?.universityEmailVerified &&
-    verification?.documentVerified
+    verification?.documentVerified,
   );
+
+  const documentPending = verification?.documentReviewStatus === 'pending';
+  const documentRejected = verification?.documentReviewStatus === 'rejected';
 
   const steps = useMemo(
     () => [
@@ -104,7 +116,7 @@ export function Verification() {
       {
         number: 2,
         title: isLandlord ? 'Email profissional' : 'Email universitário',
-        shortTitle: isLandlord ? 'Email pro' : 'Email .edu',
+        shortTitle: isLandlord ? 'Email pro' : 'Email uni',
         icon: isLandlord ? Building2 : GraduationCap,
         completed: !!verification?.universityEmailVerified,
       },
@@ -119,23 +131,37 @@ export function Verification() {
     [verification?.emailVerified, verification?.universityEmailVerified, verification?.documentVerified, isLandlord],
   );
 
-  const completedCount = steps.filter(s => s.completed).length;
+  const completedCount = steps.filter(step => step.completed).length;
   const progressPct = Math.round((completedCount / steps.length) * 100);
 
   const handleVerifyEmail = async () => {
     const value = email.trim();
+
     if (!value) {
       setEmailError('O email é obrigatório.');
       return;
     }
+
     if (!EMAIL_RE.test(value)) {
-      setEmailError('Insere um email com formato válido (ex: nome@exemplo.com).');
+      setEmailError('Insere um email com formato válido.');
       return;
     }
+
+    if (!user?.id) {
+      toast.error('Sessão inválida.');
+      return;
+    }
+
     setEmailError(null);
     setIsProcessing(true);
-    await new Promise(r => setTimeout(r, 900));
-    updateVerificationStatus(user?.id || '', { emailVerified: true });
+    await new Promise(resolve => setTimeout(resolve, 700));
+
+    updateVerificationStatus(user.id, {
+      emailVerified: true,
+      personalEmail: value,
+    });
+
+    setVersion(value => value + 1);
     toast.success('Email pessoal confirmado.');
     setIsProcessing(false);
     setCurrentStep(2);
@@ -143,22 +169,37 @@ export function Verification() {
 
   const handleVerifyUniEmail = async () => {
     const value = uniEmail.trim();
+
     if (!value) {
       setUniEmailError(isLandlord ? 'O email profissional é obrigatório.' : 'O email universitário é obrigatório.');
       return;
     }
+
     if (!EMAIL_RE.test(value)) {
       setUniEmailError('Formato de email inválido.');
       return;
     }
+
     if (!isLandlord && !isAcademicEmail(value)) {
-      setUniEmailError('Tem de ser um email institucional (ex: aluno@universidade.pt ou domínio académico).');
+      setUniEmailError('Tem de ser um email institucional ou académico.');
       return;
     }
+
+    if (!user?.id) {
+      toast.error('Sessão inválida.');
+      return;
+    }
+
     setUniEmailError(null);
     setIsProcessing(true);
-    await new Promise(r => setTimeout(r, 900));
-    updateVerificationStatus(user?.id || '', { universityEmailVerified: true });
+    await new Promise(resolve => setTimeout(resolve, 700));
+
+    updateVerificationStatus(user.id, {
+      universityEmailVerified: true,
+      universityEmail: value,
+    });
+
+    setVersion(value => value + 1);
     toast.success(isLandlord ? 'Email profissional confirmado.' : 'Email universitário confirmado.');
     setIsProcessing(false);
     setCurrentStep(3);
@@ -166,16 +207,19 @@ export function Verification() {
 
   const handleFileSelected = (file: File | undefined | null) => {
     if (!file) return;
+
     if (!ALLOWED_DOC_TYPES.includes(file.type)) {
       setDocumentError('Formato não suportado. Aceitamos apenas PDF, JPG ou PNG.');
       setDocumentFile(null);
       return;
     }
+
     if (file.size > MAX_DOC_BYTES) {
       setDocumentError('Ficheiro demasiado grande. Máximo 8 MB.');
       setDocumentFile(null);
       return;
     }
+
     setDocumentError(null);
     setDocumentFile(file);
   };
@@ -185,20 +229,26 @@ export function Verification() {
       setDocumentError('Tens de carregar um documento.');
       return;
     }
+
     if (!confirmOwnership) {
       setDocumentError('Tens de confirmar que o documento te pertence.');
       return;
     }
+
+    if (!user?.id) {
+      toast.error('Sessão inválida.');
+      return;
+    }
+
     setDocumentError(null);
     setIsProcessing(true);
-    await new Promise(r => setTimeout(r, 1500));
-    updateVerificationStatus(user?.id || '', {
-      documentVerified: true,
-      verifiedAt: new Date(),
-    });
-    setDocUnderReview(true);
+    await new Promise(resolve => setTimeout(resolve, 900));
+
+    submitVerificationDocument(user.id, documentFile.name);
+
+    setVersion(value => value + 1);
     setIsProcessing(false);
-    toast.success('Documento enviado para análise.');
+    toast.success('Documento enviado para análise do administrador.');
   };
 
   return (
@@ -208,20 +258,29 @@ export function Verification() {
           <div className="hidden sm:flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Shield className="h-6 w-6" />
           </div>
+
           <div className="flex-1">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl md:text-3xl font-bold text-foreground">Verificação de conta</h1>
+
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
                   allDone
                     ? 'bg-green-100 text-green-700'
-                    : 'bg-amber-100 text-amber-700'
+                    : documentPending
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-amber-100 text-amber-700'
                 }`}
               >
                 {allDone ? (
                   <>
                     <Check className="h-3.5 w-3.5" />
                     Verificado
+                  </>
+                ) : documentPending ? (
+                  <>
+                    <Clock className="h-3.5 w-3.5" />
+                    Documento em análise
                   </>
                 ) : (
                   <>
@@ -231,8 +290,9 @@ export function Verification() {
                 )}
               </span>
             </div>
+
             <p className="mt-1 text-sm text-muted-foreground">
-              Completa os 3 passos abaixo para que a tua conta seja considerada verificada na UniRoom.
+              Completa os passos abaixo para aumentar a confiança junto de senhorios e da equipa UniRoom.
             </p>
           </div>
         </div>
@@ -244,6 +304,7 @@ export function Verification() {
             </span>
             <span className="font-semibold text-foreground">{progressPct}%</span>
           </div>
+
           <div className="mb-5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full bg-primary transition-all"
@@ -271,8 +332,8 @@ export function Verification() {
                       step.completed
                         ? 'border-green-200 bg-green-50'
                         : isActive
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border bg-card'
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border bg-card'
                     } ${canNavigate ? 'hover:border-primary/60 cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
                   >
                     <div
@@ -280,12 +341,13 @@ export function Verification() {
                         step.completed
                           ? 'bg-green-500 text-white'
                           : isActive
-                          ? 'bg-primary text-white'
-                          : 'bg-muted text-muted-foreground'
+                            ? 'bg-primary text-white'
+                            : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       {step.completed ? <Check className="h-5 w-5" /> : <StepIcon className="h-4 w-4" />}
                     </div>
+
                     <div className="leading-tight">
                       <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                         Passo {step.number}
@@ -318,8 +380,8 @@ export function Verification() {
                 type="email"
                 label="Email pessoal"
                 value={email}
-                onChange={e => {
-                  setEmail(e.target.value);
+                onChange={event => {
+                  setEmail(event.target.value);
                   if (emailError) setEmailError(null);
                 }}
                 placeholder="nome@exemplo.com"
@@ -330,8 +392,9 @@ export function Verification() {
 
               <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
                 <p className="text-xs text-muted-foreground">
-                  Os teus dados são usados apenas para verificação e nunca são partilhados publicamente.
+                  Este passo dá o nível Bronze de verificação.
                 </p>
+
                 <Button
                   onClick={handleVerifyEmail}
                   disabled={isProcessing || verification?.emailVerified}
@@ -339,7 +402,8 @@ export function Verification() {
                 >
                   {isProcessing ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />A verificar
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      A verificar
                     </>
                   ) : verification?.emailVerified ? (
                     <>
@@ -362,53 +426,51 @@ export function Verification() {
                   Passo 2 de 3
                 </div>
                 <h2 className="text-xl font-bold text-foreground">
-                  {isLandlord ? 'Confirma o teu email profissional' : 'Confirma o teu email universitário'}
+                  {isLandlord ? 'Confirma o email profissional' : 'Confirma o email universitário'}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {isLandlord
-                    ? 'Usa um email profissional associado à gestão dos teus alojamentos.'
-                    : 'Tem de ser o email institucional fornecido pela tua universidade ou politécnico (ex: .edu, .ac., uminho.pt, ipv.pt).'}
+                    ? 'Ajuda a validar que és um responsável legítimo por alojamentos.'
+                    : 'Ajuda os senhorios a perceberem que és estudante real.'}
                 </p>
               </div>
-
-              {!verification?.emailVerified && (
-                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                  Confirma primeiro o email pessoal no passo 1.
-                </div>
-              )}
 
               <Input
                 type="email"
                 label={isLandlord ? 'Email profissional' : 'Email universitário'}
                 value={uniEmail}
-                onChange={e => {
-                  setUniEmail(e.target.value);
+                onChange={event => {
+                  setUniEmail(event.target.value);
                   if (uniEmailError) setUniEmailError(null);
                 }}
-                placeholder={isLandlord ? 'contacto@empresa.pt' : 'aluno@universidade.pt'}
+                placeholder={isLandlord ? 'nome@empresa.pt' : 'aluno@estgv.ipv.pt'}
                 error={uniEmailError || undefined}
-                disabled={verification?.universityEmailVerified || !verification?.emailVerified || isProcessing}
-                autoComplete="email"
+                disabled={verification?.universityEmailVerified || isProcessing}
               />
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                {isLandlord
+                  ? 'Para senhorios, este email pode ser profissional ou associado à entidade gestora.'
+                  : 'São aceites domínios académicos como ipv.pt, uc.pt, up.pt, ulisboa.pt, uminho.pt, ua.pt, entre outros.'}
+              </div>
 
               <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
                 <Button
                   variant="outline"
                   onClick={() => setCurrentStep(1)}
                   disabled={isProcessing}
-                  className="sm:w-auto"
                 >
                   Voltar
                 </Button>
+
                 <Button
                   onClick={handleVerifyUniEmail}
-                  disabled={isProcessing || verification?.universityEmailVerified || !verification?.emailVerified}
-                  className="sm:w-auto"
+                  disabled={isProcessing || verification?.universityEmailVerified}
                 >
                   {isProcessing ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />A verificar
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      A verificar
                     </>
                   ) : verification?.universityEmailVerified ? (
                     <>
@@ -430,189 +492,158 @@ export function Verification() {
                   <FileText className="h-3.5 w-3.5" />
                   Passo 3 de 3
                 </div>
-                <h2 className="text-xl font-bold text-foreground">Carrega o teu documento</h2>
+                <h2 className="text-xl font-bold text-foreground">Documento de verificação</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {isLandlord
-                    ? 'Cartão de cidadão ou comprovativo de titularidade/gestão do alojamento.'
-                    : 'Cartão de cidadão, passaporte ou cartão de estudante com foto.'}
+                  O documento fica em análise e só o administrador pode aprovar o nível Ouro.
                 </p>
               </div>
 
-              {!verification?.universityEmailVerified && (
-                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                  Confirma primeiro o email do passo 2.
+              {verification?.documentVerified && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4 flex items-start gap-3">
+                  <Check className="h-5 w-5 text-green-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-green-900">Documento aprovado</p>
+                    <p className="text-sm text-green-700">A tua conta está verificada com nível Ouro.</p>
+                  </div>
                 </div>
               )}
 
-              {docUnderReview ? (
-                <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white text-blue-600">
-                      <Clock className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-blue-900">Documento em análise</p>
-                      <p className="mt-1 text-xs leading-relaxed text-blue-800">
-                        Recebemos o teu documento. A equipa UniRoom analisa-o em até 48 horas e a tua conta passa a "Verificada"
-                        assim que ficar aprovado.
-                      </p>
-                      {documentFile && (
-                        <p className="mt-2 truncate text-xs text-blue-700">
-                          <span className="font-semibold">Ficheiro:</span> {documentFile.name} ({formatBytes(documentFile.size)})
-                        </p>
-                      )}
-                    </div>
+              {documentPending && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-start gap-3">
+                  <Clock className="h-5 w-5 text-blue-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-blue-900">Documento em análise</p>
+                    <p className="text-sm text-blue-700">
+                      O administrador ainda precisa de aprovar o documento
+                      {verification?.documentFileName ? ` (${verification.documentFileName})` : ''}.
+                    </p>
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {documentRejected && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex items-start gap-3">
+                  <XCircle className="h-5 w-5 text-red-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-red-900">Documento rejeitado</p>
+                    <p className="text-sm text-red-700">
+                      {verification?.documentRejectionReason || 'Carrega um novo documento para análise.'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!verification?.documentVerified && (
                 <>
                   <div
-                    onClick={() => verification?.universityEmailVerified && fileInputRef.current?.click()}
-                    onDragOver={e => {
-                      e.preventDefault();
-                      if (verification?.universityEmailVerified) setDragActive(true);
+                    onDragEnter={event => {
+                      event.preventDefault();
+                      setDragActive(true);
                     }}
-                    onDragLeave={() => setDragActive(false)}
-                    onDrop={e => {
-                      e.preventDefault();
+                    onDragOver={event => {
+                      event.preventDefault();
+                      setDragActive(true);
+                    }}
+                    onDragLeave={event => {
+                      event.preventDefault();
                       setDragActive(false);
-                      if (!verification?.universityEmailVerified) return;
-                      handleFileSelected(e.dataTransfer.files?.[0]);
                     }}
-                    className={`relative cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
-                      !verification?.universityEmailVerified
-                        ? 'border-border bg-muted/30 cursor-not-allowed opacity-60'
-                        : dragActive
+                    onDrop={event => {
+                      event.preventDefault();
+                      setDragActive(false);
+                      handleFileSelected(event.dataTransfer.files?.[0]);
+                    }}
+                    className={`rounded-2xl border-2 border-dashed p-6 text-center transition-colors ${
+                      dragActive
                         ? 'border-primary bg-primary/5'
-                        : documentFile
-                        ? 'border-green-300 bg-green-50/50'
-                        : 'border-border hover:border-primary hover:bg-muted/30'
+                        : 'border-border bg-muted/20'
                     }`}
                   >
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                       className="hidden"
-                      onChange={e => handleFileSelected(e.target.files?.[0])}
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={event => handleFileSelected(event.target.files?.[0])}
                     />
-                    {documentFile ? (
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500 text-white">
-                          <Check className="h-6 w-6" />
-                        </div>
-                        <p className="text-sm font-semibold text-foreground">Documento selecionado</p>
-                        <p className="truncate max-w-full text-xs text-muted-foreground">
-                          {documentFile.name} — {formatBytes(documentFile.size)}
-                        </p>
-                        <button
-                          type="button"
-                          className="text-xs font-semibold text-primary hover:underline"
-                          onClick={e => {
-                            e.stopPropagation();
-                            setDocumentFile(null);
-                            if (fileInputRef.current) fileInputRef.current.value = '';
-                          }}
-                        >
-                          Trocar ficheiro
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <Upload className="h-6 w-6" />
-                        </div>
-                        <p className="text-sm font-semibold text-foreground">
-                          Arrasta o ficheiro ou clica para escolher
-                        </p>
-                        <p className="text-xs text-muted-foreground">PDF, JPG ou PNG — até 8 MB</p>
+
+                    <Upload className="mx-auto mb-3 h-8 w-8 text-primary" />
+
+                    <p className="font-semibold text-foreground">
+                      Arrasta o documento ou escolhe um ficheiro
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      PDF, JPG ou PNG. Máximo {formatBytes(MAX_DOC_BYTES)}.
+                    </p>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-4"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Escolher ficheiro
+                    </Button>
+
+                    {documentFile && (
+                      <div className="mt-4 rounded-xl bg-card border border-border p-3 text-sm">
+                        <p className="font-semibold text-foreground">{documentFile.name}</p>
+                        <p className="text-muted-foreground">{formatBytes(documentFile.size)}</p>
                       </div>
                     )}
                   </div>
 
-                  {documentError && (
-                    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      {documentError}
-                    </div>
-                  )}
-
-                  <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3 cursor-pointer">
+                  <label className="flex items-start gap-3 rounded-xl border border-border p-4 text-sm cursor-pointer">
                     <input
                       type="checkbox"
                       checked={confirmOwnership}
-                      onChange={e => setConfirmOwnership(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-border text-primary focus:ring-primary"
+                      onChange={event => setConfirmOwnership(event.target.checked)}
+                      className="mt-1"
                     />
-                    <span className="text-sm text-foreground">
-                      Confirmo que o documento é meu e corresponde aos dados da conta.
+                    <span className="text-muted-foreground">
+                      Confirmo que este documento me pertence e que os dados carregados são verdadeiros.
                     </span>
                   </label>
 
-                  <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => setCurrentStep(2)}
-                      disabled={isProcessing}
-                      className="sm:w-auto"
-                    >
-                      Voltar
-                    </Button>
-                    <Button
-                      onClick={handleSubmitDocument}
-                      disabled={
-                        isProcessing ||
-                        !verification?.universityEmailVerified ||
-                        !documentFile ||
-                        !confirmOwnership
-                      }
-                      className="sm:w-auto"
-                    >
-                      {isProcessing ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />A enviar
-                        </>
-                      ) : (
-                        'Enviar para análise'
-                      )}
-                    </Button>
-                  </div>
+                  {documentError && (
+                    <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                      <span>{documentError}</span>
+                    </div>
+                  )}
                 </>
               )}
+
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+                <Button variant="outline" onClick={() => setCurrentStep(2)} disabled={isProcessing}>
+                  Voltar
+                </Button>
+
+                {verification?.documentVerified ? (
+                  <Button onClick={() => navigate('/dashboard')}>
+                    Ir para o dashboard
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleSubmitDocument}
+                    disabled={isProcessing || documentPending}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        A enviar
+                      </>
+                    ) : documentPending ? (
+                      'Documento em análise'
+                    ) : (
+                      'Enviar para análise'
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </Card>
-
-        <Card className="p-5 mt-6">
-          <h3 className="text-sm font-bold text-foreground mb-3">Porque pedimos verificação</h3>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              ['Mais segurança', 'Reduz contas falsas e fraude na plataforma.'],
-              ['Mais confiança', 'Senhorios e estudantes preferem perfis verificados.'],
-              ['Melhores candidaturas', 'Perfis verificados destacam-se no processo.'],
-              ['Dados protegidos', 'O documento é usado apenas para verificação.'],
-            ].map(([title, desc]) => (
-              <li key={title} className="flex items-start gap-2">
-                <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-500" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{title}</p>
-                  <p className="text-xs text-muted-foreground">{desc}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            onClick={() => navigate(isLandlord ? '/landlord/dashboard' : '/dashboard')}
-            className="text-sm font-semibold text-muted-foreground hover:text-foreground"
-          >
-            Voltar ao dashboard →
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -2,9 +2,10 @@ import { Application } from '../types/accommodation';
 import { getApplicationsForLandlord as getApps, updateApplicationStatus as updateStatus } from './mockApplications';
 import { mockAccommodations } from './mockAccommodations';
 import { getRoom, getProperty } from './mockProperties';
+import { getProfile } from './mockProfiles';
+import { getTrustScore, getVerificationStatus } from './mockTrust';
 
 const USERS_STORAGE_KEY = 'uniroom_all_users';
-const PROFILES_STORAGE_KEY = 'uniroom_profiles';
 
 export interface DetailedApplication extends Application {
   applicantName: string;
@@ -16,6 +17,8 @@ export interface DetailedApplication extends Application {
   trustScore: number;
   trustLevel: 'new' | 'confirmed' | 'trusted';
   verificationLevel: 'none' | 'bronze' | 'silver' | 'gold';
+  verificationLabel: string;
+  verificationPending: boolean;
   listingTitle: string;
   listingPrice: number;
 }
@@ -32,11 +35,6 @@ function safeReadArray<T>(key: string): T[] {
 function getUserById(userId: string) {
   const users = safeReadArray<any>(USERS_STORAGE_KEY);
   return users.find(user => user.id === userId);
-}
-
-function getProfileById(userId: string) {
-  const profiles = safeReadArray<any>(PROFILES_STORAGE_KEY);
-  return profiles.find(profile => profile.personal?.userId === userId);
 }
 
 function hashToRange(seed: string, min: number, max: number): number {
@@ -58,24 +56,11 @@ function clamp(value: number, min: number, max: number): number {
 function getCompatibilityScore(app: Application): number {
   const seed = `${app.id}:${app.userId}:${app.propertyId ?? ''}:${app.roomId ?? app.accommodationId}`;
   const base = hashToRange(seed, 66, 91);
-  const messageBonus = app.message.length >= 180 ? 6 : app.message.length >= 100 ? 3 : 0;
+  const message = app.message || '';
+  const messageBonus = message.length >= 180 ? 6 : message.length >= 100 ? 3 : 0;
   const moveInBonus = app.moveInDate ? 2 : 0;
 
   return clamp(base + messageBonus + moveInBonus, 55, 98);
-}
-
-function getTrustScore(user: any, profile: any, app: Application): number {
-  let score = 46 + hashToRange(app.userId, 0, 16);
-
-  if (user?.name) score += 6;
-  if (user?.email && !String(user.email).includes('exemplo.com')) score += 8;
-  if (profile?.personal) score += 10;
-  if (profile?.personal?.institution) score += 5;
-  if (profile?.personal?.course) score += 4;
-  if (profile?.preferences) score += 4;
-  if (profile?.documents?.studentCard || profile?.verification?.studentCard) score += 8;
-
-  return clamp(score, 35, 96);
 }
 
 function getTrustLevel(score: number): DetailedApplication['trustLevel'] {
@@ -84,11 +69,39 @@ function getTrustLevel(score: number): DetailedApplication['trustLevel'] {
   return 'new';
 }
 
-function getVerificationLevel(score: number): DetailedApplication['verificationLevel'] {
-  if (score >= 84) return 'gold';
-  if (score >= 68) return 'silver';
-  if (score >= 50) return 'bronze';
-  return 'none';
+function getVerificationLabel(level: DetailedApplication['verificationLevel'], pending: boolean): string {
+  if (pending) return 'Documento em análise';
+  if (level === 'gold') return 'Verificação Ouro';
+  if (level === 'silver') return 'Email universitário confirmado';
+  if (level === 'bronze') return 'Email pessoal confirmado';
+  return 'Não verificado';
+}
+
+function calculateCandidateTrustScore(user: any, app: Application): number {
+  const profile = getProfile(app.userId);
+  const verification = getVerificationStatus(app.userId);
+  const trust = getTrustScore(app.userId);
+
+  let score = 35 + hashToRange(app.userId, 0, 8);
+
+  if (user?.name) score += 6;
+  if (user?.email && !String(user.email).includes('exemplo.com')) score += 5;
+  if (profile?.personal) score += 10;
+  if (profile?.personal?.institution) score += 5;
+  if (profile?.personal?.course) score += 4;
+  if (profile?.lifestyle) score += 4;
+  if (profile?.preferences) score += 4;
+
+  if (verification?.emailVerified) score += 8;
+  if (verification?.universityEmailVerified) score += 12;
+  if (verification?.documentReviewStatus === 'pending') score += 4;
+  if (verification?.documentVerified) score += 18;
+
+  if (trust?.score) {
+    score = Math.round(score * 0.65 + trust.score * 0.35);
+  }
+
+  return clamp(score, 35, 98);
 }
 
 export function getApplicationsForLandlord(landlordId: string, listingId?: string): DetailedApplication[] {
@@ -96,24 +109,31 @@ export function getApplicationsForLandlord(landlordId: string, listingId?: strin
 
   const detailed: DetailedApplication[] = applications.map(app => {
     const user = getUserById(app.userId);
-    const profile = getProfileById(app.userId);
+    const profile = getProfile(app.userId);
+    const verification = getVerificationStatus(app.userId);
+
     const room = app.roomId ? getRoom(app.roomId) : null;
-    const property = room ? getProperty(room.propertyId) : null;
-    const accommodation = mockAccommodations.find(a => a.id === app.accommodationId);
+    const property = room ? getProperty(room.propertyId) : app.propertyId ? getProperty(app.propertyId) : null;
+    const accommodation = mockAccommodations.find(item => item.id === app.accommodationId);
+
     const compatibilityScore = getCompatibilityScore(app);
-    const trustScore = getTrustScore(user, profile, app);
+    const trustScore = calculateCandidateTrustScore(user, app);
+    const verificationLevel = verification?.level || 'none';
+    const verificationPending = verification?.documentReviewStatus === 'pending';
 
     return {
       ...app,
-      applicantName: user?.name || 'Utilizador',
+      applicantName: user?.name || profile?.personal?.fullName || 'Utilizador',
       applicantEmail: user?.email || 'email@exemplo.com',
-      applicantCourse: profile?.personal?.course || 'Nao especificado',
-      applicantUniversity: profile?.personal?.institution || 'Nao especificado',
-      applicantYear: profile?.personal?.yearOfStudy || 1,
+      applicantCourse: profile?.personal?.course || app.studentCourse || 'Não especificado',
+      applicantUniversity: profile?.personal?.institution || app.studentUniversity || 'Não especificado',
+      applicantYear: profile?.personal?.yearOfStudy || app.studentYear || 1,
       compatibilityScore,
       trustScore,
       trustLevel: getTrustLevel(trustScore),
-      verificationLevel: getVerificationLevel(trustScore),
+      verificationLevel,
+      verificationLabel: getVerificationLabel(verificationLevel, verificationPending),
+      verificationPending,
       listingTitle: room && property
         ? `${room.title} · ${property.title}`
         : accommodation?.title || 'Alojamento',
@@ -135,7 +155,7 @@ export function getApplicationsForLandlord(landlordId: string, listingId?: strin
 export function updateApplicationStatus(
   applicationId: string,
   status: Application['status'],
-  landlordId?: string
+  landlordId?: string,
 ): boolean {
   let landlordName = 'Senhorio';
 
@@ -152,11 +172,11 @@ export function getApplicationStats(landlordId: string) {
 
   return {
     total: all.length,
-    pending: all.filter(a => a.status === 'pending').length,
-    underReview: all.filter(a => a.status === 'under_review').length,
-    accepted: all.filter(a => a.status === 'accepted').length,
-    confirmed: all.filter(a => a.status === 'confirmed').length,
-    rejected: all.filter(a => a.status === 'rejected').length,
-    withdrawn: all.filter(a => a.status === 'withdrawn').length,
+    pending: all.filter(application => application.status === 'pending').length,
+    underReview: all.filter(application => application.status === 'under_review').length,
+    accepted: all.filter(application => application.status === 'accepted').length,
+    confirmed: all.filter(application => application.status === 'confirmed').length,
+    rejected: all.filter(application => application.status === 'rejected').length,
+    withdrawn: all.filter(application => application.status === 'withdrawn').length,
   };
 }
