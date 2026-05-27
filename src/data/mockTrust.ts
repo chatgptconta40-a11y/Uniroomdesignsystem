@@ -7,7 +7,6 @@ import {
   VerificationLevel,
   TrustLevel,
 } from '../types/trust';
-import { supabase } from '../lib/supabase';
 
 export type DocumentReviewStatus = 'not_submitted' | 'pending' | 'approved' | 'rejected';
 
@@ -26,18 +25,9 @@ const VERIFICATIONS_STORAGE_KEY = 'uniroom_verification_statuses';
 const TRUST_STORAGE_KEY = 'uniroom_trust_scores';
 const REPORTS_STORAGE_KEY = 'uniroom_reports';
 
-const reviewsCache = new Map<string, Review>();
-const verifsCache = new Map<string, ExtendedVerificationStatus>();
-const trustCache = new Map<string, TrustScore>();
-const landlordStatsCache = new Map<string, LandlordStats>();
-const reportsCache: Report[] = [];
-
-let hydrated = false;
-let hydratePromise: Promise<void> | null = null;
-
 export const mockReviews: Review[] = [];
 export const mockVerifications: Record<string, ExtendedVerificationStatus> = {};
-export const mockReports: Report[] = reportsCache;
+export const mockReports: Report[] = [];
 export const mockTrustScores: Record<string, TrustScore> = {};
 export const mockLandlordStats: Record<string, LandlordStats> = {};
 
@@ -49,52 +39,28 @@ function safeParse<T>(value: string | null, fallback: T): T {
   }
 }
 
-function readLocalArray<T>(key: string): T[] {
-  return safeParse<T[]>(localStorage.getItem(key), []);
-}
-
-function writeLocalArray<T>(key: string, value: T[]) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-function readLocalRecord<T>(key: string): Record<string, T> {
-  return safeParse<Record<string, T>>(localStorage.getItem(key), {});
-}
-
-function writeLocalRecord<T>(key: string, value: Record<string, T>) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
 function toDate(value: unknown): Date | undefined {
   if (!value) return undefined;
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function normalizeVerification(value: any): ExtendedVerificationStatus {
-  const emailVerified = !!value.emailVerified;
-  const universityEmailVerified = !!value.universityEmailVerified;
-  const documentVerified = !!value.documentVerified;
-  const reviewStatus: DocumentReviewStatus =
-    value.documentReviewStatus ||
-    (documentVerified ? 'approved' : value.documentFileName ? 'pending' : 'not_submitted');
+function readLocalArray<T>(key: string): T[] {
+  const value = safeParse<T[]>(localStorage.getItem(key), []);
+  return Array.isArray(value) ? value : [];
+}
 
-  return {
-    userId: value.userId,
-    level: calculateVerificationLevel(emailVerified, universityEmailVerified, documentVerified),
-    emailVerified,
-    universityEmailVerified,
-    documentVerified,
-    photoVerified: !!value.photoVerified,
-    verifiedAt: toDate(value.verifiedAt),
-    personalEmail: value.personalEmail,
-    universityEmail: value.universityEmail,
-    documentFileName: value.documentFileName,
-    documentReviewStatus: reviewStatus,
-    documentSubmittedAt: toDate(value.documentSubmittedAt),
-    documentReviewedAt: toDate(value.documentReviewedAt),
-    documentRejectionReason: value.documentRejectionReason,
-  };
+function writeLocalArray<T>(key: string, value: T[]): void {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readLocalRecord<T>(key: string): Record<string, T> {
+  const value = safeParse<Record<string, T>>(localStorage.getItem(key), {});
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function writeLocalRecord<T>(key: string, value: Record<string, T>): void {
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
 function calculateVerificationLevel(
@@ -108,49 +74,167 @@ function calculateVerificationLevel(
   return 'none';
 }
 
-function saveVerificationsToLocal() {
-  const record: Record<string, ExtendedVerificationStatus> = {};
-  verifsCache.forEach((value, key) => {
-    record[key] = value;
+function normalizeVerification(value: any): ExtendedVerificationStatus {
+  const emailVerified = !!value?.emailVerified;
+  const universityEmailVerified = !!value?.universityEmailVerified;
+  const documentVerified = !!value?.documentVerified;
+
+  const documentReviewStatus: DocumentReviewStatus =
+    value?.documentReviewStatus ||
+    (documentVerified ? 'approved' : value?.documentFileName ? 'pending' : 'not_submitted');
+
+  return {
+    userId: String(value?.userId || ''),
+    level: calculateVerificationLevel(emailVerified, universityEmailVerified, documentVerified),
+    emailVerified,
+    universityEmailVerified,
+    documentVerified,
+    photoVerified: !!value?.photoVerified,
+    verifiedAt: toDate(value?.verifiedAt),
+    personalEmail: value?.personalEmail,
+    universityEmail: value?.universityEmail,
+    documentFileName: value?.documentFileName,
+    documentReviewStatus,
+    documentSubmittedAt: toDate(value?.documentSubmittedAt),
+    documentReviewedAt: toDate(value?.documentReviewedAt),
+    documentRejectionReason: value?.documentRejectionReason,
+  };
+}
+
+function normalizeReview(value: any): Review | null {
+  if (!value?.id || !value?.userId || !value?.reviewerId) return null;
+
+  return {
+    id: String(value.id),
+    accommodationId: value.accommodationId,
+    userId: String(value.userId),
+    reviewerId: String(value.reviewerId),
+    reviewerName: value.reviewerName || 'Utilizador',
+    reviewerAvatar: value.reviewerAvatar,
+    rating: Number(value.rating || 0),
+    criteria: value.criteria || {
+      quality: 0,
+      coexistence: 0,
+      landlordResponse: 0,
+      location: 0,
+      valueForMoney: 0,
+    },
+    comment: value.comment || '',
+    recommend: Boolean(value.recommend),
+    helpful: Number(value.helpful || 0),
+    createdAt: toDate(value.createdAt) || new Date(),
+    verified: value.verified !== false,
+  };
+}
+
+function normalizeReport(value: any): Report | null {
+  if (!value?.id || !value?.reporterId || !value?.reportedType || !value?.reportedId) return null;
+
+  return {
+    id: String(value.id),
+    reporterId: String(value.reporterId),
+    reportedType: value.reportedType,
+    reportedId: String(value.reportedId),
+    reason: value.reason || 'other',
+    description: value.description || '',
+    status: value.status || 'pending',
+    createdAt: toDate(value.createdAt) || new Date(),
+    resolvedAt: toDate(value.resolvedAt),
+  };
+}
+
+function normalizeTrust(value: any): TrustScore | null {
+  if (!value?.userId) return null;
+
+  return {
+    userId: String(value.userId),
+    level: value.level || 'new',
+    score: Number(value.score || 0),
+    verificationLevel: value.verificationLevel || 'none',
+    reviewsCount: Number(value.reviewsCount || 0),
+    averageRating: Number(value.averageRating || 0),
+    responseRate: Number(value.responseRate || 0),
+    responseTime: Number(value.responseTime || 0),
+    memberSince: toDate(value.memberSince) || new Date(),
+    resolvedReports: Number(value.resolvedReports || 0),
+    totalReports: Number(value.totalReports || 0),
+  };
+}
+
+function readReviews(): Review[] {
+  return readLocalArray<any>(REVIEWS_STORAGE_KEY)
+    .map(normalizeReview)
+    .filter((item): item is Review => Boolean(item));
+}
+
+function writeReviews(reviews: Review[]): void {
+  writeLocalArray(REVIEWS_STORAGE_KEY, reviews);
+}
+
+function readVerifications(): Record<string, ExtendedVerificationStatus> {
+  const raw = readLocalRecord<any>(VERIFICATIONS_STORAGE_KEY);
+  const normalized: Record<string, ExtendedVerificationStatus> = {};
+
+  Object.values(raw).forEach(value => {
+    const verification = normalizeVerification(value);
+    if (verification.userId) normalized[verification.userId] = verification;
   });
+
+  return normalized;
+}
+
+function writeVerifications(record: Record<string, ExtendedVerificationStatus>): void {
   writeLocalRecord(VERIFICATIONS_STORAGE_KEY, record);
 }
 
-function saveReviewsToLocal() {
-  writeLocalArray(REVIEWS_STORAGE_KEY, Array.from(reviewsCache.values()));
+function readTrustScores(): Record<string, TrustScore> {
+  const raw = readLocalRecord<any>(TRUST_STORAGE_KEY);
+  const normalized: Record<string, TrustScore> = {};
+
+  Object.values(raw).forEach(value => {
+    const trust = normalizeTrust(value);
+    if (trust) normalized[trust.userId] = trust;
+  });
+
+  return normalized;
 }
 
-function saveTrustToLocal() {
-  const record: Record<string, TrustScore> = {};
-  trustCache.forEach((value, key) => {
-    record[key] = value;
-  });
+function writeTrustScores(record: Record<string, TrustScore>): void {
   writeLocalRecord(TRUST_STORAGE_KEY, record);
 }
 
-function saveReportsToLocal() {
-  writeLocalArray(REPORTS_STORAGE_KEY, reportsCache);
+function readReports(): Report[] {
+  return readLocalArray<any>(REPORTS_STORAGE_KEY)
+    .map(normalizeReport)
+    .filter((item): item is Report => Boolean(item));
+}
+
+function writeReports(reports: Report[]): void {
+  writeLocalArray(REPORTS_STORAGE_KEY, reports);
 }
 
 function syncMirrors(): void {
+  const reviews = readReviews();
+  const verifications = readVerifications();
+  const trustScores = readTrustScores();
+  const reports = readReports();
+
   mockReviews.length = 0;
-  for (const review of reviewsCache.values()) mockReviews.push(review);
+  mockReviews.push(...reviews);
 
-  for (const key of Object.keys(mockVerifications)) delete mockVerifications[key];
-  for (const verification of verifsCache.values()) mockVerifications[verification.userId] = verification;
+  Object.keys(mockVerifications).forEach(key => delete mockVerifications[key]);
+  Object.assign(mockVerifications, verifications);
 
-  for (const key of Object.keys(mockTrustScores)) delete mockTrustScores[key];
-  for (const trust of trustCache.values()) mockTrustScores[trust.userId] = trust;
+  Object.keys(mockTrustScores).forEach(key => delete mockTrustScores[key]);
+  Object.assign(mockTrustScores, trustScores);
 
-  for (const key of Object.keys(mockLandlordStats)) delete mockLandlordStats[key];
-  for (const stats of landlordStatsCache.values()) mockLandlordStats[stats.userId] = stats;
-}
+  mockReports.length = 0;
+  mockReports.push(...reports);
 
-function rebuildLandlordStats() {
-  landlordStatsCache.clear();
+  Object.keys(mockLandlordStats).forEach(key => delete mockLandlordStats[key]);
 
-  for (const trust of trustCache.values()) {
-    landlordStatsCache.set(trust.userId, {
+  Object.values(trustScores).forEach(trust => {
+    mockLandlordStats[trust.userId] = {
       userId: trust.userId,
       verified: trust.verificationLevel === 'gold' || trust.verificationLevel === 'silver',
       averageRating: trust.averageRating,
@@ -162,186 +246,25 @@ function rebuildLandlordStats() {
       completedRentals: 0,
       resolvedIssues: trust.resolvedReports,
       totalIssues: trust.totalReports,
-    });
-  }
-}
-
-function rowToReview(row: any): Review {
-  return {
-    id: row.id,
-    accommodationId: row.property_id ?? '',
-    userId: row.reviewed_user_id ?? '',
-    reviewerId: row.reviewer_id,
-    reviewerName: row.reviewer_name ?? 'Utilizador',
-    rating: Number(row.rating ?? 0),
-    criteria: row.criteria ?? {
-      quality: 0,
-      coexistence: 0,
-      landlordResponse: 0,
-      location: 0,
-      valueForMoney: 0,
-    },
-    comment: row.comment ?? '',
-    recommend: row.recommend ?? false,
-    helpful: row.helpful ?? 0,
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    verified: !!row.verified,
-  };
-}
-
-function rowToVerification(row: any): ExtendedVerificationStatus {
-  return normalizeVerification({
-    userId: row.user_id,
-    level: row.level,
-    emailVerified: row.email_verified,
-    universityEmailVerified: row.university_email_verified,
-    documentVerified: row.document_verified,
-    photoVerified: row.photo_verified,
-    verifiedAt: row.verified_at,
-    personalEmail: row.personal_email,
-    universityEmail: row.university_email,
-    documentFileName: row.document_file_name,
-    documentReviewStatus: row.document_review_status,
-    documentSubmittedAt: row.document_submitted_at,
-    documentReviewedAt: row.document_reviewed_at,
-    documentRejectionReason: row.document_rejection_reason,
+    };
   });
 }
 
-function rowToTrust(row: any): TrustScore {
-  return {
-    userId: row.user_id,
-    level: row.level ?? 'new',
-    score: Number(row.score ?? 0),
-    verificationLevel: row.verification_level ?? 'none',
-    reviewsCount: row.reviews_count ?? 0,
-    averageRating: Number(row.average_rating ?? 0),
-    responseRate: Number(row.response_rate ?? 0),
-    responseTime: Number(row.response_time ?? 0),
-    memberSince: row.member_since ? new Date(row.member_since) : new Date(),
-    resolvedReports: row.resolved_reports ?? 0,
-    totalReports: row.total_reports ?? 0,
-  };
-}
-
-function loadLocalFirst() {
-  const localReviews = readLocalArray<any>(REVIEWS_STORAGE_KEY);
-  const localVerifications = readLocalRecord<any>(VERIFICATIONS_STORAGE_KEY);
-  const localTrust = readLocalRecord<any>(TRUST_STORAGE_KEY);
-  const localReports = readLocalArray<any>(REPORTS_STORAGE_KEY);
-
-  localReviews.forEach(review => {
-    reviewsCache.set(review.id, {
-      ...review,
-      createdAt: toDate(review.createdAt) ?? new Date(),
-    });
-  });
-
-  Object.values(localVerifications).forEach(value => {
-    const normalized = normalizeVerification(value);
-    verifsCache.set(normalized.userId, normalized);
-  });
-
-  Object.values(localTrust).forEach((value: any) => {
-    trustCache.set(value.userId, {
-      ...value,
-      memberSince: toDate(value.memberSince) ?? new Date(),
-    });
-  });
-
-  reportsCache.length = 0;
-  localReports.forEach(report => {
-    reportsCache.push({
-      ...report,
-      createdAt: toDate(report.createdAt) ?? new Date(),
-      resolvedAt: toDate(report.resolvedAt),
-    });
-  });
-
-  rebuildLandlordStats();
-  syncMirrors();
-}
-
-async function hydrate(): Promise<void> {
-  if (hydrated) return;
-  if (hydratePromise) return hydratePromise;
-
-  hydratePromise = (async () => {
-    loadLocalFirst();
-
-    const [reviewsResponse, verificationsResponse, trustResponse] = await Promise.all([
-      supabase.from('reviews').select('*'),
-      supabase.from('verification_status').select('*'),
-      supabase.from('trust_scores').select('*'),
-    ]);
-
-    if (!reviewsResponse.error) {
-      (reviewsResponse.data ?? []).forEach(row => {
-        const review = rowToReview(row);
-        reviewsCache.set(review.id, review);
-      });
-      saveReviewsToLocal();
-    } else {
-      console.error('Trust hydrate reviews:', reviewsResponse.error.message);
-    }
-
-    if (!verificationsResponse.error) {
-      (verificationsResponse.data ?? []).forEach(row => {
-        const verification = rowToVerification(row);
-        const local = verifsCache.get(verification.userId);
-
-        /*
-          Se houver estado local pendente/rejeitado mais recente, não o esmagamos.
-          Isto mantém a UI consistente mesmo se o Supabase ainda não tiver estas colunas.
-        */
-        if (
-          local?.documentReviewStatus === 'pending' ||
-          local?.documentReviewStatus === 'rejected'
-        ) {
-          verifsCache.set(local.userId, local);
-        } else {
-          verifsCache.set(verification.userId, verification);
-        }
-      });
-      saveVerificationsToLocal();
-    } else {
-      console.error('Trust hydrate verifs:', verificationsResponse.error.message);
-    }
-
-    if (!trustResponse.error) {
-      (trustResponse.data ?? []).forEach(row => {
-        const trust = rowToTrust(row);
-        trustCache.set(trust.userId, trust);
-      });
-      saveTrustToLocal();
-    } else {
-      console.error('Trust hydrate scores:', trustResponse.error.message);
-    }
-
-    rebuildLandlordStats();
-    syncMirrors();
-    hydrated = true;
-  })();
-
-  return hydratePromise;
-}
-
-void hydrate();
+syncMirrors();
 
 export function getReviewsForAccommodation(accommodationId: string): Review[] {
-  loadLocalFirst();
-  return Array.from(reviewsCache.values()).filter(review => review.accommodationId === accommodationId);
+  return readReviews().filter(review => review.accommodationId === accommodationId);
 }
 
 export function getVerificationStatus(userId: string): ExtendedVerificationStatus | null {
   if (!userId) return null;
-  loadLocalFirst();
-  return verifsCache.get(userId) ?? null;
+
+  const verifications = readVerifications();
+  return verifications[userId] ?? null;
 }
 
 export function getAllVerificationStatuses(): ExtendedVerificationStatus[] {
-  loadLocalFirst();
-  return Array.from(verifsCache.values()).sort((a, b) => {
+  return Object.values(readVerifications()).sort((a, b) => {
     const aDate = a.documentSubmittedAt?.getTime() ?? a.verifiedAt?.getTime() ?? 0;
     const bDate = b.documentSubmittedAt?.getTime() ?? b.verifiedAt?.getTime() ?? 0;
     return bDate - aDate;
@@ -354,13 +277,15 @@ export function getPendingVerificationReviews(): ExtendedVerificationStatus[] {
 
 export function getTrustScore(userId: string): TrustScore | null {
   if (!userId) return null;
-  loadLocalFirst();
 
-  const existing = trustCache.get(userId);
+  const trustScores = readTrustScores();
+  const existing = trustScores[userId];
+
   if (existing) return existing;
 
   const verification = getVerificationStatus(userId);
   const verificationLevel = verification?.level ?? 'none';
+
   const baseScore =
     verificationLevel === 'gold' ? 88 :
     verificationLevel === 'silver' ? 72 :
@@ -381,16 +306,16 @@ export function getTrustScore(userId: string): TrustScore | null {
     totalReports: 0,
   };
 
-  trustCache.set(userId, generated);
-  saveTrustToLocal();
+  trustScores[userId] = generated;
+  writeTrustScores(trustScores);
   syncMirrors();
 
   return generated;
 }
 
 export function getLandlordStats(userId: string): LandlordStats | null {
-  loadLocalFirst();
-  return landlordStatsCache.get(userId) ?? null;
+  syncMirrors();
+  return mockLandlordStats[userId] ?? null;
 }
 
 export function getVerificationBadge(level: VerificationLevel): { icon: string; label: string; color: string } {
@@ -400,6 +325,7 @@ export function getVerificationBadge(level: VerificationLevel): { icon: string; 
     silver: { icon: '🥈', label: 'Prata', color: 'text-gray-500' },
     gold: { icon: '🥇', label: 'Ouro', color: 'text-yellow-500' },
   };
+
   return badges[level];
 }
 
@@ -409,6 +335,7 @@ export function getTrustBadge(level: TrustLevel): { label: string; color: string
     confirmed: { label: 'Membro Confirmado', color: 'text-blue-700', bgColor: 'bg-blue-100' },
     trusted: { label: 'Membro de Confiança', color: 'text-green-700', bgColor: 'bg-green-100' },
   };
+
   return badges[level];
 }
 
@@ -422,10 +349,10 @@ export function createReview(
   comment: string,
   recommend: boolean,
 ): Review {
-  const id = `rev_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const reviews = readReviews();
 
   const review: Review = {
-    id,
+    id: `rev_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     accommodationId,
     userId,
     reviewerId,
@@ -439,25 +366,8 @@ export function createReview(
     verified: true,
   };
 
-  reviewsCache.set(id, review);
-  saveReviewsToLocal();
+  writeReviews([review, ...reviews]);
   syncMirrors();
-
-  void supabase.from('reviews').insert({
-    id,
-    property_id: accommodationId || null,
-    reviewed_user_id: userId || null,
-    reviewer_id: reviewerId,
-    reviewer_name: reviewerName,
-    rating,
-    criteria,
-    comment,
-    recommend,
-    helpful: 0,
-    verified: true,
-  }).then(({ error }) => {
-    if (error) console.error('Review insert error:', error.message);
-  });
 
   return review;
 }
@@ -469,10 +379,10 @@ export function createReport(
   reason: Report['reason'],
   description: string,
 ): Report {
-  const id = `rep_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const reports = readReports();
 
   const newReport: Report = {
-    id,
+    id: `rep_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     reporterId,
     reportedType,
     reportedId,
@@ -482,24 +392,8 @@ export function createReport(
     createdAt: new Date(),
   };
 
-  reportsCache.push(newReport);
-  saveReportsToLocal();
+  writeReports([newReport, ...reports]);
   syncMirrors();
-
-  const targetType = reportedType === 'accommodation' ? 'listing' : reportedType;
-
-  void supabase.from('reports').insert({
-    id,
-    reporter_id: reporterId,
-    target_type: targetType,
-    target_id: reportedId,
-    reason: String(reason),
-    description,
-    status: 'pending',
-    severity: 'medium',
-  }).then(({ error }) => {
-    if (error) console.error('Report insert error:', error.message);
-  });
 
   return newReport;
 }
@@ -510,7 +404,8 @@ export function updateVerificationStatus(
 ): ExtendedVerificationStatus {
   if (!userId) throw new Error('userId é obrigatório para atualizar verificação.');
 
-  const current = getVerificationStatus(userId) ?? {
+  const verifications = readVerifications();
+  const current = verifications[userId] ?? {
     userId,
     level: 'none' as VerificationLevel,
     emailVerified: false,
@@ -520,7 +415,7 @@ export function updateVerificationStatus(
     documentReviewStatus: 'not_submitted' as DocumentReviewStatus,
   };
 
-  const updated: ExtendedVerificationStatus = normalizeVerification({
+  const updated = normalizeVerification({
     ...current,
     ...updates,
     userId,
@@ -532,27 +427,31 @@ export function updateVerificationStatus(
     updated.verifiedAt = updated.verifiedAt ?? new Date();
   }
 
-  updated.level = calculateVerificationLevel(
-    updated.emailVerified,
-    updated.universityEmailVerified,
-    updated.documentVerified,
-  );
+  verifications[userId] = updated;
+  writeVerifications(verifications);
 
-  verifsCache.set(userId, updated);
-  saveVerificationsToLocal();
+  const trustScores = readTrustScores();
+  const currentTrust = getTrustScore(userId);
+
+  if (currentTrust) {
+    const verificationLevel = updated.level;
+    const baseScore =
+      verificationLevel === 'gold' ? 88 :
+      verificationLevel === 'silver' ? 72 :
+      verificationLevel === 'bronze' ? 55 :
+      35;
+
+    trustScores[userId] = {
+      ...currentTrust,
+      verificationLevel,
+      score: Math.max(currentTrust.score, baseScore),
+      level: baseScore >= 80 ? 'trusted' : baseScore >= 55 ? 'confirmed' : 'new',
+    };
+
+    writeTrustScores(trustScores);
+  }
+
   syncMirrors();
-
-  void supabase.from('verification_status').upsert({
-    user_id: userId,
-    level: updated.level,
-    email_verified: updated.emailVerified,
-    university_email_verified: updated.universityEmailVerified,
-    document_verified: updated.documentVerified,
-    photo_verified: updated.photoVerified,
-    verified_at: updated.verifiedAt ? updated.verifiedAt.toISOString() : new Date().toISOString(),
-  }, { onConflict: 'user_id' }).then(({ error }) => {
-    if (error) console.error('Verification upsert error:', error.message);
-  });
 
   return updated;
 }
@@ -593,15 +492,15 @@ export function rejectVerificationDocument(
 }
 
 export function markReviewHelpful(reviewId: string): void {
-  const review = reviewsCache.get(reviewId);
-  if (!review) return;
+  const reviews = readReviews();
+  const next = reviews.map(review =>
+    review.id === reviewId
+      ? { ...review, helpful: review.helpful + 1 }
+      : review,
+  );
 
-  const next = { ...review, helpful: review.helpful + 1 };
-  reviewsCache.set(reviewId, next);
-  saveReviewsToLocal();
+  writeReviews(next);
   syncMirrors();
-
-  void supabase.from('reviews').update({ helpful: next.helpful }).eq('id', reviewId);
 }
 
 export function getAverageRatingBreakdown(accommodationId: string) {
@@ -622,31 +521,43 @@ export function getAverageRatingBreakdown(accommodationId: string) {
     };
   }
 
+  const average = reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length;
+
   const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
 
   reviews.forEach(review => {
-    const rounded = Math.round(review.rating) as 1 | 2 | 3 | 4 | 5;
-    distribution[rounded]++;
+    const rounded = Math.round(review.rating) as keyof typeof distribution;
+    if (distribution[rounded] !== undefined) distribution[rounded] += 1;
   });
 
-  const criteriaAverages = {
-    quality: reviews.reduce((sum, review) => sum + (review.criteria.quality ?? 0), 0) / reviews.length,
-    coexistence: reviews.reduce((sum, review) => sum + (review.criteria.coexistence ?? 0), 0) / reviews.length,
-    landlordResponse: reviews.reduce((sum, review) => sum + (review.criteria.landlordResponse ?? 0), 0) / reviews.length,
-    location: reviews.reduce((sum, review) => sum + (review.criteria.location ?? 0), 0) / reviews.length,
-    valueForMoney: reviews.reduce((sum, review) => sum + (review.criteria.valueForMoney ?? 0), 0) / reviews.length,
-  };
+  const criteriaKeys = ['quality', 'coexistence', 'landlordResponse', 'location', 'valueForMoney'] as const;
+
+  const criteriaAverages = criteriaKeys.reduce((acc, key) => {
+    acc[key] = reviews.reduce((sum, review) => sum + review.criteria[key], 0) / reviews.length;
+    return acc;
+  }, {} as Review['criteria']);
 
   return {
-    average: reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length,
+    average,
     total: reviews.length,
     distribution,
     criteriaAverages,
   };
 }
 
-export async function refreshTrustState(): Promise<void> {
-  hydrated = false;
-  hydratePromise = null;
-  await hydrate();
+export function resolveReport(reportId: string, status: Report['status'] = 'resolved'): void {
+  const reports = readReports();
+
+  const next = reports.map(report =>
+    report.id === reportId
+      ? {
+          ...report,
+          status,
+          resolvedAt: new Date(),
+        }
+      : report,
+  );
+
+  writeReports(next);
+  syncMirrors();
 }
