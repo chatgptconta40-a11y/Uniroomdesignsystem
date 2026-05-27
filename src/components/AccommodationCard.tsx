@@ -1,6 +1,15 @@
 import type { MouseEvent } from 'react';
 import { Link } from 'react-router';
-import { MapPin, Heart, Users, Calendar, CheckCircle, Image as ImageIcon, AlertTriangle, Sparkles } from 'lucide-react';
+import {
+  MapPin,
+  Heart,
+  Users,
+  Calendar,
+  CheckCircle,
+  Image as ImageIcon,
+  AlertTriangle,
+  Sparkles,
+} from 'lucide-react';
 import { Accommodation } from '../types/accommodation';
 import { Badge } from './Badge';
 import { useFavorites } from '../context/FavoritesContext';
@@ -19,10 +28,11 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
   const maxBudget = user?.studentProfile?.preferences?.maxBudget;
   const isAboveBudget = maxBudget && accommodation.price > maxBudget;
   const isFav = isFavorite(accommodation.id);
+
   const canShowCompatibility = Boolean(
     user?.type === 'student' &&
-    hasCompletedCompatibilityProfile(user.id) &&
-    accommodation.compatibilityScore
+      hasCompletedCompatibilityProfile(user.id) &&
+      accommodation.compatibilityScore,
   );
 
   const getCompatibilityChipClasses = (score: number) => {
@@ -31,9 +41,9 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
     return 'bg-slate-50 text-slate-600 ring-1 ring-slate-200';
   };
 
-  const handleToggleFavorite = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleToggleFavorite = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
 
     if (!user) {
       toast.error('Precisas de fazer login para guardar favoritos');
@@ -52,6 +62,7 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
       studio: 'Estúdio',
       apartment: 'Apartamento',
     };
+
     return labels[type as keyof typeof labels] || type;
   };
 
@@ -80,12 +91,15 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
           )}
 
           <button
+            type="button"
             onClick={handleToggleFavorite}
             className="absolute top-4 right-4 w-10 h-10 bg-white/95 hover:bg-white rounded-full flex items-center justify-center transition-all shadow-lg hover:scale-110"
             aria-label={isFav ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
           >
             <Heart
-              className={`w-5 h-5 ${isFav ? 'fill-destructive text-destructive' : 'text-muted-foreground'}`}
+              className={`w-5 h-5 ${
+                isFav ? 'fill-destructive text-destructive' : 'text-muted-foreground'
+              }`}
             />
           </button>
 
@@ -104,7 +118,9 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
 
           <div className="flex items-center gap-2 text-gray-600 mb-4">
             <MapPin className="w-4 h-4 flex-shrink-0" />
-            <span className="text-sm font-medium">{accommodation.zone}, {accommodation.city}</span>
+            <span className="text-sm font-medium">
+              {accommodation.zone}, {accommodation.city}
+            </span>
           </div>
 
           <div className="mb-4 flex items-center justify-between gap-3">
@@ -115,7 +131,9 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
 
             {canShowCompatibility && (
               <span
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${getCompatibilityChipClasses(accommodation.compatibilityScore || 0)}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${getCompatibilityChipClasses(
+                  accommodation.compatibilityScore || 0,
+                )}`}
                 title="Compatibilidade com o teu perfil"
               >
                 <Sparkles className="w-3 h-3" />
@@ -135,13 +153,13 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
           </div>
 
           <div className="flex flex-wrap gap-2 mt-auto">
-            <Badge variant="outline">
-              {getRoomTypeLabel(accommodation.roomType)}
-            </Badge>
+            <Badge variant="outline">{getRoomTypeLabel(accommodation.roomType)}</Badge>
+
             <Badge variant="outline">
               <Users className="w-3 h-3" />
               {accommodation.currentOccupants}/{accommodation.maxOccupants}
             </Badge>
+
             <Badge variant="outline">
               <Calendar className="w-3 h-3" />
               {new Date(accommodation.availableFrom).toLocaleDateString('pt-PT', {

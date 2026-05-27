@@ -1,8 +1,14 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Home, User, Users, Home as HomeIcon,
-  CheckCircle, ArrowRight, ArrowLeft, X, AlertCircle,
+  Home,
+  User,
+  Users,
+  Home as HomeIcon,
+  CheckCircle,
+  ArrowRight,
+  ArrowLeft,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/Button';
@@ -46,26 +52,39 @@ function getStepMissingFields(
 ) {
   if (step === 1) {
     const missing: string[] = [];
+
     if (!isFilled(personalData.fullName)) missing.push('nome completo');
+    if (!isFilled(personalData.age)) missing.push('idade');
+    if (!isFilled(personalData.gender)) missing.push('género');
     if (!isFilled(personalData.institution)) missing.push('instituição de ensino');
     if (!isFilled(personalData.course)) missing.push('curso');
+    if (!isFilled(personalData.yearOfStudy)) missing.push('ano de curso');
+    if (!isFilled(personalData.hometown)) missing.push('cidade de origem');
+
     return missing;
   }
+
   if (step === 2) {
     const missing: string[] = [];
+
     if (!isFilled(lifestyleData.schedule)) missing.push('rotina diária');
     if (!isFilled(lifestyleData.cleanliness)) missing.push('organização');
     if (!isFilled(lifestyleData.noiseTolerance)) missing.push('tolerância ao ruído');
     if (!isFilled(lifestyleData.socialPreference)) missing.push('ambiente preferido');
+
     return missing;
   }
+
   if (step === 3) {
     const missing: string[] = [];
+
     if (!isFilled(preferencesData.maxBudget)) missing.push('orçamento máximo');
     if (!isFilled(preferencesData.preferredCities)) missing.push('cidade pretendida');
     if (!isFilled(preferencesData.roomType)) missing.push('tipo de alojamento');
+
     return missing;
   }
+
   return [];
 }
 
@@ -78,7 +97,10 @@ export function Onboarding() {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) return JSON.parse(saved) as OnboardingDraft;
-    } catch { /* rascunho corrompido */ }
+    } catch {
+      // rascunho corrompido
+    }
+
     return null;
   };
 
@@ -90,9 +112,11 @@ export function Onboarding() {
   const [personalData, setPersonalData] = useState<Partial<PersonalProfile>>(
     draft?.personalData ?? { userId: user?.id || '', fullName: user?.name || '' },
   );
+
   const [lifestyleData, setLifestyleData] = useState<Partial<LifestyleProfile>>(
     draft?.lifestyleData ?? { userId: user?.id || '' },
   );
+
   const [preferencesData, setPreferencesData] = useState<Partial<AccommodationPreferences>>(
     draft?.preferencesData ?? {
       userId: user?.id || '',
@@ -101,11 +125,17 @@ export function Onboarding() {
     },
   );
 
-  // Guardar rascunho automaticamente a cada alteração
   useEffect(() => {
     if (!user?.id || currentStep === 4) return;
-    const draft: OnboardingDraft = { currentStep, personalData, lifestyleData, preferencesData };
-    localStorage.setItem(storageKey, JSON.stringify(draft));
+
+    const draftToSave: OnboardingDraft = {
+      currentStep,
+      personalData,
+      lifestyleData,
+      preferencesData,
+    };
+
+    localStorage.setItem(storageKey, JSON.stringify(draftToSave));
   }, [currentStep, personalData, lifestyleData, preferencesData, storageKey, user?.id]);
 
   const steps: StepItem[] = [
@@ -116,11 +146,12 @@ export function Onboarding() {
   ];
 
   const completeness = useMemo(
-    () => calculateCompleteness({
-      personal: personalData as PersonalProfile,
-      lifestyle: lifestyleData as LifestyleProfile,
-      preferences: preferencesData as AccommodationPreferences,
-    }),
+    () =>
+      calculateCompleteness({
+        personal: personalData as PersonalProfile,
+        lifestyle: lifestyleData as LifestyleProfile,
+        preferences: preferencesData as AccommodationPreferences,
+      }),
     [personalData, lifestyleData, preferencesData],
   );
 
@@ -130,11 +161,13 @@ export function Onboarding() {
 
   const handleNext = () => {
     if (currentStep >= 4) return;
+
     if (!canContinue) {
       setShowValidation(true);
-      toast.warning('Preenche os campos essenciais antes de continuar.');
+      toast.warning('Preenche os campos obrigatórios antes de continuar.');
       return;
     }
+
     setShowValidation(false);
     setCurrentStep((currentStep + 1) as StepNumber);
   };
@@ -144,11 +177,6 @@ export function Onboarding() {
       setShowValidation(false);
       setCurrentStep((currentStep - 1) as StepNumber);
     }
-  };
-
-  const handleSkip = () => {
-    toast.info('Podes completar o teu perfil mais tarde em "O Meu Perfil".');
-    navigate('/dashboard');
   };
 
   const handleComplete = async () => {
@@ -169,9 +197,11 @@ export function Onboarding() {
       completeness,
       onboardingCompleted: true,
     };
+
     saveProfile(profile);
     localStorage.removeItem(storageKey);
     await saveStudentProfile(profile, completeness);
+
     toast.success('Perfil criado com sucesso.');
     navigate('/dashboard');
   };
@@ -185,19 +215,16 @@ export function Onboarding() {
               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
                 <Home className="w-5 h-5 text-white" />
               </div>
+
               <div className="flex flex-col min-w-0">
                 <span className="text-lg font-bold text-foreground">UniRoom</span>
-                <span className="text-xs text-muted-foreground">Configuração do perfil</span>
+                <span className="text-xs text-muted-foreground">Configuração obrigatória do perfil</span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleSkip}
-              className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2 flex-shrink-0"
-            >
-              <span className="text-sm hidden sm:inline">Saltar por agora</span>
-              <X className="w-4 h-4" />
-            </button>
+
+            <div className="hidden sm:flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-xs font-semibold text-primary">
+              Perfil obrigatório
+            </div>
           </div>
         </div>
       </nav>
@@ -235,28 +262,36 @@ export function Onboarding() {
                   >
                     <step.icon className="w-5 h-5 md:w-6 md:h-6" />
                   </button>
-                  <p className={`text-[11px] md:text-xs mt-2 font-medium text-center ${
-                    currentStep >= step.number ? 'text-foreground' : 'text-muted-foreground'
-                  }`}>
+
+                  <p
+                    className={`text-[11px] md:text-xs mt-2 font-medium text-center ${
+                      currentStep >= step.number ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
                     {step.title}
                   </p>
                 </div>
+
                 {index < steps.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 transition-colors mt-5 ${
-                    currentStep > step.number ? 'bg-secondary' : 'bg-border'
-                  }`} />
+                  <div
+                    className={`flex-1 h-0.5 mx-2 transition-colors mt-5 ${
+                      currentStep > step.number ? 'bg-secondary' : 'bg-border'
+                    }`}
+                  />
                 )}
               </div>
             ))}
           </div>
+
           <ProgressBar progress={progress} color="primary" />
         </div>
 
         {showValidation && missingFields.length > 0 && (
           <div className="mb-4 p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 flex items-start gap-3">
             <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+
             <div>
-              <p className="font-semibold text-sm">Faltam alguns campos essenciais.</p>
+              <p className="font-semibold text-sm">Faltam campos obrigatórios.</p>
               <p className="text-sm mt-0.5">Preenche: {missingFields.join(', ')}.</p>
             </div>
           </div>
@@ -277,6 +312,7 @@ export function Onboarding() {
             ) : (
               <div />
             )}
+
             {currentStep < 4 ? (
               <Button variant="primary" onClick={handleNext} className="gap-2">
                 Continuar

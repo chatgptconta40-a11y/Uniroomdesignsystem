@@ -1,11 +1,126 @@
 import { PersonalProfile } from '../../types/profile';
 import { Input } from '../Input';
 import { OptionCard } from '../OptionCard';
-import { User, GraduationCap, MapPin, Languages, MessageSquare, ShieldCheck } from 'lucide-react';
+import { User, GraduationCap, Languages, MessageSquare, ShieldCheck } from 'lucide-react';
 
 interface OnboardingPersonalProps {
   data: Partial<PersonalProfile>;
   onChange: (data: Partial<PersonalProfile>) => void;
+}
+
+const INSTITUTIONS = [
+  'ESTGV - Instituto Politécnico de Viseu',
+  'Universidade de Coimbra',
+  'Universidade do Porto',
+  'Universidade de Lisboa',
+  'Universidade do Minho',
+  'Instituto Politécnico do Porto',
+  'Instituto Politécnico de Coimbra',
+  'Instituto Politécnico de Lisboa',
+  'Universidade de Aveiro',
+  'Universidade do Algarve',
+  'Universidade da Beira Interior',
+  'Instituto Politécnico de Bragança',
+];
+
+const COURSES = [
+  'Engenharia Informática',
+  'Desenvolvimento Web e Dispositivos Móveis',
+  'Design e Multimédia',
+  'Gestão',
+  'Contabilidade',
+  'Marketing',
+  'Engenharia Civil',
+  'Engenharia Mecânica',
+  'Engenharia Eletrotécnica',
+  'Enfermagem',
+  'Educação Básica',
+  'Comunicação Social',
+  'Turismo',
+  'Psicologia',
+  'Arquitetura',
+];
+
+const YEARS = [
+  { value: 1, label: '1.º ano' },
+  { value: 2, label: '2.º ano' },
+  { value: 3, label: '3.º ano' },
+  { value: 4, label: '4.º ano' },
+  { value: 5, label: '5.º ano' },
+  { value: 6, label: '6.º ano' },
+];
+
+const HOMETOWNS = [
+  'Viseu',
+  'Porto',
+  'Lisboa',
+  'Coimbra',
+  'Faro',
+  'Braga',
+  'Aveiro',
+  'Guarda',
+  'Bragança',
+  'Vila Real',
+  'Castelo Branco',
+  'Leiria',
+  'Santarém',
+  'Setúbal',
+  'Évora',
+  'Beja',
+  'Viana do Castelo',
+  'Ponta Delgada',
+  'Funchal',
+];
+
+function RequiredMark() {
+  return <span className="ml-1 text-destructive">*</span>;
+}
+
+function SelectField({
+  label,
+  value,
+  placeholder,
+  options,
+  onChange,
+  helperText,
+}: {
+  label: string;
+  value: string | number | undefined;
+  placeholder: string;
+  options: Array<string | { value: string | number; label: string }>;
+  onChange: (value: string) => void;
+  helperText?: string;
+}) {
+  return (
+    <div>
+      <label className="block mb-2 text-sm font-medium text-foreground">
+        {label}
+        <RequiredMark />
+      </label>
+
+      <select
+        value={value ?? ''}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full h-14 px-4 bg-input-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+
+        {options.map((option) => {
+          const item = typeof option === 'string' ? { value: option, label: option } : option;
+
+          return (
+            <option key={String(item.value)} value={item.value}>
+              {item.label}
+            </option>
+          );
+        })}
+      </select>
+
+      {helperText && <p className="mt-1.5 text-sm text-muted-foreground">{helperText}</p>}
+    </div>
+  );
 }
 
 export function OnboardingPersonal({ data, onChange }: OnboardingPersonalProps) {
@@ -24,10 +139,11 @@ export function OnboardingPersonal({ data, onChange }: OnboardingPersonalProps) 
         <div className="p-3 bg-primary/10 rounded-xl">
           <User className="w-6 h-6 text-primary" />
         </div>
+
         <div>
           <h2>Perfil pessoal</h2>
           <p className="text-muted-foreground">
-            Ajuda senhorios e futuros colegas a perceberem quem és antes de uma candidatura.
+            Preenche estes dados para poderes receber recomendações corretas e candidatar-te a quartos.
           </p>
         </div>
       </div>
@@ -45,7 +161,7 @@ export function OnboardingPersonal({ data, onChange }: OnboardingPersonalProps) 
               value={data.fullName || ''}
               onChange={(event) => handleChange('fullName', event.target.value)}
               placeholder="João Silva"
-              helperText="Será mostrado nas candidaturas e mensagens."
+              helperText="Campo obrigatório. Será mostrado nas candidaturas e mensagens."
             />
 
             <Input
@@ -56,12 +172,14 @@ export function OnboardingPersonal({ data, onChange }: OnboardingPersonalProps) 
               value={data.age || ''}
               onChange={(event) => handleChange('age', parseOptionalNumber(event.target.value))}
               placeholder="20"
+              helperText="Campo obrigatório."
             />
           </div>
 
           <div className="mt-5">
             <label className="block mb-3 text-sm font-medium text-foreground">
               Género
+              <RequiredMark />
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
@@ -89,36 +207,37 @@ export function OnboardingPersonal({ data, onChange }: OnboardingPersonalProps) 
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Input
+            <SelectField
               label="Instituição de ensino"
-              value={data.institution || ''}
-              onChange={(event) => handleChange('institution', event.target.value)}
-              placeholder="ESTGV - Instituto Politécnico de Viseu"
+              value={data.institution}
+              placeholder="Seleciona a tua instituição"
+              options={INSTITUTIONS}
+              onChange={(value) => handleChange('institution', value)}
               helperText="Ajuda a calcular recomendações perto da tua universidade."
             />
 
-            <Input
+            <SelectField
               label="Curso"
-              value={data.course || ''}
-              onChange={(event) => handleChange('course', event.target.value)}
-              placeholder="Engenharia Informática"
+              value={data.course}
+              placeholder="Seleciona o teu curso"
+              options={COURSES}
+              onChange={(value) => handleChange('course', value)}
             />
 
-            <Input
+            <SelectField
               label="Ano de curso"
-              type="number"
-              min={1}
-              max={6}
-              value={data.yearOfStudy || ''}
-              onChange={(event) => handleChange('yearOfStudy', parseOptionalNumber(event.target.value))}
-              placeholder="1"
+              value={data.yearOfStudy}
+              placeholder="Seleciona o ano"
+              options={YEARS}
+              onChange={(value) => handleChange('yearOfStudy', Number(value))}
             />
 
-            <Input
+            <SelectField
               label="Cidade de origem"
-              value={data.hometown || ''}
-              onChange={(event) => handleChange('hometown', event.target.value)}
-              placeholder="Porto"
+              value={data.hometown}
+              placeholder="Seleciona a tua cidade"
+              options={HOMETOWNS}
+              onChange={(value) => handleChange('hometown', value)}
             />
           </div>
         </section>
@@ -147,6 +266,7 @@ export function OnboardingPersonal({ data, onChange }: OnboardingPersonalProps) 
               <p className="text-sm text-muted-foreground">
                 Uma boa bio aumenta a confiança antes de contactar senhorios.
               </p>
+
               <span className="text-xs text-muted-foreground">
                 {(data.bio || '').length}/280
               </span>
@@ -163,7 +283,7 @@ export function OnboardingPersonal({ data, onChange }: OnboardingPersonalProps) 
                   event.target.value
                     .split(',')
                     .map(language => language.trim())
-                    .filter(Boolean)
+                    .filter(Boolean),
                 )
               }
               placeholder="Português, Inglês, Espanhol"
@@ -174,8 +294,9 @@ export function OnboardingPersonal({ data, onChange }: OnboardingPersonalProps) 
 
         <div className="p-5 bg-primary/5 border border-primary/20 rounded-xl flex gap-3">
           <ShieldCheck className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Estes dados ajudam a tornar candidaturas e conversas mais claras. Podes editar o perfil mais tarde.
+            Os campos assinalados com * são obrigatórios. Estes dados tornam as recomendações e candidaturas mais fiáveis.
           </p>
         </div>
       </div>

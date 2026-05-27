@@ -28,8 +28,8 @@ import { Button } from './Button';
 import { Card } from './Card';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
-import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import { getAverageRatingBreakdown, getVerificationStatus } from '../data/mockTrust';
+import { getRoomCompatibilityScore } from '../utils/profileCompatibility';
 
 function getAvailabilityLabel(date: Date): { text: string; cls: string } {
   const now = new Date();
@@ -100,11 +100,16 @@ export function RoomCard({
   const isFav = isFavorite(room.id);
   const isManagement = variant === 'management';
 
+  const personalizedCompatibility = user?.type === 'student'
+    ? getRoomCompatibilityScore(user.id, room, property)
+    : undefined;
+
+  const displayCompatibility = personalizedCompatibility ?? room.compatibilityScore;
+
   const canShowCompatibility = Boolean(
     !isManagement &&
     user?.type === 'student' &&
-    hasCompletedCompatibilityProfile(user.id) &&
-    room.compatibilityScore
+    displayCompatibility
   );
 
   const handleClick = () => navigate(`/room/${room.id}`);
@@ -147,16 +152,16 @@ export function RoomCard({
   })();
 
   const compatibilityTone =
-    (room.compatibilityScore || 0) >= 80
+    (displayCompatibility || 0) >= 80
       ? 'text-secondary'
-      : (room.compatibilityScore || 0) >= 60
+      : (displayCompatibility || 0) >= 60
         ? 'text-accent'
         : 'text-muted-foreground';
 
   const compatibilityChipClasses =
-    (room.compatibilityScore || 0) >= 80
+    (displayCompatibility || 0) >= 80
       ? 'bg-green-50 text-green-700 ring-1 ring-green-200'
-      : (room.compatibilityScore || 0) >= 60
+      : (displayCompatibility || 0) >= 60
         ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
         : 'bg-blue-50 text-blue-700 ring-1 ring-blue-200';
 
@@ -313,7 +318,7 @@ export function RoomCard({
                   className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${compatibilityChipClasses}`}
                   title="Compatibilidade com o teu perfil"
                 >
-                  {room.compatibilityScore}% compatível
+                  {displayCompatibility}% compatível
                 </span>
               )}
 
@@ -526,7 +531,7 @@ export function RoomCard({
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Compatibilidade</div>
               <div className={`text-sm font-bold ${compatibilityTone}`}>
-                {room.compatibilityScore}% compatível
+                {displayCompatibility}% compatível
               </div>
             </div>
           )}

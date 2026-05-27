@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { X, Check, Send, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 import { Card } from './Card';
@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { createUnifiedApplication, getExistingApplicationForRoom } from '../data/unifiedApplications';
+import { getProfile } from '../data/mockProfiles';
 import { mockStudentProfiles } from '../data/mockUsers';
 import { toast } from 'sonner';
 
@@ -18,6 +19,11 @@ interface ApplicationModalProps {
   propertyTitle?: string;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+function formatYear(year?: number) {
+  if (!year) return 'Não especificado';
+  return `${year}.º ano`;
 }
 
 export function ApplicationModal({
@@ -43,9 +49,47 @@ export function ApplicationModal({
   const effectivePropertyTitle = propertyTitle || property?.title;
   const isRoomUnavailable = !!room && room.status !== 'available';
 
-  const studentProfile = mockStudentProfiles.find(profile => profile.userId === user?.id);
+  /*
+    Fonte principal do perfil:
+    1) localStorage através de getProfile(user.id), preenchido no onboarding/perfil
+    2) fallback antigo mockStudentProfiles, para contas demo antigas
+  */
+  const localStudentProfile = useMemo(() => {
+    if (!user?.id) return null;
+    return getProfile(user.id);
+  }, [user?.id]);
 
-  const profileCompleteness = user?.type === 'student' ? 100 : 0;
+  const legacyStudentProfile = mockStudentProfiles.find(profile => profile.userId === user?.id);
+
+  const profileName =
+    localStudentProfile?.personal.fullName ||
+    user?.name ||
+    'Estudante';
+
+  const profileEmail = user?.email || 'Sessão não iniciada';
+
+  const profileCourse =
+    localStudentProfile?.personal.course ||
+    legacyStudentProfile?.course ||
+    '';
+
+  const profileInstitution =
+    localStudentProfile?.personal.institution ||
+    legacyStudentProfile?.university ||
+    '';
+
+  const profileYear =
+    localStudentProfile?.personal.yearOfStudy ||
+    legacyStudentProfile?.year;
+
+  const profileHometown = localStudentProfile?.personal.hometown || '';
+  const profileBio = localStudentProfile?.personal.bio || '';
+  const profileLanguages = localStudentProfile?.personal.languages || [];
+
+  const profileCompleteness =
+    localStudentProfile?.completeness?.overall ??
+    user?.profileCompleteness?.overall ??
+    (profileCourse && profileInstitution && profileYear ? 100 : 0);
 
   const existingApplication = user
     ? getExistingApplicationForRoom(user.id, effectiveRoomId)
@@ -97,10 +141,10 @@ export function ApplicationModal({
 
       createUnifiedApplication({
         studentId: user.id,
-        studentName: user.name || 'Estudante',
-        studentUniversity: studentProfile?.university,
-        studentCourse: studentProfile?.course,
-        studentYear: studentProfile?.year,
+        studentName: profileName,
+        studentUniversity: profileInstitution || undefined,
+        studentCourse: profileCourse || undefined,
+        studentYear: profileYear,
         roomId: effectiveRoomId,
         propertyId: effectivePropertyId,
         landlordId: accommodation.landlordId || property?.landlordId || '',
@@ -129,29 +173,31 @@ export function ApplicationModal({
 
   const messageSuggestions = [
     'Apresenta-te brevemente',
-    'Menciona o teu curso e universidade',
+    'Menciona o teu curso e instituição',
     'Explica porque este alojamento te interessa',
-    'Indica se tens alguma dúvida',
+    'Indica quando pretendes entrar',
   ];
 
-  const exampleMessage = `Olá! Sou estudante de ${studentProfile?.course || '[Curso]'} na ${studentProfile?.university || '[Universidade]'}. Procuro alojamento a partir de ${
+  const exampleMessage = `Olá! Sou estudante de ${profileCourse || '[Curso]'} na ${profileInstitution || '[Instituição]'}. Procuro alojamento a partir de ${
     moveInDate
       ? new Date(moveInDate).toLocaleDateString('pt-PT', { month: 'long' })
       : '[mês]'
-  }. Estou muito interessado/a neste espaço pela localização e ambiente descrito.`;
+  }. Estou interessado/a neste espaço pela localização e pelo ambiente descrito.`;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-card rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between z-10">
           <div>
             <h2 className="text-xl font-bold text-foreground">Candidatar-me</h2>
             <p className="text-sm text-muted-foreground">{accommodation.title}</p>
           </div>
+
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors"
             aria-label="Fechar"
+            type="button"
           >
             <X className="w-5 h-5" />
           </button>
@@ -200,12 +246,13 @@ export function ApplicationModal({
                     step > item
                       ? 'bg-green-500 text-white'
                       : step === item
-                      ? 'bg-primary text-white'
-                      : 'bg-muted text-muted-foreground'
+                        ? 'bg-primary text-white'
+                        : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {step > item ? <Check className="w-5 h-5" /> : item}
                 </div>
+
                 {item < 3 && (
                   <div
                     className={`flex-1 h-1 mx-2 transition-all ${
@@ -216,6 +263,7 @@ export function ApplicationModal({
               </div>
             ))}
           </div>
+
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>Perfil</span>
             <span>Mensagem</span>
@@ -236,15 +284,18 @@ export function ApplicationModal({
               <Card className="p-6">
                 <div className="flex items-start gap-4 mb-6">
                   <div className="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-semibold flex-shrink-0">
-                    {user?.name?.charAt(0) || 'E'}
+                    {profileName.charAt(0)}
                   </div>
+
                   <div className="flex-1">
-                    <h4 className="font-semibold text-foreground mb-1">{user?.name || 'Estudante'}</h4>
-                    <p className="text-sm text-muted-foreground mb-2">{user?.email || 'Sessão não iniciada'}</p>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={profileCompleteness === 100 ? 'success' : 'warning'}>
+                    <h4 className="font-semibold text-foreground mb-1">{profileName}</h4>
+                    <p className="text-sm text-muted-foreground mb-2">{profileEmail}</p>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={profileCompleteness >= 80 ? 'success' : 'warning'}>
                         Perfil {profileCompleteness}% completo
                       </Badge>
+
                       {user?.verified && (
                         <Badge variant="outline">
                           <Check className="w-3 h-3 mr-1" />
@@ -256,27 +307,54 @@ export function ApplicationModal({
                 </div>
 
                 <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between py-2 border-t">
+                  <div className="flex items-center justify-between gap-4 py-2 border-t">
                     <span className="text-muted-foreground">Curso</span>
-                    <span className="font-medium text-foreground">
-                      {studentProfile?.course || 'Não especificado'}
+                    <span className="font-medium text-foreground text-right">
+                      {profileCourse || 'Não especificado'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-t">
-                    <span className="text-muted-foreground">Universidade</span>
-                    <span className="font-medium text-foreground">
-                      {studentProfile?.university || 'Não especificada'}
+
+                  <div className="flex items-center justify-between gap-4 py-2 border-t">
+                    <span className="text-muted-foreground">Instituição</span>
+                    <span className="font-medium text-foreground text-right">
+                      {profileInstitution || 'Não especificada'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-t">
+
+                  <div className="flex items-center justify-between gap-4 py-2 border-t">
                     <span className="text-muted-foreground">Ano</span>
-                    <span className="font-medium text-foreground">
-                      {studentProfile?.year ? `${studentProfile.year}º ano` : 'Não especificado'}
+                    <span className="font-medium text-foreground text-right">
+                      {formatYear(profileYear)}
                     </span>
                   </div>
+
+                  <div className="flex items-center justify-between gap-4 py-2 border-t">
+                    <span className="text-muted-foreground">Cidade de origem</span>
+                    <span className="font-medium text-foreground text-right">
+                      {profileHometown || 'Não especificada'}
+                    </span>
+                  </div>
+
+                  {profileLanguages.length > 0 && (
+                    <div className="flex items-center justify-between gap-4 py-2 border-t">
+                      <span className="text-muted-foreground">Idiomas</span>
+                      <span className="font-medium text-foreground text-right">
+                        {profileLanguages.join(', ')}
+                      </span>
+                    </div>
+                  )}
+
+                  {profileBio && (
+                    <div className="py-3 border-t">
+                      <span className="block text-muted-foreground mb-1">Bio</span>
+                      <p className="font-medium text-foreground leading-relaxed">
+                        {profileBio}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {profileCompleteness < 100 && (
+                {profileCompleteness < 80 && (
                   <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
                     <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm">
@@ -304,6 +382,7 @@ export function ApplicationModal({
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Data prevista de entrada
                 </label>
+
                 <Input
                   type="date"
                   value={moveInDate}
@@ -316,6 +395,7 @@ export function ApplicationModal({
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Mensagem
                 </label>
+
                 <textarea
                   value={message}
                   onChange={event => setMessage(event.target.value)}
@@ -324,6 +404,7 @@ export function ApplicationModal({
                   rows={6}
                   maxLength={500}
                 />
+
                 <p className="text-xs text-muted-foreground mt-1">
                   {message.length}/500 caracteres
                 </p>
@@ -333,6 +414,7 @@ export function ApplicationModal({
                 <h4 className="font-medium text-foreground mb-2 text-sm">
                   Sugestões para a tua mensagem:
                 </h4>
+
                 <ul className="space-y-1 text-sm text-foreground">
                   {messageSuggestions.map((suggestion, index) => (
                     <li key={index} className="flex items-start gap-2">
@@ -351,6 +433,7 @@ export function ApplicationModal({
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Send className="w-8 h-8 text-green-600" />
                 </div>
+
                 <h3 className="font-semibold text-foreground mb-2">Confirmar candidatura</h3>
                 <p className="text-sm text-muted-foreground">
                   Revê os detalhes antes de enviar.
@@ -362,9 +445,11 @@ export function ApplicationModal({
                   <div>
                     <h4 className="font-medium text-foreground mb-1">Alojamento</h4>
                     <p className="text-sm text-muted-foreground">{accommodation.title}</p>
+
                     {effectivePropertyTitle && (
                       <p className="text-sm text-muted-foreground">Casa: {effectivePropertyTitle}</p>
                     )}
+
                     <p className="text-sm text-muted-foreground">
                       {accommodation.address}, {accommodation.city}
                     </p>
@@ -373,6 +458,16 @@ export function ApplicationModal({
                   <div className="border-t pt-4">
                     <h4 className="font-medium text-foreground mb-1">Valor</h4>
                     <p className="text-sm text-muted-foreground">€{accommodation.price}/mês</p>
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium text-foreground mb-1">Perfil enviado</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {profileName}
+                      {profileCourse ? ` · ${profileCourse}` : ''}
+                      {profileInstitution ? ` · ${profileInstitution}` : ''}
+                      {profileYear ? ` · ${formatYear(profileYear)}` : ''}
+                    </p>
                   </div>
 
                   {moveInDate && (

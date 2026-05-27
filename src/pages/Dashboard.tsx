@@ -20,17 +20,21 @@ import { getTotalUnreadCount } from '../data/mockMessages';
 import { getProperty, getRoom } from '../data/mockProperties';
 import { useState, useEffect, useMemo } from 'react';
 import { useProperties } from '../context/PropertiesContext';
+import { useFavorites } from '../context/FavoritesContext';
 import { Property, Room } from '../types/property';
 
 export function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { rooms, properties } = useProperties();
+  const { favoriteIds, refreshFavorites } = useFavorites();
+
   const [suggestions, setSuggestions] = useState<{ room: Room; property: Property; availableRooms: number }[]>([]);
-  const [favoritesCount, setFavoritesCount] = useState(0);
   const [applicationsCount, setApplicationsCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [maintenanceRequests, setMaintenanceRequests] = useState<any[]>([]);
+
+  const favoritesCount = favoriteIds.length;
 
   const activeHome = useMemo(() => {
     if (!user || user.type !== 'student') return null;
@@ -54,47 +58,55 @@ export function Dashboard() {
     }
   }, [user, navigate]);
 
-  // Update counters when data changes
+  useEffect(() => {
+    if (!user) return;
+
+    void refreshFavorites();
+  }, [user?.id, refreshFavorites]);
+
   useEffect(() => {
     if (!user) return;
 
     const updateCounters = () => {
-      // Update favorites count
-      const storedFavorites = JSON.parse(localStorage.getItem('uniroom_favorites') || '[]');
-      setFavoritesCount(storedFavorites.filter((favorite: any) => favorite.userId === user.id).length);
-
-      // Update applications count
       const applications = getApplicationsForUser(user.id);
       const activeApplications = applications.filter(
-        app => app.status === 'pending' || app.status === 'under_review' || app.status === 'accepted'
+        app => app.status === 'pending' || app.status === 'under_review' || app.status === 'accepted',
       );
+
       setApplicationsCount(activeApplications.length);
 
-      // Update unread messages count
       const unreadCount = getTotalUnreadCount(user.id);
       setUnreadMessagesCount(unreadCount);
     };
 
-    // Initial update
     updateCounters();
 
-    // Listen for storage events (when favorites/applications change)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'uniroom_favorites' || e.key === 'uniroom_applications' || e.key === 'uniroom_notifications') {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (
+        event.key === 'uniroom_applications' ||
+        event.key === 'uniroom_notifications' ||
+        event.key === 'uniroom_messages'
+      ) {
         updateCounters();
+      }
+
+      if (event.key?.startsWith('uniroom_favorites_')) {
+        void refreshFavorites();
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
 
-    // Also update periodically to catch changes from same tab
-    const interval = setInterval(updateCounters, 2000);
+    const interval = setInterval(() => {
+      updateCounters();
+      void refreshFavorites();
+    }, 2000);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
-  }, [user]);
+  }, [user, refreshFavorites]);
 
   useEffect(() => {
     const activeProperties = properties.filter(property => property.status === 'active');
@@ -207,8 +219,8 @@ export function Dashboard() {
                       stat.color === 'primary'
                         ? 'bg-primary/10'
                         : stat.color === 'secondary'
-                        ? 'bg-secondary/10'
-                        : 'bg-accent/10'
+                          ? 'bg-secondary/10'
+                          : 'bg-accent/10'
                     }`}
                   >
                     <stat.icon
@@ -216,8 +228,8 @@ export function Dashboard() {
                         stat.color === 'primary'
                           ? 'text-primary'
                           : stat.color === 'secondary'
-                          ? 'text-secondary'
-                          : 'text-accent'
+                            ? 'text-secondary'
+                            : 'text-accent'
                       }`}
                     />
                   </div>
@@ -362,7 +374,7 @@ export function Dashboard() {
                     : 'Ainda não guardaste nenhum quarto.'}
                 </p>
 
-                <Link to="/favorites">
+                <Link to={favoritesCount > 0 ? '/favorites' : '/search'}>
                   <Button variant="secondary">
                     {favoritesCount > 0 ? 'Ver favoritos' : 'Explorar alojamentos'}
                   </Button>
@@ -383,7 +395,7 @@ export function Dashboard() {
                     : 'Ainda não tens candidaturas ativas.'}
                 </p>
 
-                <Link to={applicationsCount > 0 ? "/applications" : "/search"}>
+                <Link to={applicationsCount > 0 ? '/applications' : '/search'}>
                   <Button variant="primary">
                     {applicationsCount > 0 ? 'Ver candidaturas' : 'Procurar alojamento'}
                   </Button>
@@ -392,7 +404,6 @@ export function Dashboard() {
             </div>
           </>
         )}
-
       </div>
     </div>
   );
