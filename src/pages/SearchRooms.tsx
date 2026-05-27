@@ -692,7 +692,7 @@ export function SearchRooms() {
     user?.type === 'student' &&
     hasCompletedCompatibilityProfile(user.id)
   );
-  const shouldShowProfileNotice = user?.type === 'student' && !canShowCompatibility;
+  const shouldShowProfileNotice = false;
 
   const set = (updates: Partial<SearchFilters>) => setFilters(current => ({ ...current, ...updates }));
 

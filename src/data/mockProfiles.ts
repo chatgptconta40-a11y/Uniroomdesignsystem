@@ -107,7 +107,21 @@ export function saveProfile(profile: StudentProfile): void {
 }
 
 export function hasCompletedCompatibilityProfile(userId?: string | null): boolean {
-  return Boolean(userId);
+  if (!userId) return false;
+  try {
+    if (localStorage.getItem(getProfileCompletedStorageKey(userId)) === 'true') return true;
+  } catch {
+    // ignore
+  }
+  const profile = getProfile(userId);
+  if (!profile) return false;
+  return Boolean(
+    profile.onboardingCompleted &&
+    (profile.completeness?.personal ?? 0) >= 80 &&
+    (profile.completeness?.lifestyle ?? 0) >= 80 &&
+    (profile.completeness?.preferences ?? 0) >= 80 &&
+    (profile.completeness?.overall ?? 0) >= 80
+  );
 }
 
 export function calculateCompleteness(profile: Partial<StudentProfile>): StudentProfile['completeness'] {

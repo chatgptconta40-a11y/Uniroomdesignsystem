@@ -1,11 +1,26 @@
 import { Home, LogOut, LayoutDashboard, ChevronDown, User, Bell, Heart, FileText, MessageCircle, Shield, BarChart3, Wrench } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router';
-import { Button } from '../../components/Button';
-import { TrustBadge } from '../../components/TrustBadge';
 import { useAuth } from '../../context/AuthContext';
 import { useState } from 'react';
 import { getNotificationsForUser, getUnreadCount, markNotificationAsRead, markAllNotificationsAsRead, getActiveHomeForStudent } from '../../data/mockApplications';
 import { getTotalUnreadCount } from '../../data/mockMessages';
+import { getVerificationStatus } from '../../data/mockTrust';
+
+function VerificationStatusPill({ userId }: { userId: string }) {
+  const status = getVerificationStatus(userId);
+  const verified = status?.level === 'gold';
+  return (
+    <span
+      className={`ml-auto inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+        verified
+          ? 'bg-green-100 text-green-700'
+          : 'bg-amber-100 text-amber-700'
+      }`}
+    >
+      {verified ? 'Verificado' : 'Pendente'}
+    </span>
+  );
+}
 
 export function Navbar() {
   const { isAuthenticated, user, logout } = useAuth();
@@ -221,9 +236,6 @@ export function Navbar() {
                               </Link>
                             )}
                             <div className="border-t border-border my-1" />
-                            <div className="px-4 py-2">
-                              <TrustBadge userId={user.id} size="sm" showLabel={false} />
-                            </div>
                             <Link
                               to="/verification"
                               className={navLinkClass('/verification')}
@@ -231,6 +243,7 @@ export function Navbar() {
                             >
                               <Shield className="w-4 h-4" />
                               <span className="text-sm">Verificação</span>
+                              <VerificationStatusPill userId={user.id} />
                             </Link>
                             <Link
                               to="/profile"
@@ -286,25 +299,12 @@ export function Navbar() {
 
                             <Link
                               to="/verification"
-                              className="mx-2 my-2 flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/80 px-3 py-3 transition-colors hover:bg-blue-50"
+                              className={navLinkClass('/verification')}
                               onClick={() => setShowMenu(false)}
                             >
-                              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white text-primary">
-                                <Shield className="h-4 w-4" />
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <div className="mb-1 flex items-center gap-2">
-                                  <span className="text-sm font-semibold text-foreground">
-                                    Verificação do senhorio
-                                  </span>
-                                  <TrustBadge userId={user.id} size="sm" showLabel={false} />
-                                </div>
-
-                                <p className="text-xs leading-snug text-muted-foreground">
-                                  Confirma a identidade e aumenta a confiança dos estudantes nos teus anúncios.
-                                </p>
-                              </div>
+                              <Shield className="w-4 h-4" />
+                              <span className="text-sm">Verificação</span>
+                              <VerificationStatusPill userId={user.id} />
                             </Link>
 
                             <div className="border-t border-border my-1" />
@@ -391,11 +391,17 @@ export function Navbar() {
               </>
             ) : (
               <>
-                <Link to="/login">
-                  <Button variant="ghost" size="md">Entrar</Button>
+                <Link
+                  to="/login"
+                  className="inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-base font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  Entrar
                 </Link>
-                <Link to="/register">
-                  <Button variant="primary" size="md">Criar Conta</Button>
+                <Link
+                  to="/register"
+                  className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-base font-semibold shadow-sm hover:bg-primary-hover hover:shadow-md transition-all"
+                >
+                  Criar Conta
                 </Link>
               </>
             )}

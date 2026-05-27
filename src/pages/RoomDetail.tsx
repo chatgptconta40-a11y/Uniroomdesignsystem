@@ -6,7 +6,6 @@ import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { Modal } from '../components/Modal';
 import { LocationMap } from '../components/LocationMap';
-import { RoomCard } from '../components/RoomCard';
 import { ApplicationModal } from '../components/ApplicationModal';
 import { ReviewModal } from '../components/ReviewModal';
 import { ReportModal } from '../components/ReportModal';
@@ -59,7 +58,7 @@ export function RoomDetail() {
     hasCompletedCompatibilityProfile(user.id) &&
     room?.compatibilityScore
   );
-  const shouldInviteProfileCompletion = user?.type === 'student' && !canShowCompatibility;
+  const shouldInviteProfileCompletion = !user;
 
   if (!room || !property) {
     return (
@@ -488,24 +487,6 @@ export function RoomDetail() {
               </div>
             </Card>
 
-            {otherRooms.length > 0 && (
-              <Card className="p-6">
-                <h2 className="text-xl font-bold mb-4">Outros quartos desta casa</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {otherRooms.map(otherRoom => (
-                    <RoomCard
-                      key={otherRoom.id}
-                      room={otherRoom}
-                      property={property}
-                      variant="compact"
-                      showFavorite={!!user && user.type === 'student'}
-                      availableRooms={otherRooms.filter(item => item.status === 'available').length + (room.status === 'available' ? 1 : 0)}
-                      onFavoriteRequiresAuth={requestAuthentication}
-                    />
-                  ))}
-                </div>
-              </Card>
-            )}
           </div>
 
           <div className="lg:col-span-1">
@@ -546,18 +527,18 @@ export function RoomDetail() {
                         <Users className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
                         <div>
                           <p className="text-sm font-bold text-blue-950">
-                            Completa o teu perfil de convivência
+                            Cria conta para ver compatibilidade
                           </p>
                           <p className="mt-1 text-xs leading-relaxed text-blue-800">
-                            Depois do onboarding, a UniRoom desbloqueia compatibilidade personalizada para este quarto.
+                            Depois do registo e do perfil inicial obrigatório, a UniRoom mostra compatibilidade personalizada para este quarto.
                           </p>
                           <Button
                             variant="outline"
                             size="sm"
                             className="mt-3 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
-                            onClick={() => navigate('/onboarding')}
+                            onClick={() => navigate('/register')}
                           >
-                            Preencher perfil
+                            Criar conta
                           </Button>
                         </div>
                       </div>
@@ -612,46 +593,6 @@ export function RoomDetail() {
                 />
               )}
 
-              <Card className="p-6">
-                <h3 className="font-bold mb-4">Localização</h3>
-                <div className="mb-4">
-                  <LocationMap
-                    address={property.address}
-                    zone={property.zone}
-                    city={property.city}
-                  />
-                </div>
-                {property.address && (
-                  <p className="text-sm text-muted-foreground mb-4 flex items-start gap-1.5">
-                    <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" />
-                    {property.address}
-                  </p>
-                )}
-                <div className="space-y-2.5 text-sm">
-                  <div className="flex items-center justify-between py-2 border-b border-border">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <Building className="w-3.5 h-3.5" />
-                      Universidade mais próxima
-                    </span>
-                    <span className="font-semibold">{property.distanceToUniversity} km</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-border">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      A pé
-                    </span>
-                    <span className="font-semibold">~{Math.round(property.distanceToUniversity * 13)} min</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" />
-                      Transporte público
-                    </span>
-                    <span className="font-semibold">~{Math.round(property.distanceToUniversity * 5)} min</span>
-                  </div>
-                </div>
-              </Card>
-
               {isLandlordOwner && (
                 <Card className="p-6 border-primary/20 bg-primary/5">
                   <div className="mb-5">
@@ -698,6 +639,62 @@ export function RoomDetail() {
             </div>
           </div>
         </div>
+
+        <section className="mt-10">
+          <div className="mb-5">
+            <h2 className="text-2xl font-bold text-foreground">Localização</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Onde fica a casa e quanto demoras até à universidade.
+            </p>
+          </div>
+          <Card className="p-4 md:p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <LocationMap
+                  address={property.address}
+                  zone={property.zone}
+                  city={property.city}
+                  mapHeightClass="h-[28rem]"
+                />
+              </div>
+              <div className="flex flex-col">
+                {property.address && (
+                  <div className="mb-4 flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
+                    <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Morada</p>
+                      <p className="text-sm font-semibold text-foreground">{property.address}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{property.zone}, {property.city}</p>
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Building className="w-3.5 h-3.5" />
+                      Universidade mais próxima
+                    </span>
+                    <span className="font-semibold">{property.distanceToUniversity} km</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      A pé
+                    </span>
+                    <span className="font-semibold">~{Math.round(property.distanceToUniversity * 13)} min</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      Transporte público
+                    </span>
+                    <span className="font-semibold">~{Math.round(property.distanceToUniversity * 5)} min</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </section>
       </div>
 
       <Modal

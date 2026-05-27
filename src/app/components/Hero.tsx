@@ -1,7 +1,5 @@
-import { FormEvent, useState } from 'react';
-import { Link } from 'react-router';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight,
   CalendarDays,
   ChevronDown,
   GraduationCap,
@@ -9,6 +7,10 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react';
+import { DayPicker } from 'react-day-picker';
+import { format } from 'date-fns';
+import { pt } from 'date-fns/locale';
+import 'react-day-picker/dist/style.css';
 import { Button } from '../../components/Button';
 
 type SearchMode = 'rooms' | 'houses';
@@ -32,13 +34,38 @@ export function Hero({ onSearch }: HeroProps) {
   const [university, setUniversity] = useState('ESTGV - Viseu');
   const [maxPrice, setMaxPrice] = useState('400');
   const [roomType, setRoomType] = useState('private');
-  const [moveIn, setMoveIn] = useState('');
+  const [moveInDate, setMoveInDate] = useState<Date | undefined>(undefined);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showCalendar) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (calendarRef.current && !calendarRef.current.contains(e.target as Node)) {
+        setShowCalendar(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showCalendar]);
+
+  const scrollToListings = () => {
+    document.getElementById('quartos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleModeChange = (next: SearchMode) => {
+    setMode(next);
+    if (next === 'houses') scrollToListings();
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const moveIn = moveInDate ? format(moveInDate, 'yyyy-MM-dd') : '';
     onSearch({ mode, city, university, maxPrice, roomType, moveIn });
-    document.getElementById('quartos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollToListings();
   };
+
+  const moveInLabel = moveInDate ? format(moveInDate, "dd/MM/yyyy", { locale: pt }) : '';
 
   return (
     <section className="relative bg-slate-950">
@@ -71,7 +98,7 @@ export function Hero({ onSearch }: HeroProps) {
           <div className="flex border-b border-border">
             <button
               type="button"
-              onClick={() => setMode('rooms')}
+              onClick={() => handleModeChange('rooms')}
               className={`px-6 py-4 text-sm font-bold transition-colors ${
                 mode === 'rooms'
                   ? 'border-b-4 border-primary text-primary'
@@ -83,7 +110,7 @@ export function Hero({ onSearch }: HeroProps) {
 
             <button
               type="button"
-              onClick={() => setMode('houses')}
+              onClick={() => handleModeChange('houses')}
               className={`px-6 py-4 text-sm font-bold transition-colors ${
                 mode === 'houses'
                   ? 'border-b-4 border-primary text-primary'
@@ -165,31 +192,57 @@ export function Hero({ onSearch }: HeroProps) {
                 </span>
               </label>
 
-              <label className="md:col-span-4">
+              <div className="md:col-span-5">
                 <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Entrada</span>
-                <span className="relative block">
-                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
-                  <input
-                    type="month"
-                    value={moveIn}
-                    onChange={event => setMoveIn(event.target.value)}
-                    className="h-12 w-full rounded-xl border border-border bg-white pl-10 pr-4 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary"
-                  />
-                </span>
-              </label>
+                <div className="relative" ref={calendarRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowCalendar(prev => !prev)}
+                    className={`h-12 w-full rounded-xl border border-border bg-white pl-10 pr-4 text-left text-sm font-semibold outline-none transition-colors focus:border-primary ${
+                      moveInLabel ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
+                    <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                    {moveInLabel || 'Escolher data de entrada'}
+                  </button>
 
-              <div className="md:col-span-8 flex flex-col sm:flex-row gap-3 md:items-end">
-                <Button type="submit" variant="primary" className="h-12 flex-1 rounded-xl">
+                  {showCalendar && (
+                    <div className="absolute left-0 right-0 sm:right-auto sm:w-auto top-full z-40 mt-2 rounded-2xl border border-border bg-white p-3 shadow-xl">
+                      <DayPicker
+                        mode="single"
+                        locale={pt}
+                        selected={moveInDate}
+                        onSelect={date => {
+                          setMoveInDate(date);
+                          if (date) setShowCalendar(false);
+                        }}
+                        weekStartsOn={1}
+                        fromDate={new Date()}
+                      />
+                      {moveInDate && (
+                        <div className="mt-2 flex items-center justify-between border-t border-border pt-2 text-xs">
+                          <span className="font-semibold text-foreground">
+                            {format(moveInDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: pt })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setMoveInDate(undefined)}
+                            className="font-semibold text-primary hover:underline"
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="md:col-span-7 md:flex md:items-end">
+                <Button type="submit" variant="primary" className="h-12 w-full rounded-xl">
                   <Search className="h-5 w-5" />
                   Pesquisar
                 </Button>
-
-                <Link to="/register" className="sm:w-auto">
-                  <Button type="button" variant="outline" className="h-12 w-full rounded-xl whitespace-nowrap">
-                    Criar conta gratuita
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
               </div>
             </div>
           </form>

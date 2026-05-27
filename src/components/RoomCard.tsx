@@ -61,6 +61,7 @@ interface RoomCardProps {
   variant?: 'default' | 'public' | 'management' | 'compact';
   displayMode?: 'grid' | 'list';
   showFavorite?: boolean;
+  showPropertyContext?: boolean;
   availableRooms?: number;
   onFavoriteRequiresAuth?: () => void;
   compareProps?: CompareProps;
@@ -86,6 +87,7 @@ export function RoomCard({
   variant = 'default',
   displayMode = 'grid',
   showFavorite = true,
+  showPropertyContext = true,
   availableRooms,
   onFavoriteRequiresAuth,
   compareProps,
@@ -150,6 +152,12 @@ export function RoomCard({
       : (room.compatibilityScore || 0) >= 60
         ? 'text-accent'
         : 'text-muted-foreground';
+  const compatibilityChipClasses =
+    (room.compatibilityScore || 0) >= 80
+      ? 'bg-green-50 text-green-700 ring-1 ring-green-200'
+      : (room.compatibilityScore || 0) >= 60
+        ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+        : 'bg-blue-50 text-blue-700 ring-1 ring-blue-200';
 
   if (displayMode === 'list' && !isManagement) {
     return (
@@ -196,14 +204,21 @@ export function RoomCard({
               </div>
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mb-2">
-                <button
-                  type="button"
-                  onClick={handlePropertyClick}
-                  className="flex items-center gap-1 font-medium text-primary hover:underline text-left"
-                >
-                  <Home className="w-3 h-3 flex-shrink-0" />
-                  Este quarto faz parte de: {property.title}
-                </button>
+                {showPropertyContext && (
+                  <button
+                    type="button"
+                    onClick={handlePropertyClick}
+                    className="flex items-center gap-1 font-medium text-primary hover:underline text-left"
+                  >
+                    <Home className="w-3 h-3 flex-shrink-0" />
+                    Ver página da casa
+                    {availableRooms !== undefined && (
+                      <span className="text-green-700">
+                        · {availableRooms} quarto{availableRooms !== 1 ? 's' : ''} livre{availableRooms !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </button>
+                )}
 
                 <span className="flex items-center gap-1">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
@@ -268,12 +283,6 @@ export function RoomCard({
                   </span>
                 )}
 
-                {canShowCompatibility && (
-                  <span className={`font-medium ${compatibilityTone}`}>
-                    {room.compatibilityScore}% compat.
-                  </span>
-                )}
-
                 {isVerifiedLandlord && (
                   <span className="flex items-center gap-1 text-blue-600">
                     <ShieldCheck className="w-3 h-3" /> Senhorio verificado
@@ -297,6 +306,15 @@ export function RoomCard({
                   <p className="text-[10px] text-green-600">Despesas incluídas</p>
                 )}
               </div>
+
+              {canShowCompatibility && (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${compatibilityChipClasses}`}
+                  title="Compatibilidade com o teu perfil"
+                >
+                  {room.compatibilityScore}% compatível
+                </span>
+              )}
 
               <Button
                 variant={variant === 'public' ? 'primary' : 'outline'}
@@ -401,22 +419,23 @@ export function RoomCard({
           {room.title}
         </h3>
 
-        <button
-          type="button"
-          onClick={handlePropertyClick}
-          className="mb-3 flex w-full items-start gap-2 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-left text-xs text-primary transition-colors hover:border-primary/30 hover:bg-primary/10"
-        >
-          <Home className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-          <span className="min-w-0">
-            <span className="block font-semibold text-primary">Este quarto faz parte de:</span>
-            <span className="line-clamp-1 text-foreground">{property.title}</span>
+        {showPropertyContext && (
+          <button
+            type="button"
+            onClick={handlePropertyClick}
+            className="mb-3 flex w-full items-center justify-between gap-3 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-left text-xs text-primary transition-colors hover:border-primary/30 hover:bg-primary/10"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <Home className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="font-semibold text-primary">Ver página da casa</span>
+            </span>
             {availableRooms !== undefined && (
-              <span className="mt-0.5 block text-[11px] text-green-700">
+              <span className="flex-shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
                 {availableRooms} quarto{availableRooms !== 1 ? 's' : ''} livre{availableRooms !== 1 ? 's' : ''}
               </span>
             )}
-          </span>
-        </button>
+          </button>
+        )}
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted-foreground mb-3">
           <span className="flex items-center gap-1.5">
@@ -507,7 +526,7 @@ export function RoomCard({
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Compatibilidade</div>
               <div className={`text-sm font-bold ${compatibilityTone}`}>
-                {room.compatibilityScore}%
+                {room.compatibilityScore}% compatível
               </div>
             </div>
           )}

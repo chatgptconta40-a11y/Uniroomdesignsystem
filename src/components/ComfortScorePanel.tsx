@@ -6,6 +6,7 @@ import { Card } from './Card';
 interface ComfortScorePanelProps {
   room: Room;
   property: Property;
+  canUseCompatibility?: boolean;
 }
 
 interface CategoryScore {
@@ -15,10 +16,10 @@ interface CategoryScore {
   detail: string;
 }
 
-function computeScores(room: Room, property: Property) {
+function computeScores(room: Room, property: Property, canUseCompatibility: boolean) {
   // Compatibility (40 pts)
   const compat = room.compatibilityScore ?? 70;
-  const compatPts = (compat / 100) * 40;
+  const compatPts = canUseCompatibility ? (compat / 100) * 40 : 0;
 
   // Location — lower distance = better (20 pts)
   const maxDist = 10;
@@ -45,16 +46,18 @@ function computeScores(room: Room, property: Property) {
     (!room.utilities ? 2 : 0) +
     (room.minimumStay <= 6 ? 2 : 1);
 
-  const total = compatPts + locPts + pricePts + amenPts + trustPts;
+  const total = canUseCompatibility
+    ? compatPts + locPts + pricePts + amenPts + trustPts
+    : (locFrac * 35) + (priceFrac * 25) + ((totalAmenities / maxAmenities) * 25) + ((trustPts / 10) * 15);
   const score10 = Math.round(Math.min(10, total / 10) * 10) / 10;
 
   const categories: CategoryScore[] = [
-    {
+    ...(canUseCompatibility ? [{
       label: 'Compatibilidade',
       score: compat,
       icon: <Sparkles className="w-3.5 h-3.5" />,
       detail: compat >= 80 ? 'Excelente ajuste ao teu perfil' : compat >= 60 ? 'Bom ajuste ao teu perfil' : 'Compatibilidade moderada',
-    },
+    }] : []),
     {
       label: 'Localização',
       score: Math.round(locFrac * 100),
@@ -98,9 +101,9 @@ function barColor(score: number): string {
   return 'bg-red-400';
 }
 
-function buildReasons(room: Room, property: Property, score10: number): string[] {
+function buildReasons(room: Room, property: Property, score10: number, canUseCompatibility: boolean): string[] {
   const reasons: string[] = [];
-  if (room.compatibilityScore && room.compatibilityScore >= 80) reasons.push(`${room.compatibilityScore}% de compatibilidade com o teu perfil`);
+  if (canUseCompatibility && room.compatibilityScore && room.compatibilityScore >= 80) reasons.push(`${room.compatibilityScore}% de compatibilidade com o teu perfil`);
   if (property.distanceToUniversity <= 2) reasons.push(`A apenas ${property.distanceToUniversity}km da universidade`);
   if (property.verified) reasons.push('Senhorio verificado pela UniRoom');
   if (room.privateBathroom) reasons.push('Casa de banho privativa incluída');
@@ -112,10 +115,16 @@ function buildReasons(room: Room, property: Property, score10: number): string[]
   return reasons.slice(0, 4);
 }
 
-export function ComfortScorePanel({ room, property }: ComfortScorePanelProps) {
-  const { score10, categories } = useMemo(() => computeScores(room, property), [room, property]);
+export function ComfortScorePanel({ room, property, canUseCompatibility = true }: ComfortScorePanelProps) {
+  const { score10, categories } = useMemo(
+    () => computeScores(room, property, canUseCompatibility),
+    [room, property, canUseCompatibility]
+  );
   const label = getLabel(score10);
-  const reasons = useMemo(() => buildReasons(room, property, score10), [room, property, score10]);
+  const reasons = useMemo(
+    () => buildReasons(room, property, score10, canUseCompatibility),
+    [room, property, score10, canUseCompatibility]
+  );
 
   return (
     <Card className="p-5 space-y-4">
@@ -133,7 +142,9 @@ export function ComfortScorePanel({ room, property }: ComfortScorePanelProps) {
         <div>
           <p className={`font-bold text-sm ${label.color}`}>{label.text}</p>
           <p className="text-xs text-muted-foreground leading-snug mt-0.5">
-            Calculado com base nas características do quarto e do teu perfil.
+            {canUseCompatibility
+              ? 'Calculado com base nas características do quarto, localização, preço, confiança e compatibilidade com o teu perfil.'
+              : 'Calculado com base nas características do quarto, localização, preço, comodidades e confiança.'}
           </p>
         </div>
       </div>

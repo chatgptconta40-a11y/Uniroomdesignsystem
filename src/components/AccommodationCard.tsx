@@ -1,9 +1,10 @@
 import { Link } from 'react-router';
-import { MapPin, Heart, Users, Calendar, CheckCircle, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { MapPin, Heart, Users, Calendar, CheckCircle, Image as ImageIcon, AlertTriangle, Sparkles } from 'lucide-react';
 import { Accommodation } from '../types/accommodation';
 import { Badge } from './Badge';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
+import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import { toast } from 'sonner';
 
 interface AccommodationCardProps {
@@ -16,17 +17,16 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
 
   const maxBudget = user?.studentProfile?.preferences?.maxBudget;
   const isAboveBudget = maxBudget && accommodation.price > maxBudget;
+  const canShowCompatibility = Boolean(
+    user?.type === 'student' &&
+    hasCompletedCompatibilityProfile(user.id) &&
+    accommodation.compatibilityScore
+  );
 
-  const getCompatibilityColor = (score: number) => {
-    if (score >= 80) return 'success'; // green
-    if (score >= 60) return 'warning'; // yellow/orange
-    return 'destructive'; // orange/red
-  };
-
-  const getCompatibilityBgColor = (score: number) => {
-    if (score >= 80) return 'bg-secondary';
-    if (score >= 60) return 'bg-accent';
-    return 'bg-destructive';
+  const getCompatibilityChipClasses = (score: number) => {
+    if (score >= 80) return 'bg-green-50 text-green-700 ring-1 ring-green-200';
+    if (score >= 60) return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
+    return 'bg-slate-50 text-slate-600 ring-1 ring-slate-200';
   };
 
   const handleToggleFavorite = (e: React.MouseEvent) => {
@@ -62,15 +62,9 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
 
-          {/* Compatibility Badge */}
-          <div className={`absolute top-4 left-4 ${getCompatibilityBgColor(accommodation.compatibilityScore || 0)} text-white px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg`}>
-            <CheckCircle className="w-4 h-4" />
-            <span className="text-sm font-bold">{accommodation.compatibilityScore || 0}%</span>
-          </div>
-
           {/* Above Budget Badge */}
           {isAboveBudget && (
-            <div className="absolute top-16 left-4 bg-destructive text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg flex items-center gap-1">
+            <div className="absolute top-4 left-4 bg-destructive text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg flex items-center gap-1">
               <AlertTriangle className="w-3.5 h-3.5" />
               Acima do orçamento
             </div>
@@ -116,9 +110,21 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
           </div>
 
           {/* Price */}
-          <div className="mb-4">
-            <span className="text-3xl font-bold text-foreground">€{accommodation.price}</span>
-            <span className="text-base text-gray-500">/mês</span>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <span className="text-3xl font-bold text-foreground">€{accommodation.price}</span>
+              <span className="text-base text-gray-500">/mês</span>
+            </div>
+
+            {canShowCompatibility && (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${getCompatibilityChipClasses(accommodation.compatibilityScore || 0)}`}
+                title="Compatibilidade com o teu perfil"
+              >
+                <Sparkles className="w-3 h-3" />
+                {accommodation.compatibilityScore}% compatível
+              </span>
+            )}
           </div>
 
           {/* Distance */}

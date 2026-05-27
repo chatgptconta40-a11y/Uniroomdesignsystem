@@ -233,7 +233,7 @@ export function updateVerificationStatus(
   };
   const updated: VerificationStatus = { ...current, ...updates };
 
-  if (updated.emailVerified && updated.universityEmailVerified && updated.documentVerified && updated.photoVerified) {
+  if (updated.emailVerified && updated.universityEmailVerified && updated.documentVerified) {
     updated.level = 'gold';
   } else if (updated.emailVerified && updated.universityEmailVerified) {
     updated.level = 'silver';
