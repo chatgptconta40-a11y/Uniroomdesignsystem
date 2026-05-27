@@ -4,7 +4,7 @@ import {
   useContext,
   useEffect,
   useState,
-  type ReactNode,
+  ReactNode,
 } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
@@ -116,9 +116,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         room_id: roomId,
       })
       .then(({ error }) => {
-        if (error) {
-          console.error('Favorite add error:', error.message);
-        }
+        if (error) console.error('Favorite add error:', error.message);
       });
 
     return true;
