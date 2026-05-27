@@ -17,6 +17,7 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
 
   const maxBudget = user?.studentProfile?.preferences?.maxBudget;
   const isAboveBudget = maxBudget && accommodation.price > maxBudget;
+  const isFav = isFavorite(accommodation.id);
   const canShowCompatibility = Boolean(
     user?.type === 'student' &&
     hasCompletedCompatibilityProfile(user.id) &&
@@ -29,16 +30,18 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
     return 'bg-slate-50 text-slate-600 ring-1 ring-slate-200';
   };
 
-  const handleToggleFavorite = (e: React.MouseEvent) => {
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    const newState = toggleFavorite(accommodation.id);
-    if (newState === false && isFavorite(accommodation.id) === false) {
+    if (!user) {
       toast.error('Precisas de fazer login para guardar favoritos');
       return;
     }
-    toast.success(newState ? 'Adicionado aos favoritos' : 'Removido dos favoritos');
+
+    const added = await toggleFavorite(accommodation.id);
+
+    toast.success(added ? 'Adicionado aos favoritos' : 'Removido dos favoritos');
   };
 
   const getRoomTypeLabel = (type: string) => {
@@ -82,9 +85,10 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
           <button
             onClick={handleToggleFavorite}
             className="absolute top-4 right-4 w-10 h-10 bg-white/95 hover:bg-white rounded-full flex items-center justify-center transition-all shadow-lg hover:scale-110"
+            aria-label={isFav ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
           >
             <Heart
-              className={`w-5 h-5 ${isFavorite(accommodation.id) ? 'fill-destructive text-destructive' : 'text-muted-foreground'}`}
+              className={`w-5 h-5 ${isFav ? 'fill-destructive text-destructive' : 'text-muted-foreground'}`}
             />
           </button>
 

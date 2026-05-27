@@ -108,12 +108,13 @@ export function RoomCard({
   );
 
   const handleClick = () => navigate(`/room/${room.id}`);
+
   const handlePropertyClick = (event: MouseEvent) => {
     event.stopPropagation();
     navigate(`/property/${property.id}`);
   };
 
-  const handleFavoriteClick = (event: MouseEvent) => {
+  const handleFavoriteClick = async (event: MouseEvent) => {
     event.stopPropagation();
 
     if (!user) {
@@ -121,10 +122,10 @@ export function RoomCard({
       return;
     }
 
-    toggleFavorite(room.id);
+    await toggleFavorite(room.id, property.id);
   };
 
-  const getRoomTypeBadge = () => {
+  const roomTypeBadge = (() => {
     const types = {
       private: { label: 'Privado', color: 'bg-blue-100 text-blue-700' },
       shared: { label: 'Partilhado', color: 'bg-accent/15 text-accent' },
@@ -133,9 +134,8 @@ export function RoomCard({
     };
 
     return types[room.roomType];
-  };
+  })();
 
-  const roomTypeBadge = getRoomTypeBadge();
   const roomRating = getAverageRatingBreakdown(room.id);
   const availability = getAvailabilityLabel(room.availableFrom);
   const walk = walkMinutes(property.distanceToUniversity);
@@ -152,6 +152,7 @@ export function RoomCard({
       : (room.compatibilityScore || 0) >= 60
         ? 'text-accent'
         : 'text-muted-foreground';
+
   const compatibilityChipClasses =
     (room.compatibilityScore || 0) >= 80
       ? 'bg-green-50 text-green-700 ring-1 ring-green-200'
@@ -411,7 +412,6 @@ export function RoomCard({
             <Heart className={`w-4 h-4 ${isFav ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
           </button>
         )}
-
       </div>
 
       <div className="p-5">
