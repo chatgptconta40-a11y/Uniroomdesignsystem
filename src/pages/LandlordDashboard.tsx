@@ -1,14 +1,36 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Home, FileText, MessageCircle, Star, TrendingUp, Eye, Heart, PlusCircle,
-  Clock, User, Wrench, AlertCircle, PauseCircle, Camera, BarChart2,
-  ChevronRight, BedDouble, Users, RefreshCw, CalendarDays, Bell,
-  Ban, ShieldOff, ShieldCheck, CheckCircle2, ArrowUpRight,
-  CreditCard, Receipt, ClipboardCheck,
+  AlertCircle,
+  ArrowUpRight,
+  BarChart2,
+  BedDouble,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  CreditCard,
+  Eye,
+  FileText,
+  Heart,
+  Home,
+  MessageCircle,
+  PauseCircle,
+  PlusCircle,
+  Receipt,
+  RefreshCw,
+  ShieldCheck,
+  Star,
+  TrendingUp,
+  Users,
+  Wrench,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
+import { Card } from '../components/Card';
+import { Button } from '../components/Button';
+import { Badge } from '../components/Badge';
+import { TrustBadge } from '../components/TrustBadge';
+import { LandlordContractManager } from '../components/LandlordContractManager';
 import { getLandlordMetrics, getDashboardActivity, getPerformanceData } from '../data/mockLandlord';
 import { getPendingCountForLandlord } from '../data/mockLandlordCandidates';
 import { getMaintenanceStats } from '../data/mockMaintenance';
@@ -20,29 +42,74 @@ import {
   upsertDefaultPaymentMethod,
   refreshHousingFinanceState,
 } from '../data/mockHousingFinance';
-import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { Badge } from '../components/Badge';
 import { isUserSuspended, isUserBlockedFromPublishing, getUserState } from '../data/mockAdminUsersState';
-import { TrustBadge } from '../components/TrustBadge';
 import { getTrustScore, getVerificationStatus } from '../data/mockTrust';
+
+function formatTime(date: Date) {
+  const now = new Date();
+  const diff = now.getTime() - new Date(date).getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+  if (hours < 1) return 'Agora mesmo';
+  if (hours < 24) return `Há ${hours}h`;
+  if (days === 1) return 'Ontem';
+  return `Há ${days} dias`;
+}
+
+function getActivityIcon(type: string) {
+  switch (type) {
+    case 'application':
+      return <FileText className="w-5 h-5 text-blue-500" />;
+    case 'message':
+      return <MessageCircle className="w-5 h-5 text-green-500" />;
+    case 'favorite':
+      return <Heart className="w-5 h-5 text-red-500" />;
+    case 'view':
+      return <Eye className="w-5 h-5 text-muted-foreground" />;
+    default:
+      return <BellDot />;
+  }
+}
+
+function BellDot() {
+  return <div className="w-5 h-5 rounded-full bg-primary/20" />;
+}
+
+function getActivityLabel(type: string) {
+  switch (type) {
+    case 'application':
+      return 'Nova candidatura';
+    case 'message':
+      return 'Nova mensagem';
+    case 'favorite':
+      return 'Adicionado aos favoritos';
+    case 'view':
+      return 'Visualização';
+    default:
+      return type;
+  }
+}
 
 export function LandlordDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { properties, rooms } = useProperties();
+  const { properties, rooms, refreshProperties } = useProperties();
   const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
 
-  // ── Data (messages, chart, maintenance, activities) ─────────────────────────
-  const mockMetrics = getLandlordMetrics(user?.id || '');
-  const activities = getDashboardActivity(user?.id || '');
-  const performanceData = getPerformanceData(user?.id || '', 30);
-  const maintenanceStats = getMaintenanceStats(user?.id || '');
-  const financeSummary = getLandlordFinanceSummary(user?.id || '');
+  const userId = user?.id || '';
+
+  const mockMetrics = getLandlordMetrics(userId);
+  const activities = getDashboardActivity(userId);
+  const performanceData = getPerformanceData(userId, 30);
+  const maintenanceStats = getMaintenanceStats(userId);
+  const financeSummary = getLandlordFinanceSummary(userId);
   const defaultPaymentMethod = financeSummary.methods.find(method => method.isDefault) || financeSummary.methods[0];
 
   useEffect(() => {
     if (!user) return;
+
+    void refreshProperties();
 
     refreshHousingFinanceState()
       .then(() => setFinanceRefreshKey(key => key + 1))
@@ -51,69 +118,65 @@ export function LandlordDashboard() {
       });
   }, [user?.id]);
 
-  // ── All stats derived from PropertiesContext ─────────────────────────────────
-  const myProperties = properties.filter(p => p.landlordId === user?.id && p.status !== 'archived');
-  const myPropertyIds = new Set(myProperties.map(p => p.id));
-  const myRooms = rooms.filter(r => myPropertyIds.has(r.propertyId));
+  const myProperties = useMemo(
+    () => properties.filter(property => property.landlordId === userId && property.status !== 'archived'),
+    [properties, userId],
+  );
 
-  const activeProperties = myProperties.filter(p => p.status === 'active');
-  const pausedProperties = myProperties.filter(p => p.status === 'paused');
-  const draftProperties = myProperties.filter(p => p.status === 'draft');
-  const lowViewProperties = myProperties.filter(p => p.status === 'active' && p.views < 50);
-  const noImageProperties = myProperties.filter(p => p.status !== 'draft' && p.images.length === 0);
-  const totalViews = myProperties.reduce((acc, p) => acc + p.views, 0);
+  const myPropertyIds = useMemo(
+    () => new Set(myProperties.map(property => property.id)),
+    [myProperties],
+  );
+
+  const myRooms = useMemo(
+    () => rooms.filter(room => myPropertyIds.has(room.propertyId)),
+    [rooms, myPropertyIds],
+  );
+
+  const activeProperties = myProperties.filter(property => property.status === 'active');
+  const pausedProperties = myProperties.filter(property => property.status === 'paused');
+  const draftProperties = myProperties.filter(property => property.status === 'draft');
+  const lowViewProperties = myProperties.filter(property => property.status === 'active' && property.views < 50);
+  const noImageProperties = myProperties.filter(property => property.status !== 'draft' && property.images.length === 0);
+
+  const totalViews = myProperties.reduce((acc, property) => acc + property.views, 0);
 
   const roomStats = {
     total: myRooms.length,
-    available: myRooms.filter(r => r.status === 'available').length,
-    occupied: myRooms.filter(r => r.status === 'occupied').length,
-    reserved: myRooms.filter(r => r.status === 'reserved').length,
-    draft: myRooms.filter(r => r.status === 'draft').length,
-    paused: myRooms.filter(r => r.status === 'paused').length,
+    available: myRooms.filter(room => room.status === 'available').length,
+    occupied: myRooms.filter(room => room.status === 'occupied').length,
+    reserved: myRooms.filter(room => room.status === 'reserved').length,
+    draft: myRooms.filter(room => room.status === 'draft').length,
+    paused: myRooms.filter(room => room.status === 'paused').length,
   };
 
-  const now = new Date();
-  const in60Days = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-
-  const upcomingVacancies = myRooms.filter(r => {
-    if (r.status === 'available') {
-      const avail = new Date(r.availableFrom);
-      return avail > now && avail <= in60Days;
-    }
-    return false;
-  });
-
-  const draftRooms = myRooms.filter(r => r.status === 'draft');
+  const draftRooms = myRooms.filter(room => room.status === 'draft');
 
   const pendingApplicationsCount = getPendingCountForLandlord(
-    user?.id || '',
-    myProperties.map(p => p.id),
+    userId,
+    myProperties.map(property => property.id),
   );
 
-  const lateRentRooms = myRooms.filter(r => {
-    if (r.status !== 'occupied' || !r.moveInDate) return false;
-    const daysSince = (now.getTime() - new Date(r.moveInDate).getTime()) / (1000 * 60 * 60 * 24);
-    return daysSince > 60;
-  });
-
-  const showJulyReminder = now.getMonth() < 6;
-
-  const recentActivities = activities.slice(0, 5);
   const isAccountSuspended = user ? isUserSuspended(user.id) : false;
   const isBlockedFromPublishing = user ? isUserBlockedFromPublishing(user.id) : false;
   const suspensionReason = user ? getUserState(user.id)?.reason : undefined;
+
   const verificationStatus = user ? getVerificationStatus(user.id) : null;
   const trustScore = user ? getTrustScore(user.id) : null;
   const isVerifiedLandlord = verificationStatus?.level === 'gold' || verificationStatus?.documentVerified;
+
   const occupiedOrReservedRooms = roomStats.occupied + roomStats.reserved;
   const occupancyRate = roomStats.total > 0
     ? Math.round((occupiedOrReservedRooms / roomStats.total) * 100)
     : 0;
+
   const monthlyPotential = myRooms.reduce((total, room) => total + room.price + (room.utilities ?? 0), 0);
+
   const financeAlertsCount =
     financeSummary.pendingPayments.length +
     financeSummary.latePayments.length +
     financeSummary.proofPayments.length;
+
   const openWorkCount =
     pendingApplicationsCount +
     (mockMetrics?.unreadMessages ?? 0) +
@@ -122,6 +185,7 @@ export function LandlordDashboard() {
     draftRooms.length +
     draftProperties.length +
     financeAlertsCount;
+
   const portfolioScore = [
     activeProperties.length > 0,
     roomStats.available > 0 || roomStats.occupied > 0 || roomStats.reserved > 0,
@@ -129,6 +193,7 @@ export function LandlordDashboard() {
     lowViewProperties.length === 0,
     isVerifiedLandlord,
   ].filter(Boolean).length;
+
   const portfolioScorePercent = Math.round((portfolioScore / 5) * 100);
 
   const handleCreateDefaultPaymentMethod = () => {
@@ -164,7 +229,7 @@ export function LandlordDashboard() {
     },
     financeSummary.latePayments.length > 0 && {
       label: `${financeSummary.latePayments.length} renda${financeSummary.latePayments.length > 1 ? 's' : ''} em atraso`,
-      route: '/landlord/listings',
+      route: '/landlord/dashboard',
       tone: 'text-red-700 bg-red-50 border-red-100',
     },
     financeSummary.proofPayments.length > 0 && {
@@ -184,50 +249,24 @@ export function LandlordDashboard() {
     },
   ].filter(Boolean) as { label: string; route: string; tone: string }[];
 
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case 'application':
-        return <FileText className="w-5 h-5 text-blue-500" />;
-      case 'message':
-        return <MessageCircle className="w-5 h-5 text-green-500" />;
-      case 'favorite':
-        return <Heart className="w-5 h-5 text-red-500" />;
-      case 'view':
-        return <Eye className="w-5 h-5 text-muted-foreground" />;
-      default:
-        return null;
-    }
-  };
-
-  const getActivityLabel = (type: string) => {
-    switch (type) {
-      case 'application':
-        return 'Nova candidatura';
-      case 'message':
-        return 'Nova mensagem';
-      case 'favorite':
-        return 'Adicionado aos favoritos';
-      case 'view':
-        return 'Visualização';
-      default:
-        return type;
-    }
-  };
-
-  const formatTime = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-    if (hours < 1) return 'Agora mesmo';
-    if (hours < 24) return `Há ${hours}h`;
-    if (days === 1) return 'Ontem';
-    return `Há ${days} dias`;
-  };
-
+  const recentActivities = activities.slice(0, 5);
   const chartData = performanceData.slice(-7);
-  const maxViews = Math.max(...chartData.map(d => d.views));
+  const maxViews = Math.max(1, ...chartData.map(item => item.views));
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <Card className="p-8 max-w-md text-center">
+          <Home className="w-12 h-12 text-primary mx-auto mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Sessão necessária</h1>
+          <p className="text-muted-foreground mb-6">
+            Inicia sessão como senhorio para veres o dashboard.
+          </p>
+          <Button onClick={() => navigate('/login')}>Iniciar sessão</Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -246,10 +285,10 @@ export function LandlordDashboard() {
           <Card className="w-full xl:w-[420px] p-5 border-border/80 bg-card">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
-                <p className="text-sm font-semibold text-foreground">{user?.name}</p>
+                <p className="text-sm font-semibold text-foreground">{user.name}</p>
                 <p className="text-xs text-muted-foreground">Conta de senhorio</p>
               </div>
-              <TrustBadge userId={user?.id || ''} size="sm" showLabel />
+              <TrustBadge userId={user.id} size="sm" showLabel />
             </div>
 
             <div className="grid grid-cols-3 gap-3 mb-4">
@@ -279,6 +318,7 @@ export function LandlordDashboard() {
                 <PlusCircle className="w-4 h-4" />
                 Novo alojamento
               </Button>
+
               <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate('/verification')}>
                 <ShieldCheck className="w-4 h-4" />
                 Verificação
@@ -287,225 +327,52 @@ export function LandlordDashboard() {
           </Card>
         </div>
 
-        {/* Account suspension banner */}
         {isAccountSuspended && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-2xl flex items-start gap-3">
-            <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Ban className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold text-red-800 mb-1">Conta suspensa temporariamente</p>
-              <p className="text-sm text-red-700">
-                A tua conta foi suspensa pela equipa UniRoom. Não podes publicar, reativar ou criar novos anúncios enquanto esta suspensão estiver ativa.
-                {suspensionReason && <span> Motivo: <span className="font-medium">{suspensionReason}</span>.</span>}
-              </p>
-              <p className="text-xs text-red-600 mt-1">
-                Para resolver, contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span>.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Blocked from publishing banner */}
-        {!isAccountSuspended && isBlockedFromPublishing && (
-          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-start gap-3">
-            <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
-              <ShieldOff className="w-5 h-5 text-orange-600" />
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold text-orange-800 mb-1">Publicação de novos anúncios bloqueada</p>
-              <p className="text-sm text-orange-700">
-                A tua conta está impedida de publicar novos anúncios pela equipa UniRoom. Podes continuar a gerir os teus anúncios existentes e responder a candidaturas.
-              </p>
-              <p className="text-xs text-orange-600 mt-1">
-                Contacta o suporte em <span className="font-medium">suporte@uniroom.pt</span> para mais informações.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* July republication reminder */}
-        {showJulyReminder && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
-            <Bell className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-amber-800">Lembrete: novo ano letivo em setembro</p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Julho é a altura certa para republicar quartos para o ano letivo 2026/27. Estudantes começam a procurar com antecedência.
-              </p>
-            </div>
-            <button
-              onClick={() => navigate('/landlord/listings')}
-              className="flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:text-amber-900 whitespace-nowrap"
-            >
-              Ver alojamentos
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        <Card className="p-5 md:p-6 mb-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-6">
-            <div>
-              <div className="flex items-center justify-between gap-4 mb-5">
-                <div>
-                  <h2 className="text-lg font-bold text-foreground">Resumo operacional</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Leitura rápida do estado atual do teu portefólio.
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => navigate('/landlord/analytics')}>
-                  Ver detalhe
-                  <ArrowUpRight className="w-4 h-4" />
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Ocupação</p>
-                  <p className="text-2xl font-bold text-foreground">{occupancyRate}%</p>
-                  <p className="text-xs text-muted-foreground mt-1">{occupiedOrReservedRooms}/{roomStats.total || 0} quartos</p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Receita potencial</p>
-                  <p className="text-2xl font-bold text-foreground">€{monthlyPotential}</p>
-                  <p className="text-xs text-muted-foreground mt-1">rendas + despesas/mês</p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Visibilidade</p>
-                  <p className="text-2xl font-bold text-foreground">{totalViews}</p>
-                  <p className="text-xs text-muted-foreground mt-1">visualizações totais</p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Saúde</p>
-                  <p className="text-2xl font-bold text-foreground">{portfolioScorePercent}%</p>
-                  <p className="text-xs text-muted-foreground mt-1">{portfolioScore}/5 critérios bons</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-muted/20 p-4">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Prioridades</h3>
-                  <p className="text-xs text-muted-foreground">O que merece atenção primeiro.</p>
-                </div>
-                {priorityTasks.length === 0 && (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                )}
-              </div>
-
-              {priorityTasks.length > 0 ? (
-                <div className="space-y-2">
-                  {priorityTasks.slice(0, 4).map(task => (
-                    <button
-                      key={task.label}
-                      onClick={() => navigate(task.route)}
-                      className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-white ${task.tone}`}
-                    >
-                      <span className="text-xs font-medium leading-snug">{task.label}</span>
-                      <ChevronRight className="w-4 h-4 flex-shrink-0" />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
-                  <p className="text-sm font-semibold text-emerald-800">Tudo controlado</p>
-                  <p className="text-xs text-emerald-700 mt-1">
-                    Não há candidaturas, mensagens ou alertas urgentes por tratar.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6 mb-6 border-blue-100 bg-gradient-to-br from-blue-50 to-white">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-
+          <Card className="p-5 mb-6 border-red-200 bg-red-50">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
               <div>
-                <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <h2 className="text-lg font-bold text-foreground">
-                    Estado da conta de senhorio
-                  </h2>
-
-                  <TrustBadge userId={user?.id || ''} size="sm" showLabel />
-                </div>
-
-                <p className="text-sm text-muted-foreground max-w-2xl">
-                  {isVerifiedLandlord
-                    ? 'A tua conta já transmite sinais fortes de confiança aos estudantes. Mantém os dados dos alojamentos atualizados para reforçar a credibilidade.'
-                    : 'Completa a verificação para aumentar a confiança dos estudantes antes das visitas e candidaturas.'}
+                <h3 className="font-bold text-red-800">Conta suspensa</h3>
+                <p className="text-sm text-red-700 mt-1">
+                  {suspensionReason || 'A tua conta está suspensa pela equipa UniRoom.'}
                 </p>
-
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
-                    <p className="text-xs text-muted-foreground">Confiança</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {trustScore?.level === 'trusted' ? 'Elevada' : 'Em construção'}
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
-                    <p className="text-xs text-muted-foreground">Pontuação</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {trustScore?.score ?? 0}/100
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
-                    <p className="text-xs text-muted-foreground">Verificação</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {verificationStatus?.level === 'gold'
-                        ? 'Completa'
-                        : verificationStatus?.level === 'silver'
-                        ? 'Intermédia'
-                        : verificationStatus?.level === 'bronze'
-                        ? 'Básica'
-                        : 'Pendente'}
-                    </p>
-                  </div>
-                </div>
               </div>
             </div>
+          </Card>
+        )}
 
-            <Button
-              onClick={() => navigate('/verification')}
-              className="w-full lg:w-auto"
-            >
-              Gerir verificação
-            </Button>
-          </div>
-        </Card>
-
-        {/* Top metric cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
           <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/listings')}>
             <div className="flex items-center justify-between mb-4">
               <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center">
                 <Home className="w-7 h-7 text-primary" />
               </div>
-              <Badge variant="default">Ativos</Badge>
+              <Badge variant="outline">{activeProperties.length} ativos</Badge>
             </div>
-            <h3 className="text-4xl font-bold text-foreground mb-3">{activeProperties.length}</h3>
-            <p className="text-sm font-medium text-gray-600">Alojamentos Ativos</p>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{myProperties.length}</h3>
+            <p className="text-sm font-medium text-gray-600">Alojamentos</p>
+          </Card>
+
+          <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/listings')}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 bg-secondary/10 rounded-xl flex items-center justify-center">
+                <BedDouble className="w-7 h-7 text-secondary" />
+              </div>
+              <Badge variant="success">{roomStats.available} disponíveis</Badge>
+            </div>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{roomStats.total}</h3>
+            <p className="text-sm font-medium text-gray-600">Quartos</p>
           </Card>
 
           <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/applications')}>
             <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 bg-secondary/10 rounded-xl flex items-center justify-center">
-                <FileText className="w-7 h-7 text-secondary" />
+              <div className="w-14 h-14 bg-blue-50 rounded-xl flex items-center justify-center">
+                <FileText className="w-7 h-7 text-blue-600" />
               </div>
-              {pendingApplicationsCount > 0 && (
-                <Badge variant="success">{pendingApplicationsCount}</Badge>
-              )}
+              {pendingApplicationsCount > 0 && <Badge variant="warning">{pendingApplicationsCount}</Badge>}
             </div>
             <h3 className="text-4xl font-bold text-foreground mb-3">{pendingApplicationsCount}</h3>
-            <p className="text-sm font-medium text-gray-600">Candidaturas Pendentes</p>
+            <p className="text-sm font-medium text-gray-600">Candidaturas pendentes</p>
           </Card>
 
           <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/messages')}>
@@ -513,27 +380,94 @@ export function LandlordDashboard() {
               <div className="w-14 h-14 bg-accent/10 rounded-xl flex items-center justify-center">
                 <MessageCircle className="w-7 h-7 text-accent-foreground" />
               </div>
-              {(mockMetrics?.unreadMessages ?? 0) > 0 && (
-                <Badge variant="warning">{mockMetrics!.unreadMessages}</Badge>
-              )}
+              {(mockMetrics?.unreadMessages ?? 0) > 0 && <Badge variant="warning">{mockMetrics!.unreadMessages}</Badge>}
             </div>
             <h3 className="text-4xl font-bold text-foreground mb-3">{mockMetrics?.unreadMessages ?? 0}</h3>
-            <p className="text-sm font-medium text-gray-600">Mensagens Novas</p>
+            <p className="text-sm font-medium text-gray-600">Mensagens novas</p>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 mb-6">
+          <Card className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-foreground mb-1">Resumo operacional</h2>
+                <p className="text-sm text-muted-foreground">
+                  Visão rápida do estado do teu portefólio.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => navigate('/landlord/analytics')}>
+                <BarChart2 className="w-4 h-4 mr-1.5" />
+                Ver analytics
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="rounded-xl bg-muted/40 p-4">
+                <p className="text-xs text-muted-foreground mb-1">Ocupação</p>
+                <p className="text-2xl font-bold text-foreground">{occupancyRate}%</p>
+              </div>
+              <div className="rounded-xl bg-muted/40 p-4">
+                <p className="text-xs text-muted-foreground mb-1">Views</p>
+                <p className="text-2xl font-bold text-foreground">{totalViews}</p>
+              </div>
+              <div className="rounded-xl bg-muted/40 p-4">
+                <p className="text-xs text-muted-foreground mb-1">Receita potencial</p>
+                <p className="text-2xl font-bold text-foreground">{formatCurrency(monthlyPotential)}</p>
+              </div>
+              <div className="rounded-xl bg-muted/40 p-4">
+                <p className="text-xs text-muted-foreground mb-1">Saúde do perfil</p>
+                <p className="text-2xl font-bold text-foreground">{portfolioScorePercent}%</p>
+              </div>
+            </div>
+
+            <div className="h-40 flex items-end gap-2 border-t border-border pt-5">
+              {chartData.map((item, index) => {
+                const height = Math.max(10, Math.round((item.views / maxViews) * 100));
+                return (
+                  <div key={index} className="flex-1 flex flex-col items-center gap-2">
+                    <div
+                      className="w-full rounded-t-lg bg-primary/70"
+                      style={{ height: `${height}%` }}
+                      title={`${item.views} visualizações`}
+                    />
+                    <span className="text-[10px] text-muted-foreground">{index + 1}</span>
+                  </div>
+                );
+              })}
+            </div>
           </Card>
 
-          <Card className="p-6" hover>
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 bg-amber-50 rounded-xl flex items-center justify-center">
-                <Star className="w-7 h-7 text-amber-500" />
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Prioridades</h2>
+                <p className="text-sm text-muted-foreground">O que precisa de atenção.</p>
               </div>
-              {mockMetrics?.averageRating && mockMetrics.averageRating > 0 && (
-                <Badge variant="default">Avaliação</Badge>
-              )}
+              <RefreshCw className="w-5 h-5 text-muted-foreground" />
             </div>
-            <h3 className="text-4xl font-bold text-foreground mb-3">
-              {mockMetrics?.averageRating ? mockMetrics.averageRating.toFixed(1) : '—'}
-            </h3>
-            <p className="text-sm font-medium text-gray-600">Rating Médio</p>
+
+            {priorityTasks.length === 0 ? (
+              <div className="rounded-xl bg-green-50 border border-green-100 p-4">
+                <p className="text-sm font-semibold text-green-800">Tudo em ordem</p>
+                <p className="text-xs text-green-700 mt-1">
+                  Não há tarefas urgentes neste momento.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {priorityTasks.slice(0, 7).map(task => (
+                  <button
+                    key={task.label}
+                    onClick={() => navigate(task.route)}
+                    className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left text-sm font-medium ${task.tone}`}
+                  >
+                    <span>{task.label}</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
 
@@ -573,7 +507,7 @@ export function LandlordDashboard() {
                 <div className="rounded-2xl border border-border bg-muted/20 p-4">
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <p className="text-xs text-muted-foreground">Pendentes</p>
-                    <Clock className="w-4 h-4 text-amber-600" />
+                    <ClockIcon />
                   </div>
                   <p className="text-2xl font-bold text-foreground">{financeSummary.pendingPayments.length}</p>
                   <p className="text-xs text-muted-foreground mt-1">rendas por confirmar</p>
@@ -682,6 +616,11 @@ export function LandlordDashboard() {
           </div>
         </Card>
 
+        <LandlordContractManager
+          landlordId={user.id}
+          onUpdated={() => setFinanceRefreshKey(key => key + 1)}
+        />
+
         <Card className="p-5 md:p-6 mb-8 bg-gradient-to-br from-accent/5 to-accent/10 border-accent/20 cursor-pointer" hover onClick={() => navigate('/landlord/maintenance')}>
           <div className="flex flex-col md:flex-row md:items-center gap-5">
             <div className="w-12 h-12 bg-accent rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
@@ -714,13 +653,12 @@ export function LandlordDashboard() {
                 </div>
               </div>
             </div>
-            <Button className="w-full md:w-auto" variant="primary" onClick={(e) => { e.stopPropagation(); navigate('/landlord/maintenance'); }}>
+            <Button className="w-full md:w-auto" variant="primary" onClick={(event) => { event.stopPropagation(); navigate('/landlord/maintenance'); }}>
               Ver pedidos
             </Button>
           </div>
         </Card>
 
-        {/* Room-level stats */}
         {myRooms.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3">
@@ -752,431 +690,141 @@ export function LandlordDashboard() {
                 >
                   <div className="flex items-center justify-center gap-1.5 mb-1">
                     <span className={`w-2 h-2 rounded-full ${stat.dot}`} />
-                    <p className="text-xl font-bold">{stat.value}</p>
+                    <span className="text-xs font-medium">{stat.label}</span>
                   </div>
-                  <p className="text-xs opacity-80">{stat.label}</p>
+                  <p className="text-2xl font-bold">{stat.value}</p>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Upcoming vacancies */}
-        {upcomingVacancies.length > 0 && (
-          <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <CalendarDays className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-bold text-foreground">Quartos a libertar nos próximos 60 dias</h2>
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Atividade recente</h2>
+                <p className="text-sm text-muted-foreground">Últimos movimentos no teu portefólio.</p>
+              </div>
+              <TrendingUp className="w-5 h-5 text-muted-foreground" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {upcomingVacancies.map(room => {
-                const prop = myProperties.find(p => p.id === room.propertyId);
-                const daysUntil = Math.ceil((new Date(room.availableFrom).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                return (
-                  <div
-                    key={room.id}
-                    className="flex items-center gap-3 p-3 border border-border rounded-xl bg-card hover:border-primary/30 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/landlord/property/${room.propertyId}`)}
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-                      <CalendarDays className="w-4 h-4 text-amber-600" />
+
+            {recentActivities.length === 0 ? (
+              <div className="py-10 text-center text-muted-foreground text-sm">
+                Ainda não há atividade recente.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentActivities.map(activity => (
+                  <div key={activity.id} className="flex items-start gap-3 p-3 rounded-xl border border-border bg-card">
+                    <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center flex-shrink-0">
+                      {getActivityIcon(activity.type)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{room.title}</p>
-                      <p className="text-xs text-muted-foreground truncate">{prop?.title}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-bold text-amber-600">{daysUntil}d</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {new Date(room.availableFrom).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <p className="font-semibold text-sm text-foreground">{getActivityLabel(activity.type)}</p>
+                        <span className="text-xs text-muted-foreground">{formatTime(activity.createdAt)}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{activity.description}</p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Draft rooms quick publish */}
-        {draftRooms.length > 0 && (
-          <div className="mb-6">
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <BedDouble className="w-5 h-5 text-blue-700" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-blue-800 mb-1">
-                    {draftRooms.length} quarto{draftRooms.length > 1 ? 's' : ''} em rascunho
-                  </p>
-                  <p className="text-xs text-blue-700 mb-3">
-                    {draftRooms.map(r => r.title).join(', ')} — prontos para publicar para estudantes.
-                  </p>
-                  <Button size="sm" onClick={() => navigate('/landlord/listings')}>
-                    <RefreshCw className="w-4 h-4 mr-1.5" />
-                    Publicar quartos em rascunho
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Quick actions */}
-        <div className="mb-10 flex flex-wrap gap-4">
-          <Button
-            size="lg"
-            variant="primary"
-            onClick={() => navigate('/landlord/new-listing')}
-            disabled={isAccountSuspended || isBlockedFromPublishing}
-            title={isAccountSuspended ? 'Conta suspensa — não é possível publicar' : isBlockedFromPublishing ? 'Publicação bloqueada — contacta o suporte' : undefined}
-          >
-            <PlusCircle className="w-5 h-5" />
-            Publicar Novo Alojamento
-          </Button>
-          <Button size="lg" variant="outline" onClick={() => navigate('/landlord/listings')}>
-            <Home className="w-5 h-5" />
-            Gerir Alojamentos
-          </Button>
-          <Button size="lg" variant="outline" onClick={() => navigate('/landlord/analytics')}>
-            <TrendingUp className="w-5 h-5" />
-            Ver Analytics
-          </Button>
-        </div>
-
-        {/* Ações Importantes */}
-        {(() => {
-          const pending = pendingApplicationsCount;
-          const unread = mockMetrics?.unreadMessages ?? 0;
-
-          const actions: {
-            key: string;
-            icon: React.ReactNode;
-            iconBg: string;
-            title: string;
-            description: string;
-            actionLabel: string;
-            route: string;
-            badge?: number;
-          }[] = [];
-
-          if (pending > 0) {
-            actions.push({
-              key: 'applications',
-              icon: <FileText className="w-5 h-5 text-blue-600" />,
-              iconBg: 'bg-blue-50',
-              title: `${pending} candidatura${pending > 1 ? 's' : ''} pendente${pending > 1 ? 's' : ''}`,
-              description: 'Estudantes à espera de uma resposta tua.',
-              actionLabel: 'Ver candidaturas',
-              route: '/landlord/applications',
-              badge: pending,
-            });
-          }
-
-          if (unread > 0) {
-            actions.push({
-              key: 'messages',
-              icon: <MessageCircle className="w-5 h-5 text-emerald-600" />,
-              iconBg: 'bg-emerald-50',
-              title: `${unread} mensagem${unread > 1 ? 'ns' : ''} não lida${unread > 1 ? 's' : ''}`,
-              description: 'Há conversas que ainda não respondeste.',
-              actionLabel: 'Ver mensagens',
-              route: '/messages',
-              badge: unread,
-            });
-          }
-
-          if (financeSummary.proofPayments.length > 0) {
-            actions.push({
-              key: 'proofs',
-              icon: <ClipboardCheck className="w-5 h-5 text-primary" />,
-              iconBg: 'bg-primary/10',
-              title: `${financeSummary.proofPayments.length} comprovativo${financeSummary.proofPayments.length > 1 ? 's' : ''} por validar`,
-              description: 'Estudantes carregaram comprovativos de pagamento.',
-              actionLabel: 'Ver painel financeiro',
-              route: '/landlord/dashboard',
-              badge: financeSummary.proofPayments.length,
-            });
-          }
-
-          if (pausedProperties.length > 0) {
-            actions.push({
-              key: 'paused',
-              icon: <PauseCircle className="w-5 h-5 text-amber-600" />,
-              iconBg: 'bg-amber-50',
-              title: `${pausedProperties.length} alojamento${pausedProperties.length > 1 ? 's' : ''} pausado${pausedProperties.length > 1 ? 's' : ''}`,
-              description: pausedProperties.map(p => p.title).join(', '),
-              actionLabel: 'Reativar ou rever',
-              route: '/landlord/listings',
-            });
-          }
-
-          if (draftProperties.length > 0) {
-            actions.push({
-              key: 'draftProps',
-              icon: <Home className="w-5 h-5 text-slate-600" />,
-              iconBg: 'bg-slate-50',
-              title: `${draftProperties.length} alojamento${draftProperties.length > 1 ? 's' : ''} em rascunho`,
-              description: `${draftProperties.map(p => p.title).join(', ')} — ainda não visível para estudantes.`,
-              actionLabel: 'Publicar alojamentos',
-              route: '/landlord/listings',
-              badge: draftProperties.length,
-            });
-          }
-
-          if (draftRooms.length > 0) {
-            actions.push({
-              key: 'drafts',
-              icon: <BedDouble className="w-5 h-5 text-blue-600" />,
-              iconBg: 'bg-blue-50',
-              title: `${draftRooms.length} quarto${draftRooms.length > 1 ? 's' : ''} em rascunho`,
-              description: `${draftRooms.map(r => r.title).join(', ')} — prontos para publicar.`,
-              actionLabel: 'Publicar quartos',
-              route: '/landlord/listings',
-              badge: draftRooms.length,
-            });
-          }
-
-          if (lowViewProperties.length > 0) {
-            actions.push({
-              key: 'lowviews',
-              icon: <BarChart2 className="w-5 h-5 text-purple-600" />,
-              iconBg: 'bg-purple-50',
-              title: `${lowViewProperties.length} alojamento${lowViewProperties.length > 1 ? 's' : ''} com poucas visitas`,
-              description: 'Alojamentos ativos com menos de 50 visualizações. Melhora o título ou adiciona mais fotos.',
-              actionLabel: 'Ver analytics',
-              route: '/landlord/analytics',
-            });
-          }
-
-          if (noImageProperties.length > 0) {
-            actions.push({
-              key: 'photos',
-              icon: <Camera className="w-5 h-5 text-rose-600" />,
-              iconBg: 'bg-rose-50',
-              title: `${noImageProperties.length} alojamento${noImageProperties.length > 1 ? 's' : ''} sem fotos`,
-              description: 'Anúncios com fotos recebem até 3× mais candidaturas. Adiciona imagens para melhorar a visibilidade.',
-              actionLabel: 'Editar alojamentos',
-              route: '/landlord/listings',
-            });
-          }
-
-          if (lateRentRooms.length > 0 || financeSummary.latePayments.length > 0) {
-            const lateTotal = Math.max(lateRentRooms.length, financeSummary.latePayments.length);
-            actions.push({
-              key: 'lateRent',
-              icon: <AlertCircle className="w-5 h-5 text-red-600" />,
-              iconBg: 'bg-red-50',
-              title: `${lateTotal} renda${lateTotal > 1 ? 's' : ''} com atraso`,
-              description: 'Quartos ocupados com rendas não confirmadas. Contacta os inquilinos.',
-              actionLabel: 'Ver alojamentos',
-              route: '/landlord/listings',
-              badge: lateTotal,
-            });
-          }
-
-          if (actions.length === 0) return null;
-
-          return (
-            <div className="mb-10">
-              <div className="flex items-center gap-2 mb-4">
-                <AlertCircle className="w-5 h-5 text-amber-500" />
-                <h2 className="text-xl font-bold text-foreground">Ações Importantes</h2>
-                <span className="text-sm text-muted-foreground">· {actions.length} item{actions.length > 1 ? 'ns' : ''} a tratar</span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {actions.map(action => (
-                  <Card
-                    key={action.key}
-                    className="p-5 cursor-pointer hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary"
-                    onClick={() => navigate(action.route)}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className={`w-10 h-10 ${action.iconBg} rounded-xl flex items-center justify-center flex-shrink-0`}>
-                        {action.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-semibold text-foreground text-sm leading-snug">{action.title}</p>
-                          {action.badge !== undefined && (
-                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary text-white text-[10px] font-bold flex-shrink-0">
-                              {action.badge}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3">{action.description}</p>
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
-                          {action.actionLabel}
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </span>
-                      </div>
-                    </div>
-                  </Card>
                 ))}
               </div>
-            </div>
-          );
-        })()}
-
-        {/* Analytics & History */}
-        <div className="flex items-center gap-2 mb-6 pt-2 border-t border-border">
-          <BarChart2 className="w-5 h-5 text-muted-foreground" />
-          <h2 className="text-lg font-bold text-foreground">Analytics e Histórico</h2>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2 p-8">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-2xl font-bold text-foreground">Desempenho</h2>
-                <p className="text-sm text-muted-foreground">Últimos 7 dias</p>
-              </div>
-              <TrendingUp className="w-6 h-6 text-green-500" />
-            </div>
-
-            <div className="space-y-4">
-              {chartData.map((data, index) => {
-                const percentage = (data.views / maxViews) * 100;
-                const date = new Date(data.date);
-                const dayName = date.toLocaleDateString('pt-PT', { weekday: 'short' });
-
-                return (
-                  <div key={index} className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground font-medium capitalize">{dayName}</span>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Eye className="w-3 h-3" />
-                          {data.views}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <FileText className="w-3 h-3" />
-                          {data.applications}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MessageCircle className="w-3 h-3" />
-                          {data.messages}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-primary to-blue-600 h-2 rounded-full transition-all"
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-6 pt-6 border-t flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <Eye className="w-4 h-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Visualizações</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Candidaturas</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <MessageCircle className="w-4 h-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Mensagens</span>
-              </div>
-            </div>
+            )}
           </Card>
 
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-bold text-foreground">Atividade Recente</h2>
-                <p className="text-sm text-muted-foreground">Últimas ações</p>
-              </div>
-              <Clock className="w-6 h-6 text-gray-400" />
-            </div>
-
-            <div className="space-y-4">
-              {recentActivities.map((activity) => (
-                <div
-                  key={activity.id}
-                  className={`flex items-start gap-4 p-3 rounded-lg transition-colors hover:bg-muted cursor-pointer ${
-                    !activity.read ? 'bg-primary/5' : ''
-                  }`}
-                  onClick={() => {
-                    if (activity.type === 'application') {
-                      navigate('/landlord/applications');
-                    } else if (activity.type === 'message') {
-                      navigate('/messages');
-                    } else if (activity.type === 'view' || activity.type === 'favorite') {
-                      navigate('/landlord/analytics');
-                    }
-                  }}
-                >
-                  <div className="flex-shrink-0 mt-1">
-                    {getActivityIcon(activity.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {getActivityLabel(activity.type)}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">{activity.listingTitle}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <User className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">{activity.userName}</span>
-                    </div>
-                  </div>
-                  <span className="text-xs text-muted-foreground flex-shrink-0">
-                    {formatTime(activity.timestamp)}
-                  </span>
+          <div className="space-y-6">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">Qualidade dos anúncios</h2>
+                  <p className="text-sm text-muted-foreground">Checklist rápida.</p>
                 </div>
-              ))}
-            </div>
+                <Star className="w-5 h-5 text-amber-500" />
+              </div>
 
-            <Button variant="outline" className="w-full mt-4" size="sm" onClick={() => navigate('/landlord/analytics')}>
-              Ver Todas
-            </Button>
-          </Card>
-        </div>
+              <div className="space-y-3">
+                {[
+                  { label: 'Tem alojamentos ativos', done: activeProperties.length > 0 },
+                  { label: 'Tem quartos publicados', done: roomStats.available > 0 || roomStats.occupied > 0 || roomStats.reserved > 0 },
+                  { label: 'Fotos adicionadas', done: noImageProperties.length === 0 },
+                  { label: 'Boa visibilidade', done: lowViewProperties.length === 0 },
+                  { label: 'Senhorio verificado', done: Boolean(isVerifiedLandlord) },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center gap-3">
+                    <CheckCircle2 className={`w-5 h-5 ${item.done ? 'text-secondary' : 'text-muted-foreground/40'}`} />
+                    <span className={`text-sm ${item.done ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-          <Card className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                <Eye className="w-6 h-6 text-primary" />
+              <div className="mt-5 rounded-xl bg-muted/40 p-4">
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span className="text-muted-foreground">Pontuação</span>
+                  <span className="font-bold text-foreground">{portfolioScorePercent}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full bg-primary rounded-full" style={{ width: `${portfolioScorePercent}%` }} />
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Visualizações Totais</p>
-                <p className="text-2xl font-bold text-foreground">{totalViews}</p>
-              </div>
-            </div>
-          </Card>
+            </Card>
 
-          <Card className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-rose-100 rounded-xl flex items-center justify-center">
-                <Heart className="w-6 h-6 text-rose-600" />
+            <Card className="p-6">
+              <h2 className="text-lg font-bold text-foreground mb-4">Ações rápidas</h2>
+              <div className="space-y-2">
+                <Button className="w-full justify-start" onClick={() => navigate('/landlord/new-listing')} disabled={isAccountSuspended || isBlockedFromPublishing}>
+                  <PlusCircle className="w-4 h-4 mr-2" />
+                  Criar alojamento
+                </Button>
+                <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/listings')}>
+                  <Home className="w-4 h-4 mr-2" />
+                  Gerir alojamentos
+                </Button>
+                <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/applications')}>
+                  <Users className="w-4 h-4 mr-2" />
+                  Ver candidaturas
+                </Button>
+                <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/analytics')}>
+                  <ArrowUpRight className="w-4 h-4 mr-2" />
+                  Ver analytics
+                </Button>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total de Favoritos</p>
-                <p className="text-2xl font-bold text-foreground">{mockMetrics?.totalFavorites ?? 0}</p>
-              </div>
-            </div>
-          </Card>
+            </Card>
 
-          <Card className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                <Star className="w-6 h-6 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Avaliação Média</p>
-                <p className="text-2xl font-bold text-foreground">{mockMetrics?.averageRating.toFixed(1) ?? '—'}</p>
-              </div>
-            </div>
-          </Card>
+            {(pausedProperties.length > 0 || draftProperties.length > 0) && (
+              <Card className="p-6">
+                <h2 className="text-lg font-bold text-foreground mb-4">Estados especiais</h2>
+                <div className="space-y-3">
+                  {draftProperties.length > 0 && (
+                    <div className="flex items-center justify-between rounded-xl bg-muted/40 p-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm">Rascunhos</span>
+                      </div>
+                      <Badge variant="outline">{draftProperties.length}</Badge>
+                    </div>
+                  )}
+                  {pausedProperties.length > 0 && (
+                    <div className="flex items-center justify-between rounded-xl bg-amber-50 p-3">
+                      <div className="flex items-center gap-2">
+                        <PauseCircle className="w-4 h-4 text-amber-600" />
+                        <span className="text-sm text-amber-800">Pausados</span>
+                      </div>
+                      <Badge variant="warning">{pausedProperties.length}</Badge>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+function ClockIcon() {
+  return <div className="w-4 h-4 rounded-full border-2 border-amber-600" />;
 }

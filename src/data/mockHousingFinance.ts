@@ -75,91 +75,46 @@ export interface RentPayment {
   updatedAt: string;
 }
 
-function safeParse<T>(value: string | null, fallback: T): T {
+function read<T>(key: string): T[] {
   try {
-    return value ? JSON.parse(value) as T : fallback;
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
   } catch {
-    return fallback;
+    return [];
   }
 }
 
-function readLocal<T>(key: string): T[] {
-  const value = safeParse<T[]>(localStorage.getItem(key), []);
-  return Array.isArray(value) ? value : [];
-}
-
-function writeLocal<T>(key: string, value: T[]): void {
+function write<T>(key: string, value: T[]) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-let paymentMethodsCache: PaymentMethod[] = readLocal<PaymentMethod>(PAYMENT_METHODS_KEY);
-let rentalContractsCache: RentalContract[] = readLocal<RentalContract>(RENTAL_CONTRACTS_KEY);
-let rentPaymentsCache: RentPayment[] = readLocal<RentPayment>(RENT_PAYMENTS_KEY);
-
-function syncLocalStorage(): void {
-  writeLocal(PAYMENT_METHODS_KEY, paymentMethodsCache);
-  writeLocal(RENTAL_CONTRACTS_KEY, rentalContractsCache);
-  writeLocal(RENT_PAYMENTS_KEY, rentPaymentsCache);
-}
-
-function reloadLocalStorage(): void {
-  paymentMethodsCache = readLocal<PaymentMethod>(PAYMENT_METHODS_KEY);
-  rentalContractsCache = readLocal<RentalContract>(RENTAL_CONTRACTS_KEY);
-  rentPaymentsCache = readLocal<RentPayment>(RENT_PAYMENTS_KEY);
-}
-
-function uid(prefix: string): string {
+function uid(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function iso(date: Date): string {
+function iso(date: Date) {
   return date.toISOString();
 }
 
-function monthKey(date: Date): string {
+function monthKey(date: Date) {
   const copy = new Date(date);
   copy.setDate(1);
   return copy.toISOString().slice(0, 10);
 }
 
-function addMonths(date: Date, months: number): Date {
+function addMonths(date: Date, months: number) {
   const copy = new Date(date);
   copy.setMonth(copy.getMonth() + months);
   return copy;
 }
 
-function buildDueDate(period: Date, paymentDay: number): Date {
+function buildDueDate(period: Date, paymentDay: number) {
   const due = new Date(period);
   due.setDate(Math.min(Math.max(paymentDay || 1, 1), 28));
   return due;
 }
 
-function normalizePaymentStatus(payment: RentPayment): RentPayment {
-  if (payment.status === 'pending' && new Date(payment.dueDate).getTime() < Date.now()) {
-    return {
-      ...payment,
-      status: 'late',
-      updatedAt: iso(new Date()),
-    };
-  }
-
-  return payment;
-}
-
-export async function refreshHousingFinanceState(): Promise<void> {
-  reloadLocalStorage();
-
-  rentPaymentsCache = rentPaymentsCache.map(normalizePaymentStatus);
-  syncLocalStorage();
-}
-
-export async function hydrateHousingFinance(): Promise<void> {
-  await refreshHousingFinanceState();
-}
-
-void hydrateHousingFinance();
-
-export function formatCurrency(value: number): string {
+export function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-PT', {
     style: 'currency',
     currency: 'EUR',
@@ -167,7 +122,7 @@ export function formatCurrency(value: number): string {
   }).format(value || 0);
 }
 
-export function getPaymentStatusLabel(status: RentPaymentStatus): string {
+export function getPaymentStatusLabel(status: RentPaymentStatus) {
   const labels: Record<RentPaymentStatus, string> = {
     pending: 'Pendente',
     paid: 'Pago',
@@ -179,7 +134,7 @@ export function getPaymentStatusLabel(status: RentPaymentStatus): string {
   return labels[status];
 }
 
-export function getContractStatusLabel(status: ContractStatus): string {
+export function getContractStatusLabel(status: ContractStatus) {
   const labels: Record<ContractStatus, string> = {
     draft: 'Rascunho',
     sent: 'Enviado',
@@ -192,7 +147,7 @@ export function getContractStatusLabel(status: ContractStatus): string {
   return labels[status];
 }
 
-export function getPaymentMethodLabel(method?: PaymentMethod | null): string {
+export function getPaymentMethodLabel(method?: PaymentMethod | null) {
   if (!method) return 'Método não configurado';
   if (method.methodType === 'iban') return 'Transferência bancária';
   if (method.methodType === 'mbway') return 'MB WAY';
@@ -201,7 +156,7 @@ export function getPaymentMethodLabel(method?: PaymentMethod | null): string {
   return 'Outro método';
 }
 
-export function getPaymentMethodMainValue(method?: PaymentMethod | null): string {
+export function getPaymentMethodMainValue(method?: PaymentMethod | null) {
   if (!method) return '';
   if (method.methodType === 'iban') return method.iban || '';
   if (method.methodType === 'mbway') return method.mbwayPhone || '';
@@ -211,23 +166,18 @@ export function getPaymentMethodMainValue(method?: PaymentMethod | null): string
   return method.instructions || '';
 }
 
-export function ensureDefaultPaymentMethod(landlordId: string): PaymentMethod {
-  reloadLocalStorage();
-
-  const existing = paymentMethodsCache.find(
-    method => method.landlordId === landlordId && method.isDefault && method.active,
-  );
-
+export function ensureDefaultPaymentMethod(landlordId: string, landlordName = 'Senhorio UniRoom'): PaymentMethod {
+  const methods = read<PaymentMethod>(PAYMENT_METHODS_KEY);
+  const existing = methods.find(method => method.landlordId === landlordId && method.isDefault && method.active);
   if (existing) return existing;
 
   const now = iso(new Date());
-
   const method: PaymentMethod = {
     id: uid('pm'),
     landlordId,
     methodType: 'mbway',
     label: 'MB WAY principal',
-    holderName: 'Senhorio UniRoom',
+    holderName: landlordName,
     mbwayPhone: '912 345 678',
     instructions: 'Envia o pagamento por MB WAY e carrega o comprovativo na plataforma.',
     isDefault: true,
@@ -236,36 +186,28 @@ export function ensureDefaultPaymentMethod(landlordId: string): PaymentMethod {
     updatedAt: now,
   };
 
-  paymentMethodsCache = [...paymentMethodsCache, method];
-  syncLocalStorage();
-
+  write(PAYMENT_METHODS_KEY, [...methods, method]);
   return method;
 }
 
-export function getPaymentMethodsForLandlord(landlordId: string): PaymentMethod[] {
-  reloadLocalStorage();
-
-  const own = paymentMethodsCache.filter(method => method.landlordId === landlordId);
-
+export function getPaymentMethodsForLandlord(landlordId: string, landlordName = 'Senhorio UniRoom'): PaymentMethod[] {
+  const methods = read<PaymentMethod>(PAYMENT_METHODS_KEY);
+  const own = methods.filter(method => method.landlordId === landlordId);
   if (own.length > 0) return own;
-
-  return [ensureDefaultPaymentMethod(landlordId)];
+  return [ensureDefaultPaymentMethod(landlordId, landlordName)];
 }
 
 export function upsertDefaultPaymentMethod(
   landlordId: string,
   input: Partial<PaymentMethod>,
 ): PaymentMethod {
-  reloadLocalStorage();
-
+  const methods = read<PaymentMethod>(PAYMENT_METHODS_KEY);
   const now = iso(new Date());
-  const existing = paymentMethodsCache.find(method => method.landlordId === landlordId && method.isDefault);
+  const existing = methods.find(method => method.landlordId === landlordId && method.isDefault);
 
   const next: PaymentMethod = {
     id: existing?.id || uid('pm'),
     landlordId,
-    propertyId: input.propertyId ?? existing?.propertyId,
-    roomId: input.roomId ?? existing?.roomId,
     methodType: input.methodType || existing?.methodType || 'mbway',
     label: input.label || existing?.label || 'Método principal',
     holderName: input.holderName || existing?.holderName || 'Senhorio UniRoom',
@@ -280,36 +222,33 @@ export function upsertDefaultPaymentMethod(
     updatedAt: now,
   };
 
-  paymentMethodsCache = [
-    ...paymentMethodsCache.filter(method => method.id !== next.id),
-    next,
-  ];
-
-  syncLocalStorage();
-
+  const others = methods.filter(method => method.id !== next.id);
+  write(PAYMENT_METHODS_KEY, [...others, next]);
   return next;
 }
 
 export function getPaymentMethodForHome(activeHome: ActiveHome): PaymentMethod {
-  const methods = getPaymentMethodsForLandlord(activeHome.landlordId);
-
+  const methods = getPaymentMethodsForLandlord(activeHome.landlordId, activeHome.landlordName);
   const byRoom = methods.find(method => method.active && method.roomId === activeHome.roomId);
   if (byRoom) return byRoom;
 
   const byProperty = methods.find(method => method.active && method.propertyId === activeHome.propertyId);
   if (byProperty) return byProperty;
 
-  return methods.find(method => method.active && method.isDefault) || ensureDefaultPaymentMethod(activeHome.landlordId);
+  return methods.find(method => method.active && method.isDefault) || ensureDefaultPaymentMethod(activeHome.landlordId, activeHome.landlordName);
 }
 
-function createContract(
+export function getOrCreateRentalContract(
   activeHome: ActiveHome,
   monthlyRent: number,
   utilities: number,
 ): RentalContract {
-  const now = iso(new Date());
+  const contracts = read<RentalContract>(RENTAL_CONTRACTS_KEY);
+  const existing = contracts.find(contract => contract.activeHomeId === activeHome.id);
+  if (existing) return existing;
 
-  return {
+  const now = iso(new Date());
+  const contract: RentalContract = {
     id: uid('contract'),
     activeHomeId: activeHome.id,
     applicationId: activeHome.applicationId,
@@ -320,50 +259,40 @@ function createContract(
     title: 'Contrato de arrendamento',
     contractNumber: `UNI-${new Date().getFullYear()}-${Math.floor(Math.random() * 9000 + 1000)}`,
     status: 'active',
-    fileUrl: '#contrato-local',
+    fileUrl: '#contrato-demo',
     fileName: 'contrato-arrendamento-uniroom.pdf',
     startDate: new Date(activeHome.moveInDate).toISOString().slice(0, 10),
-    endDate: activeHome.contractEndDate
-      ? new Date(activeHome.contractEndDate).toISOString().slice(0, 10)
-      : undefined,
+    endDate: activeHome.contractEndDate ? new Date(activeHome.contractEndDate).toISOString().slice(0, 10) : undefined,
     monthlyRent,
     depositAmount: monthlyRent,
     utilitiesAmount: utilities,
     uploadedBy: activeHome.landlordId,
     signedAt: now,
-    notes: 'Contrato gerado localmente pela UniRoom.',
+    notes: 'Contrato demonstrativo criado para simular a experiência do estudante.',
     createdAt: now,
     updatedAt: now,
   };
-}
 
-export function getOrCreateRentalContract(
-  activeHome: ActiveHome,
-  monthlyRent: number,
-  utilities: number,
-): RentalContract {
-  reloadLocalStorage();
-
-  const existing = rentalContractsCache.find(contract => contract.activeHomeId === activeHome.id);
-  if (existing) return existing;
-
-  const contract = createContract(activeHome, monthlyRent, utilities);
-  rentalContractsCache = [...rentalContractsCache, contract];
-  syncLocalStorage();
-
+  write(RENTAL_CONTRACTS_KEY, [...contracts, contract]);
   return contract;
 }
 
-function createRentPayments(
+export function getRentPaymentsForHome(
   activeHome: ActiveHome,
   monthlyRent: number,
   utilities: number,
 ): RentPayment[] {
+  const payments = read<RentPayment>(RENT_PAYMENTS_KEY);
+  const existing = payments.filter(payment => payment.activeHomeId === activeHome.id);
+  if (existing.length > 0) {
+    return existing.sort((a, b) => new Date(b.periodMonth).getTime() - new Date(a.periodMonth).getTime());
+  }
+
   const paymentMethod = getPaymentMethodForHome(activeHome);
   const moveIn = new Date(activeHome.moveInDate);
   const now = new Date();
 
-  return [0, 1, 2].map(offset => {
+  const generated: RentPayment[] = [0, 1, 2].map(offset => {
     const period = addMonths(moveIn, offset);
     const dueDate = buildDueDate(period, activeHome.paymentDay);
     const isFirst = offset === 0;
@@ -385,55 +314,21 @@ function createRentPayments(
       totalAmount: monthlyRent + utilities,
       status: isFirst ? 'paid' : isLate ? 'late' : 'pending',
       paidAt: isFirst ? iso(dueDate) : undefined,
-      proofUrl: isFirst ? '#comprovativo-local' : undefined,
-      proofFileName: isFirst ? 'comprovativo-renda-local.pdf' : undefined,
-      notes: isFirst ? 'Pagamento inicial confirmado.' : undefined,
+      proofUrl: isFirst ? '#comprovativo-demo' : undefined,
+      proofFileName: isFirst ? 'comprovativo-renda-demo.pdf' : undefined,
+      notes: isFirst ? 'Pagamento demonstrativo validado.' : undefined,
       createdAt,
       updatedAt: createdAt,
-    } satisfies RentPayment;
+    };
   });
-}
 
-export function getRentPaymentsForHome(
-  activeHome: ActiveHome,
-  monthlyRent: number,
-  utilities: number,
-): RentPayment[] {
-  reloadLocalStorage();
-
-  const existing = rentPaymentsCache.filter(payment => payment.activeHomeId === activeHome.id);
-
-  if (existing.length > 0) {
-    const normalized = existing.map(normalizePaymentStatus);
-    rentPaymentsCache = [
-      ...rentPaymentsCache.filter(payment => payment.activeHomeId !== activeHome.id),
-      ...normalized,
-    ];
-    syncLocalStorage();
-
-    return normalized.sort((a, b) => new Date(b.periodMonth).getTime() - new Date(a.periodMonth).getTime());
-  }
-
-  const generated = createRentPayments(activeHome, monthlyRent, utilities);
-  rentPaymentsCache = [...rentPaymentsCache, ...generated];
-  syncLocalStorage();
-
+  write(RENT_PAYMENTS_KEY, [...payments, ...generated]);
   return generated.sort((a, b) => new Date(b.periodMonth).getTime() - new Date(a.periodMonth).getTime());
 }
 
-export async function ensureFinanceForHome(
-  activeHome: ActiveHome,
-  monthlyRent: number,
-  utilities: number,
-): Promise<void> {
-  getOrCreateRentalContract(activeHome, monthlyRent, utilities);
-  getRentPaymentsForHome(activeHome, monthlyRent, utilities);
-}
-
 export function uploadPaymentProof(paymentId: string, fileName = 'comprovativo-pagamento.pdf'): RentPayment | null {
-  reloadLocalStorage();
-
-  const current = rentPaymentsCache.find(payment => payment.id === paymentId);
+  const payments = read<RentPayment>(RENT_PAYMENTS_KEY);
+  const current = payments.find(payment => payment.id === paymentId);
   if (!current) return null;
 
   const updated: RentPayment = {
@@ -444,16 +339,13 @@ export function uploadPaymentProof(paymentId: string, fileName = 'comprovativo-p
     updatedAt: iso(new Date()),
   };
 
-  rentPaymentsCache = rentPaymentsCache.map(payment => payment.id === paymentId ? updated : payment);
-  syncLocalStorage();
-
+  write(RENT_PAYMENTS_KEY, payments.map(payment => payment.id === paymentId ? updated : payment));
   return updated;
 }
 
 export function markRentPaymentAsPaid(paymentId: string): RentPayment | null {
-  reloadLocalStorage();
-
-  const current = rentPaymentsCache.find(payment => payment.id === paymentId);
+  const payments = read<RentPayment>(RENT_PAYMENTS_KEY);
+  const current = payments.find(payment => payment.id === paymentId);
   if (!current) return null;
 
   const updated: RentPayment = {
@@ -464,30 +356,22 @@ export function markRentPaymentAsPaid(paymentId: string): RentPayment | null {
     updatedAt: iso(new Date()),
   };
 
-  rentPaymentsCache = rentPaymentsCache.map(payment => payment.id === paymentId ? updated : payment);
-  syncLocalStorage();
-
+  write(RENT_PAYMENTS_KEY, payments.map(payment => payment.id === paymentId ? updated : payment));
   return updated;
 }
 
-export function getLandlordFinanceSummary(landlordId: string) {
-  reloadLocalStorage();
-
-  const methods = getPaymentMethodsForLandlord(landlordId);
-  const contracts = rentalContractsCache.filter(contract => contract.landlordId === landlordId);
-  const payments = rentPaymentsCache
-    .filter(payment => payment.landlordId === landlordId)
-    .map(normalizePaymentStatus);
-
+export function getLandlordFinanceSummary(landlordId: string, landlordName = 'Senhorio UniRoom') {
+  const methods = getPaymentMethodsForLandlord(landlordId, landlordName);
+  const contracts = read<RentalContract>(RENTAL_CONTRACTS_KEY).filter(contract => contract.landlordId === landlordId);
+  const payments = read<RentPayment>(RENT_PAYMENTS_KEY).filter(payment => payment.landlordId === landlordId);
   const pendingPayments = payments.filter(payment => payment.status === 'pending');
   const latePayments = payments.filter(payment => payment.status === 'late');
   const proofPayments = payments.filter(payment => payment.proofUrl && payment.status !== 'paid');
 
-  const now = new Date();
-
   const expectedThisMonth = payments
     .filter(payment => {
       const period = new Date(payment.periodMonth);
+      const now = new Date();
       return period.getMonth() === now.getMonth() && period.getFullYear() === now.getFullYear();
     })
     .reduce((total, payment) => total + payment.totalAmount, 0);
@@ -502,4 +386,24 @@ export function getLandlordFinanceSummary(landlordId: string) {
     expectedThisMonth,
     activeContracts: contracts.filter(contract => contract.status === 'active').length,
   };
+}
+
+export function refreshHousingFinanceState(): void {
+  const payments = read<RentPayment>(RENT_PAYMENTS_KEY);
+  const now = Date.now();
+  const updated = payments.map(payment =>
+    payment.status === 'pending' && new Date(payment.dueDate).getTime() < now
+      ? { ...payment, status: 'late' as RentPaymentStatus, updatedAt: iso(new Date()) }
+      : payment,
+  );
+  write(RENT_PAYMENTS_KEY, updated);
+}
+
+export async function ensureFinanceForHome(
+  activeHome: ActiveHome,
+  monthlyRent: number,
+  utilities: number,
+): Promise<void> {
+  getOrCreateRentalContract(activeHome, monthlyRent, utilities);
+  getRentPaymentsForHome(activeHome, monthlyRent, utilities);
 }

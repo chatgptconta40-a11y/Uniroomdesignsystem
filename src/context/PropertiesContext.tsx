@@ -264,54 +264,64 @@ function mergeByFreshest<T extends { id: string; updatedAt: Date }>(localItems: 
 
 async function fetchRemoteProperties(): Promise<Property[]> {
   if (!isSupabaseConfigured) return [];
-  try {
-    const { data, error } = await supabase
-      .from('properties')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) return [];
-    return (data ?? []).map(normalizeProperty);
-  } catch {
+
+  const { data, error } = await supabase
+    .from('properties')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.warn('[UniRoom] Properties fetch error:', error.message);
     return [];
   }
+
+  return (data ?? []).map(normalizeProperty);
 }
 
 async function fetchRemoteRooms(): Promise<Room[]> {
   if (!isSupabaseConfigured) return [];
-  try {
-    const { data, error } = await supabase
-      .from('rooms')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) return [];
-    return (data ?? []).map(normalizeRoom);
-  } catch {
+
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.warn('[UniRoom] Rooms fetch error:', error.message);
     return [];
   }
+
+  return (data ?? []).map(normalizeRoom);
 }
 
 async function syncPropertyToSupabase(property: Property): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
-  try {
-    const { error } = await supabase
-      .from('properties')
-      .upsert(propertyToDb(property), { onConflict: 'id' });
-    return !error;
-  } catch {
+
+  const { error } = await supabase
+    .from('properties')
+    .upsert(propertyToDb(property), { onConflict: 'id' });
+
+  if (error) {
+    console.warn('[UniRoom] Property sync error:', error.message);
     return false;
   }
+
+  return true;
 }
 
 async function syncRoomToSupabase(room: Room): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
-  try {
-    const { error } = await supabase
-      .from('rooms')
-      .upsert(roomToDb(room), { onConflict: 'id' });
-    return !error;
-  } catch {
+
+  const { error } = await supabase
+    .from('rooms')
+    .upsert(roomToDb(room), { onConflict: 'id' });
+
+  if (error) {
+    console.warn('[UniRoom] Room sync error:', error.message);
     return false;
   }
+
+  return true;
 }
 
 async function syncLocalToSupabase(localProperties: Property[], localRooms: Room[]): Promise<void> {
@@ -387,10 +397,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
   }, [refreshProperties, user?.id, user?.type]);
 
   useEffect(() => {
-    const handleRefresh = () => {
-      void refreshProperties();
-    };
-
     const handleStorage = (event: StorageEvent) => {
       if (
         event.key === PROPERTIES_STORAGE_KEY ||
@@ -409,13 +415,18 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       if (!document.hidden) void refreshProperties();
     };
 
-    window.addEventListener(PROPERTIES_REFRESH_EVENT, handleRefresh);
+    /*
+      IMPORTANTE:
+      Não escutamos PROPERTIES_REFRESH_EVENT aqui, porque este próprio
+      contexto emite esse evento dentro de persistLocal().
+      Se o contexto ouvir o evento que ele próprio dispara, entra em loop:
+      refreshProperties -> persistLocal -> dispatch event -> refreshProperties...
+    */
     window.addEventListener('storage', handleStorage);
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      window.removeEventListener(PROPERTIES_REFRESH_EVENT, handleRefresh);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);

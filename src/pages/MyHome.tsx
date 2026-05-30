@@ -19,6 +19,7 @@ import {
   Wrench,
   ArrowRight,
   CreditCard,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -46,9 +47,7 @@ import {
 import { Accommodation } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
 
-const HOUSEMATES_KEY = 'uniroom_active_home_housemates';
-
-interface MockHousemate {
+interface RealHousemate {
   id: string;
   propertyId: string;
   name: string;
@@ -56,6 +55,14 @@ interface MockHousemate {
   room: string;
   initials: string;
   since: string;
+}
+
+function safeParse<T>(value: string | null, fallback: T): T {
+  try {
+    return value ? JSON.parse(value) as T : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function formatDate(date: Date | string) {
@@ -80,38 +87,61 @@ function getDaysSince(date: Date | string) {
   );
 }
 
-function readHousemates(propertyId: string, currentRoomNumber: string): MockHousemate[] {
-  const stored = localStorage.getItem(HOUSEMATES_KEY);
-  const all: MockHousemate[] = stored ? JSON.parse(stored) : [];
-  const existing = all.filter(housemate => housemate.propertyId === propertyId);
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join('') || 'E';
+}
 
-  if (existing.length > 0) {
-    return existing;
-  }
+function readRealHousemates(propertyId: string, currentStudentId: string): RealHousemate[] {
+  const activeHomes = safeParse<any[]>(localStorage.getItem('uniroom_active_homes'), []);
+  const users = safeParse<any[]>(localStorage.getItem('uniroom_all_users'), []);
+  const rooms = safeParse<any[]>(localStorage.getItem('uniroom_rooms'), []);
+  const profiles = safeParse<any[]>(localStorage.getItem('uniroom_student_profiles'), []);
 
-  const generated: MockHousemate[] = [
-    {
-      id: `mate_${propertyId}_1`,
-      propertyId,
-      name: 'Inês Ferreira',
-      course: 'Enfermagem',
-      room: currentRoomNumber === 'Quarto 2' ? 'Quarto 1' : 'Quarto 2',
-      initials: 'IF',
-      since: 'Setembro 2025',
-    },
-    {
-      id: `mate_${propertyId}_2`,
-      propertyId,
-      name: 'Miguel Costa',
-      course: 'Engenharia Informática',
-      room: currentRoomNumber === 'Quarto 3' ? 'Quarto 1' : 'Quarto 3',
-      initials: 'MC',
-      since: 'Outubro 2025',
-    },
-  ];
+  return activeHomes
+    .filter(home =>
+      String(home.propertyId) === String(propertyId) &&
+      String(home.studentId) !== String(currentStudentId),
+    )
+    .map(home => {
+      const matchedUser = users.find(user => String(user.id) === String(home.studentId));
+      const matchedProfile = profiles.find(profile => String(profile?.personal?.userId) === String(home.studentId));
+      const matchedRoom = rooms.find(room => String(room.id) === String(home.roomId));
 
-  localStorage.setItem(HOUSEMATES_KEY, JSON.stringify([...all, ...generated]));
-  return generated;
+      const name =
+        matchedProfile?.personal?.fullName ||
+        matchedUser?.name ||
+        matchedUser?.fullName ||
+        matchedUser?.email ||
+        'Estudante confirmado';
+
+      const course =
+        matchedProfile?.personal?.course ||
+        matchedUser?.course ||
+        'Estudante';
+
+      const moveInDate = home.moveInDate ? new Date(home.moveInDate) : new Date();
+      const since = Number.isNaN(moveInDate.getTime())
+        ? 'Data não definida'
+        : new Intl.DateTimeFormat('pt-PT', {
+            month: 'long',
+            year: 'numeric',
+          }).format(moveInDate);
+
+      return {
+        id: `mate_${home.id}`,
+        propertyId: String(propertyId),
+        name,
+        course,
+        room: matchedRoom?.roomNumber || matchedRoom?.title || home.roomTitle || 'Quarto',
+        initials: getInitials(name),
+        since,
+      };
+    });
 }
 
 export function MyHome() {
@@ -121,6 +151,7 @@ export function MyHome() {
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [showContractModal, setShowContractModal] = useState(false);
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
   const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
@@ -326,7 +357,7 @@ export function MyHome() {
   const contract = getOrCreateRentalContract(activeHomeData, monthlyRent, utilitiesAmount);
   const rentPayments = getRentPaymentsForHome(activeHomeData, monthlyRent, utilitiesAmount);
 
-  const housemates = readHousemates(property.id, room.roomNumber);
+  const housemates = readRealHousemates(property.id, user?.id || '');
   const nextPayment = rentPayments.find(payment => payment.status !== 'paid') || rentPayments[0];
   const paidPayments = rentPayments.filter(payment => payment.status === 'paid');
   const paymentsWithProof = rentPayments.filter(payment => Boolean(payment.proofUrl));
@@ -542,21 +573,31 @@ export function MyHome() {
             <Card className="p-6">
               <h3 className="text-lg font-bold text-foreground mb-5">Colegas de casa</h3>
               <div className="space-y-4">
-                {housemates.map(housemate => (
-                  <div key={housemate.id} className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
-                    <div className="w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold">
-                      {housemate.initials}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-foreground">{housemate.name}</h4>
-                        <Badge variant="outline" className="text-xs">{housemate.room}</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{housemate.course}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Em casa desde {housemate.since}</p>
-                    </div>
+                {housemates.length === 0 ? (
+                  <div className="p-6 bg-muted/30 rounded-lg text-center">
+                    <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                    <h4 className="font-semibold text-foreground mb-1">Ainda sem colegas confirmados</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Quando outros estudantes confirmarem estadia nesta casa, aparecem aqui.
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  housemates.map(housemate => (
+                    <div key={housemate.id} className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
+                      <div className="w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold">
+                        {housemate.initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-foreground">{housemate.name}</h4>
+                          <Badge variant="outline" className="text-xs">{housemate.room}</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{housemate.course}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Em casa desde {housemate.since}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
 
@@ -860,7 +901,7 @@ export function MyHome() {
               </div>
 
               <div className="grid grid-cols-1 gap-2">
-                <Button variant="outline" className="w-full justify-start" onClick={() => alert('A abrir contrato demonstrativo.')}>
+                <Button variant="outline" className="w-full justify-start" onClick={() => setShowContractModal(true)}>
                   <FileText className="w-4 h-4 mr-2" />
                   Ver contrato
                 </Button>
@@ -928,6 +969,139 @@ export function MyHome() {
         accommodationId={room.id}
         landlordId={property.landlordId}
       />
+
+      {showContractModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-start justify-between gap-4 p-6 border-b border-border">
+              <div>
+                <p className="text-sm font-semibold text-primary mb-1">Contrato digital</p>
+                <h2 className="text-2xl font-bold text-foreground">{contract.title}</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Documento associado à tua estadia na UniRoom.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowContractModal(false)}
+                className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors"
+                aria-label="Fechar contrato"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-6 bg-muted/30">
+              <div className="bg-white text-slate-900 rounded-xl shadow-sm border border-border p-8 space-y-7">
+                <div className="text-center border-b border-slate-200 pb-6">
+                  <h3 className="text-2xl font-bold">Contrato de Arrendamento Universitário</h3>
+                  <p className="text-sm text-slate-500 mt-2">N.º {contract.contractNumber}</p>
+                  <p className="text-xs text-slate-400 mt-1">Gerado digitalmente pela plataforma UniRoom</p>
+                </div>
+
+                <section>
+                  <h4 className="font-bold text-lg mb-3">1. Identificação da estadia</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Alojamento</p>
+                      <p className="font-semibold">{property.title}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Quarto</p>
+                      <p className="font-semibold">{room.roomNumber || room.title}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Morada</p>
+                      <p className="font-semibold">{property.address}, {property.zone}, {property.city}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Senhorio</p>
+                      <p className="font-semibold">{activeHomeData.landlordName}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="font-bold text-lg mb-3">2. Condições financeiras</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Renda mensal</p>
+                      <p className="font-bold text-lg">{formatCurrency(contract.monthlyRent)}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Despesas</p>
+                      <p className="font-bold text-lg">{formatCurrency(contract.utilitiesAmount)}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Caução</p>
+                      <p className="font-bold text-lg">{formatCurrency(contract.depositAmount)}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="font-bold text-lg mb-3">3. Duração</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Data de início</p>
+                      <p className="font-semibold">{formatDate(contract.startDate)}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-4">
+                      <p className="text-slate-500">Data de fim</p>
+                      <p className="font-semibold">{contract.endDate ? formatDate(contract.endDate) : 'Sem data definida'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="font-bold text-lg mb-3">4. Regras principais</h4>
+                  <ul className="space-y-2 text-sm">
+                    {rules.map(rule => (
+                      <li key={rule} className="flex gap-2">
+                        <span className="text-green-600 font-bold">✓</span>
+                        <span>{rule}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section>
+                  <h4 className="font-bold text-lg mb-3">5. Observações</h4>
+                  <p className="text-sm leading-relaxed text-slate-700">
+                    {contract.notes || 'Contrato digital associado à estadia confirmada pelo estudante. Este documento reúne os dados essenciais da ocupação, renda, caução, datas e regras do alojamento.'}
+                  </p>
+                </section>
+
+                <section className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+                  <div className="rounded-lg border border-slate-200 p-4">
+                    <p className="text-xs text-slate-500 mb-6">Assinatura do senhorio</p>
+                    <p className="font-semibold">{activeHomeData.landlordName}</p>
+                    <p className="text-xs text-slate-400">Assinado digitalmente</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-4">
+                    <p className="text-xs text-slate-500 mb-6">Assinatura do estudante</p>
+                    <p className="font-semibold">{user?.name || 'Estudante'}</p>
+                    <p className="text-xs text-slate-400">
+                      {contract.signedAt ? `Confirmado em ${formatDate(contract.signedAt)}` : 'Pendente'}
+                    </p>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-border bg-card flex flex-col sm:flex-row gap-3 justify-end">
+              <Button variant="outline" onClick={() => window.print()}>
+                <FileText className="w-4 h-4 mr-2" />
+                Imprimir / Guardar PDF
+              </Button>
+              <Button onClick={() => setShowContractModal(false)}>
+                Fechar contrato
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showContactModal && (
         <StartConversationModal
