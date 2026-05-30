@@ -36,10 +36,6 @@ function safeParse<T>(value: string | null, fallback: T): T {
 }
 
 function initializeStorage() {
-  /*
-    Sem mock users.
-    A lista local só nasce vazia e vai sendo preenchida por registo/login real.
-  */
   if (!localStorage.getItem(USERS_KEY)) {
     localStorage.setItem(USERS_KEY, JSON.stringify([]));
   }
@@ -88,13 +84,6 @@ function setStoredUser(user: User) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
 }
 
-function persistLocalUser(user: User) {
-  const normalized = mapStoredUser(user);
-  setStoredUser(normalized);
-  updateLocalUserList(normalized);
-  return normalized;
-}
-
 function updateLocalUserList(user: User): void {
   const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
   const existingIndex = allUsers.findIndex(item => item.id === user.id || item.email === user.email);
@@ -112,43 +101,190 @@ function updateLocalUserList(user: User): void {
   localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
 }
 
-async function fetchSupabaseProfile(userId: string, fallbackEmail?: string): Promise<User | null> {
-  if (!supabase) return null;
+function persistLocalUser(user: User) {
+  const normalized = mapStoredUser(user);
+  setStoredUser(normalized);
+  updateLocalUserList(normalized);
+  return normalized;
+}
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id,email,full_name,type,status,verified,onboarding_completed,created_at')
-    .eq('id', userId)
-    .maybeSingle();
+async function safeGetSupabaseSession() {
+  if (!isSupabaseConfigured || !supabase) return null;
 
-  if (error) {
-    console.warn('[UniRoom] Falha ao carregar perfil Supabase:', error.message);
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session ?? null;
+  } catch {
     return null;
   }
+}
 
-  if (data) {
-    return mapDbProfile(data as DbProfile);
+async function safeGetSupabaseAuthUser() {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchSupabaseProfile(userId: string, fallbackEmail?: string): Promise<User | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id,email,full_name,type,status,verified,onboarding_completed,created_at')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return mapDbProfile(data as DbProfile);
+    }
+
+    const authUser = await safeGetSupabaseAuthUser();
+
+    if (!authUser) return null;
+
+    const localProfile = getLocalProfileState(authUser.id);
+    const type = (authUser.user_metadata?.type as UserType) || 'student';
+
+    return {
+      id: authUser.id,
+      name: localProfile.profileName || authUser.user_metadata?.full_name || fallbackEmail || authUser.email || 'Utilizador',
+      email: authUser.email || fallbackEmail || '',
+      type,
+      verified: Boolean(authUser.email_confirmed_at),
+      status: 'active',
+      onboardingCompleted: Boolean(localProfile.onboardingCompleted || type !== 'student'),
+      profileCompleteness: localProfile.profileCompleteness,
+      createdAt: authUser.created_at ? new Date(authUser.created_at) : new Date(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function safeSignIn(email: string, password: string) {
+  if (!isSupabaseConfigured || !supabase) {
+    return { user: null as any, error: null as any };
   }
 
-  const { data: authData } = await supabase.auth.getUser();
-  const authUser = authData.user;
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    return { user: data.user, error };
+  } catch {
+    return { user: null, error: new Error('Supabase indisponível') };
+  }
+}
 
-  if (!authUser) return null;
+async function safeSignUp(data: RegisterData) {
+  if (!isSupabaseConfigured || !supabase) {
+    return { user: null as any, error: null as any };
+  }
 
-  const localProfile = getLocalProfileState(authUser.id);
-  const type = (authUser.user_metadata?.type as UserType) || 'student';
+  try {
+    const { data: authData, error } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          full_name: data.name,
+          type: data.type,
+        },
+      },
+    });
 
-  return {
-    id: authUser.id,
-    name: localProfile.profileName || authUser.user_metadata?.full_name || fallbackEmail || authUser.email || 'Utilizador',
-    email: authUser.email || fallbackEmail || '',
-    type,
-    verified: Boolean(authUser.email_confirmed_at),
-    status: 'active',
-    onboardingCompleted: Boolean(localProfile.onboardingCompleted || type !== 'student'),
-    profileCompleteness: localProfile.profileCompleteness,
-    createdAt: authUser.created_at ? new Date(authUser.created_at) : new Date(),
+    return { user: authData.user, error };
+  } catch {
+    return { user: null, error: new Error('Supabase indisponível') };
+  }
+}
+
+async function safeUpsertProfile(userId: string, data: RegisterData) {
+  if (!isSupabaseConfigured || !supabase) return;
+
+  try {
+    await supabase
+      .from('profiles')
+      .upsert({
+        id: userId,
+        email: data.email,
+        full_name: data.name,
+        type: data.type,
+        onboarding_completed: data.type !== 'student',
+      }, { onConflict: 'id' });
+  } catch {
+    // Ambiente Make pode bloquear chamadas externas. LocalStorage continua.
+  }
+}
+
+async function safeSyncStudentProfile(user: User, profileToSave: StudentProfile) {
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const personalPayload = {
+    user_id: user.id,
+    photo_url: profileToSave.personal.photoUrl,
+    full_name: profileToSave.personal.fullName,
+    age: profileToSave.personal.age,
+    gender: profileToSave.personal.gender,
+    course: profileToSave.personal.course,
+    institution: profileToSave.personal.institution,
+    year_of_study: profileToSave.personal.yearOfStudy,
+    hometown: profileToSave.personal.hometown,
+    bio: profileToSave.personal.bio,
+    languages: profileToSave.personal.languages || [],
   };
+
+  const lifestylePayload = {
+    user_id: user.id,
+    bedtime: profileToSave.lifestyle.bedtime,
+    wakeup_time: profileToSave.lifestyle.wakeupTime,
+    schedule: profileToSave.lifestyle.schedule,
+    cleanliness: profileToSave.lifestyle.cleanliness,
+    cleaning_frequency: profileToSave.lifestyle.cleaningFrequency,
+    noise_tolerance: profileToSave.lifestyle.noiseTolerance,
+    music_volume: profileToSave.lifestyle.musicVolume,
+    guests_frequency: profileToSave.lifestyle.guestsFrequency,
+    guests_acceptance: profileToSave.lifestyle.guestsAcceptance,
+    smoking: profileToSave.lifestyle.smoking,
+    pets: profileToSave.lifestyle.pets,
+    cooking: profileToSave.lifestyle.cooking,
+    personality: profileToSave.lifestyle.personality,
+    social_preference: profileToSave.lifestyle.socialPreference,
+  };
+
+  const preferencesPayload = {
+    user_id: user.id,
+    max_budget: profileToSave.preferences.maxBudget,
+    preferred_cities: profileToSave.preferences.preferredCities || [],
+    max_distance_from_university: profileToSave.preferences.maxDistanceFromUniversity,
+    move_in_date: profileToSave.preferences.moveInDate
+      ? new Date(profileToSave.preferences.moveInDate).toISOString().slice(0, 10)
+      : null,
+    stay_duration: profileToSave.preferences.stayDuration,
+    room_type: profileToSave.preferences.roomType,
+    amenities: profileToSave.preferences.amenities || {},
+  };
+
+  try {
+    await Promise.allSettled([
+      supabase.from('personal_profiles').upsert(personalPayload, { onConflict: 'user_id' }),
+      supabase.from('lifestyle_profiles').upsert(lifestylePayload, { onConflict: 'user_id' }),
+      supabase.from('accommodation_preferences').upsert(preferencesPayload, { onConflict: 'user_id' }),
+      supabase
+        .from('profiles')
+        .update({
+          full_name: profileToSave.personal.fullName || user.name,
+          onboarding_completed: true,
+        })
+        .eq('id', user.id),
+    ]);
+  } catch {
+    // Ambiente Make pode bloquear chamadas externas. Perfil já ficou em localStorage.
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -163,85 +299,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const storedUser = localStorage.getItem(STORAGE_KEY);
 
-      /*
-        LocalStorage primeiro.
-      */
       if (storedUser && mounted) {
         setUser(mapStoredUser(JSON.parse(storedUser)));
       }
 
-      /*
-        Supabase só tenta hidratar por cima.
-        Se falhar, a app continua com localStorage.
-      */
-      if (isSupabaseConfigured && supabase) {
-        const { data } = await supabase.auth.getSession();
-        const sessionUser = data.session?.user;
+      const session = await safeGetSupabaseSession();
+      const sessionUser = session?.user;
 
-        if (sessionUser) {
-          const profile = await fetchSupabaseProfile(sessionUser.id, sessionUser.email);
+      if (sessionUser) {
+        const profile = await fetchSupabaseProfile(sessionUser.id, sessionUser.email);
 
-          if (mounted && profile) {
-            const normalized = persistLocalUser(profile);
-            setUser(normalized);
-          }
+        if (mounted && profile) {
+          const normalized = persistLocalUser(profile);
+          setUser(normalized);
         }
       }
 
       if (mounted) setLoading(false);
     }
 
-    loadSession();
+    void loadSession();
 
-    if (!supabase) {
+    if (!isSupabaseConfigured || !supabase) {
       return () => {
         mounted = false;
       };
     }
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
+    let subscription: { unsubscribe: () => void } | null = null;
 
-      if (event === 'SIGNED_OUT' || !session?.user) {
-        setUser(null);
-        localStorage.removeItem(STORAGE_KEY);
-        return;
-      }
+    try {
+      const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (!mounted) return;
 
-      const profile = await fetchSupabaseProfile(session.user.id, session.user.email);
+        try {
+          if (event === 'SIGNED_OUT' || !session?.user) {
+            setUser(null);
+            localStorage.removeItem(STORAGE_KEY);
+            return;
+          }
 
-      if (profile) {
-        const normalized = persistLocalUser(profile);
-        setUser(normalized);
-      }
-    });
+          const profile = await fetchSupabaseProfile(session.user.id, session.user.email);
+
+          if (profile) {
+            const normalized = persistLocalUser(profile);
+            setUser(normalized);
+          }
+        } catch {
+          // Auth listener nunca deve partir a app.
+        }
+      });
+
+      subscription = listener.subscription;
+    } catch {
+      subscription = null;
+    }
 
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
+
+      try {
+        subscription?.unsubscribe();
+      } catch {
+        // Ignorar falha do listener.
+      }
     };
   }, []);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
 
-    /*
-      Primeiro tenta login Supabase, porque contas reais vêm daí.
-      Mas se falhar, tenta utilizadores criados localmente.
-    */
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const supaLogin = await safeSignIn(email, password);
 
-      if (!error && data.user) {
-        const profile = await fetchSupabaseProfile(data.user.id, data.user.email || email);
+    if (!supaLogin.error && supaLogin.user) {
+      const profile = await fetchSupabaseProfile(supaLogin.user.id, supaLogin.user.email || email);
 
-        if (profile) {
-          const normalized = persistLocalUser(profile);
-          setUser(normalized);
-          setLoading(false);
+      if (profile) {
+        const normalized = persistLocalUser(profile);
+        setUser(normalized);
+        setLoading(false);
 
-          return { success: true, user: normalized };
-        }
+        return { success: true, user: normalized };
       }
     }
 
@@ -263,47 +401,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (data: RegisterData) => {
     setLoading(true);
 
-    if (isSupabaseConfigured && supabase) {
-      const { data: authData, error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            full_name: data.name,
-            type: data.type,
-          },
-        },
-      });
+    const supaRegister = await safeSignUp(data);
 
-      if (!error && authData.user) {
-        await supabase
-          .from('profiles')
-          .upsert({
-            id: authData.user.id,
-            email: data.email,
-            full_name: data.name,
-            type: data.type,
-            onboarding_completed: data.type !== 'student',
-          }, { onConflict: 'id' });
+    if (!supaRegister.error && supaRegister.user) {
+      await safeUpsertProfile(supaRegister.user.id, data);
 
-        const newUser = await fetchSupabaseProfile(authData.user.id, data.email);
+      const newUser = await fetchSupabaseProfile(supaRegister.user.id, data.email);
 
-        if (newUser) {
-          const storedUser: User = {
-            ...newUser,
-            password: data.password,
-          };
+      if (newUser) {
+        const storedUser: User = {
+          ...newUser,
+          password: data.password,
+        };
 
-          const normalized = persistLocalUser(storedUser);
-          setUser(normalized);
-          setLoading(false);
+        const normalized = persistLocalUser(storedUser);
+        setUser(normalized);
+        setLoading(false);
 
-          return { success: true, user: normalized };
-        }
-      }
-
-      if (error) {
-        console.warn('[UniRoom] Registo Supabase falhou, a tentar modo local:', error.message);
+        return { success: true, user: normalized };
       }
     }
 
@@ -347,79 +462,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onboardingCompleted: true,
     };
 
-    /*
-      Guardar sempre em localStorage primeiro.
-    */
     saveProfile(profileToSave);
 
-    /*
-      Supabase é sincronização em background.
-      Falhar aqui não bloqueia a app nem apaga dados locais.
-    */
-    if (isSupabaseConfigured && supabase) {
-      const personalPayload = {
-        user_id: user.id,
-        photo_url: profileToSave.personal.photoUrl,
-        full_name: profileToSave.personal.fullName,
-        age: profileToSave.personal.age,
-        gender: profileToSave.personal.gender,
-        course: profileToSave.personal.course,
-        institution: profileToSave.personal.institution,
-        year_of_study: profileToSave.personal.yearOfStudy,
-        hometown: profileToSave.personal.hometown,
-        bio: profileToSave.personal.bio,
-        languages: profileToSave.personal.languages || [],
-      };
-
-      const lifestylePayload = {
-        user_id: user.id,
-        bedtime: profileToSave.lifestyle.bedtime,
-        wakeup_time: profileToSave.lifestyle.wakeupTime,
-        schedule: profileToSave.lifestyle.schedule,
-        cleanliness: profileToSave.lifestyle.cleanliness,
-        cleaning_frequency: profileToSave.lifestyle.cleaningFrequency,
-        noise_tolerance: profileToSave.lifestyle.noiseTolerance,
-        music_volume: profileToSave.lifestyle.musicVolume,
-        guests_frequency: profileToSave.lifestyle.guestsFrequency,
-        guests_acceptance: profileToSave.lifestyle.guestsAcceptance,
-        smoking: profileToSave.lifestyle.smoking,
-        pets: profileToSave.lifestyle.pets,
-        cooking: profileToSave.lifestyle.cooking,
-        personality: profileToSave.lifestyle.personality,
-        social_preference: profileToSave.lifestyle.socialPreference,
-      };
-
-      const preferencesPayload = {
-        user_id: user.id,
-        max_budget: profileToSave.preferences.maxBudget,
-        preferred_cities: profileToSave.preferences.preferredCities || [],
-        max_distance_from_university: profileToSave.preferences.maxDistanceFromUniversity,
-        move_in_date: profileToSave.preferences.moveInDate
-          ? new Date(profileToSave.preferences.moveInDate).toISOString().slice(0, 10)
-          : null,
-        stay_duration: profileToSave.preferences.stayDuration,
-        room_type: profileToSave.preferences.roomType,
-        amenities: profileToSave.preferences.amenities || {},
-      };
-
-      Promise.all([
-        supabase.from('personal_profiles').upsert(personalPayload, { onConflict: 'user_id' }),
-        supabase.from('lifestyle_profiles').upsert(lifestylePayload, { onConflict: 'user_id' }),
-        supabase.from('accommodation_preferences').upsert(preferencesPayload, { onConflict: 'user_id' }),
-        supabase
-          .from('profiles')
-          .update({
-            full_name: profileToSave.personal.fullName || user.name,
-            onboarding_completed: true,
-          })
-          .eq('id', user.id),
-      ]).then(results => {
-        const failed = results.find(result => result.error);
-        if (failed?.error) {
-          console.warn('[UniRoom] Perfil guardado localmente, mas Supabase falhou:', failed.error.message);
-        }
-      });
-    }
+    void safeSyncStudentProfile(user, profileToSave);
 
     const updatedUser: User = {
       ...user,
@@ -435,8 +480,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // Mesmo que Supabase falhe, a sessão local deve terminar.
+      }
     }
 
     setUser(null);
