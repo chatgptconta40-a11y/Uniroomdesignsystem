@@ -35,6 +35,15 @@ function safeParse<T>(value: string | null, fallback: T): T {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>(resolve => {
+      window.setTimeout(() => resolve(fallback), timeoutMs);
+    }),
+  ]);
+}
+
 function initializeStorage() {
   if (!localStorage.getItem(USERS_KEY)) {
     localStorage.setItem(USERS_KEY, JSON.stringify([]));
@@ -112,8 +121,13 @@ async function safeGetSupabaseSession() {
   if (!isSupabaseConfigured || !supabase) return null;
 
   try {
-    const { data } = await supabase.auth.getSession();
-    return data.session ?? null;
+    const result = await withTimeout(
+      supabase.auth.getSession(),
+      1200,
+      { data: { session: null } } as any,
+    );
+
+    return result.data.session ?? null;
   } catch {
     return null;
   }
@@ -123,8 +137,13 @@ async function safeGetSupabaseAuthUser() {
   if (!isSupabaseConfigured || !supabase) return null;
 
   try {
-    const { data } = await supabase.auth.getUser();
-    return data.user ?? null;
+    const result = await withTimeout(
+      supabase.auth.getUser(),
+      1200,
+      { data: { user: null } } as any,
+    );
+
+    return result.data.user ?? null;
   } catch {
     return null;
   }
@@ -173,8 +192,13 @@ async function safeSignIn(email: string, password: string) {
   }
 
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    return { user: data.user, error };
+    const result = await withTimeout(
+      supabase.auth.signInWithPassword({ email, password }),
+      1800,
+      { data: { user: null }, error: new Error('Supabase demorou a responder') } as any,
+    );
+
+    return { user: result.data.user, error: result.error };
   } catch {
     return { user: null, error: new Error('Supabase indisponível') };
   }
@@ -369,29 +393,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     setLoading(true);
 
-    const supaLogin = await safeSignIn(email, password);
-
-    if (!supaLogin.error && supaLogin.user) {
-      const profile = await fetchSupabaseProfile(supaLogin.user.id, supaLogin.user.email || email);
-
-      if (profile) {
-        const normalized = persistLocalUser(profile);
-        setUser(normalized);
-        setLoading(false);
-
-        return { success: true, user: normalized };
-      }
-    }
-
+    const normalizedEmail = email.trim().toLowerCase();
     const allUsers = safeParse<User[]>(localStorage.getItem(USERS_KEY), []);
-    const foundUser = allUsers.find(item => item.email === email && item.password === password);
+    const foundUser = allUsers.find(item =>
+      String(item.email).toLowerCase() === normalizedEmail &&
+      item.password === password,
+    );
 
     if (foundUser) {
       const normalized = persistLocalUser(foundUser);
       setUser(normalized);
       setLoading(false);
 
+      // Tenta sincronizar Supabase em background, mas não bloqueia o login local.
+      void safeSignIn(normalizedEmail, password);
+
       return { success: true, user: normalized };
+    }
+
+    const supaLogin = await safeSignIn(normalizedEmail, password);
+
+    if (!supaLogin.error && supaLogin.user) {
+      const profile = await fetchSupabaseProfile(supaLogin.user.id, supaLogin.user.email || normalizedEmail);
+
+      if (profile) {
+        const storedUser: User = {
+          ...profile,
+          password,
+        };
+
+        const normalized = persistLocalUser(storedUser);
+        setUser(normalized);
+        setLoading(false);
+
+        return { success: true, user: normalized };
+      }
     }
 
     setLoading(false);

@@ -4,7 +4,7 @@ const PAYMENT_METHODS_KEY = 'uniroom_payment_methods';
 const RENTAL_CONTRACTS_KEY = 'uniroom_rental_contracts';
 const RENT_PAYMENTS_KEY = 'uniroom_rent_payments';
 
-export type PaymentMethodType = 'iban' | 'mbway' | 'multibanco_reference' | 'cash' | 'other';
+export type PaymentMethodType = 'iban' | 'mbway' | 'multibanco_reference' | 'paypal' | 'card' | 'cash' | 'other';
 export type ContractStatus = 'draft' | 'sent' | 'signed' | 'active' | 'expired' | 'cancelled';
 export type RentPaymentStatus = 'pending' | 'paid' | 'late' | 'waived' | 'cancelled';
 
@@ -20,6 +20,9 @@ export interface PaymentMethod {
   mbwayPhone?: string;
   entity?: string;
   reference?: string;
+  paypalEmail?: string;
+  cardProvider?: string;
+  checkoutUrl?: string;
   instructions?: string;
   isDefault: boolean;
   active: boolean;
@@ -177,6 +180,8 @@ export function getPaymentMethodLabel(method?: PaymentMethod | null) {
   if (method.methodType === 'iban') return 'Transferência bancária';
   if (method.methodType === 'mbway') return 'MB WAY';
   if (method.methodType === 'multibanco_reference') return 'Referência Multibanco';
+  if (method.methodType === 'paypal') return 'PayPal';
+  if (method.methodType === 'card') return 'Cartão de crédito/débito';
   if (method.methodType === 'cash') return 'Dinheiro';
   return 'Outro método';
 }
@@ -188,6 +193,8 @@ export function getPaymentMethodMainValue(method?: PaymentMethod | null) {
   if (method.methodType === 'multibanco_reference') {
     return `Entidade ${method.entity || '—'} · Ref. ${method.reference || '—'}`;
   }
+  if (method.methodType === 'paypal') return method.paypalEmail || method.instructions || '';
+  if (method.methodType === 'card') return method.cardProvider || method.checkoutUrl || 'Checkout seguro';
   return method.instructions || '';
 }
 
@@ -242,6 +249,9 @@ export function upsertDefaultPaymentMethod(
     mbwayPhone: input.mbwayPhone ?? existing?.mbwayPhone,
     entity: input.entity ?? existing?.entity,
     reference: input.reference ?? existing?.reference,
+    paypalEmail: input.paypalEmail ?? existing?.paypalEmail,
+    cardProvider: input.cardProvider ?? existing?.cardProvider,
+    checkoutUrl: input.checkoutUrl ?? existing?.checkoutUrl,
     instructions: input.instructions ?? existing?.instructions,
     isDefault: true,
     active: true,
@@ -387,41 +397,32 @@ export function getRentPaymentsForHome(
   }
 
   const paymentMethod = getPaymentMethodForHome(activeHome);
+  const nowDate = new Date();
   const moveIn = new Date(activeHome.moveInDate);
-  const now = new Date();
+  const period = monthKey(nowDate < moveIn ? moveIn : nowDate);
+  const dueDate = buildDueDate(new Date(period), activeHome.paymentDay);
+  const now = iso(new Date());
 
-  const generated: RentPayment[] = [0, 1, 2].map(offset => {
-    const period = addMonths(moveIn, offset);
-    const dueDate = buildDueDate(period, activeHome.paymentDay);
-    const isFirst = offset === 0;
-    const isLate = !isFirst && dueDate.getTime() < now.getTime();
-    const createdAt = iso(new Date());
+  const firstPayment: RentPayment = {
+    id: uid('rent'),
+    activeHomeId: activeHome.id,
+    studentId: activeHome.studentId,
+    landlordId: activeHome.landlordId,
+    propertyId: activeHome.propertyId,
+    roomId: activeHome.roomId,
+    paymentMethodId: paymentMethod.id,
+    periodMonth: period,
+    dueDate: iso(dueDate),
+    rentAmount: monthlyRent,
+    utilitiesAmount: utilities,
+    totalAmount: monthlyRent + utilities,
+    status: dueDate.getTime() < Date.now() ? 'late' : 'pending',
+    createdAt: now,
+    updatedAt: now,
+  };
 
-    return {
-      id: uid('rent'),
-      activeHomeId: activeHome.id,
-      studentId: activeHome.studentId,
-      landlordId: activeHome.landlordId,
-      propertyId: activeHome.propertyId,
-      roomId: activeHome.roomId,
-      paymentMethodId: paymentMethod.id,
-      periodMonth: monthKey(period),
-      dueDate: iso(dueDate),
-      rentAmount: monthlyRent,
-      utilitiesAmount: utilities,
-      totalAmount: monthlyRent + utilities,
-      status: isFirst ? 'paid' : isLate ? 'late' : 'pending',
-      paidAt: isFirst ? iso(dueDate) : undefined,
-      proofUrl: isFirst ? '#comprovativo-demo' : undefined,
-      proofFileName: isFirst ? 'comprovativo-renda-demo.pdf' : undefined,
-      notes: isFirst ? 'Pagamento demonstrativo validado.' : undefined,
-      createdAt,
-      updatedAt: createdAt,
-    };
-  });
-
-  write(RENT_PAYMENTS_KEY, [...payments, ...generated]);
-  return generated.sort((a, b) => new Date(b.periodMonth).getTime() - new Date(a.periodMonth).getTime());
+  write(RENT_PAYMENTS_KEY, [...payments, firstPayment]);
+  return [firstPayment];
 }
 
 export function uploadPaymentProof(paymentId: string, fileName = 'comprovativo-pagamento.pdf'): RentPayment | null {
@@ -431,9 +432,9 @@ export function uploadPaymentProof(paymentId: string, fileName = 'comprovativo-p
 
   const updated: RentPayment = {
     ...current,
-    proofUrl: '#comprovativo-carregado',
+    proofUrl: `#proof-${paymentId}`,
     proofFileName: fileName,
-    landlordNote: 'Comprovativo enviado pelo estudante. Aguarda validação do senhorio.',
+    landlordNote: 'Comprovativo submetido pelo estudante. Aguarda validação do senhorio.',
     updatedAt: iso(new Date()),
   };
 

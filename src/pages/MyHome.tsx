@@ -29,7 +29,6 @@ import { Badge } from '../components/Badge';
 import { MaintenanceModal } from '../components/MaintenanceModal';
 import { StartConversationModal } from '../components/StartConversationModal';
 import { getMaintenanceRequests } from '../data/mockMaintenance';
-import { getHouseGroupConversation, getMessagesForConversation } from '../data/mockMessages';
 import { getActiveHomeForStudent, getApplicationsForUser, confirmStay } from '../data/mockApplications';
 import {
   formatCurrency,
@@ -46,6 +45,7 @@ import {
 } from '../data/mockHousingFinance';
 import { Accommodation } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
+import { toast } from 'sonner';
 
 interface RealHousemate {
   id: string;
@@ -152,6 +152,8 @@ export function MyHome() {
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showContractModal, setShowContractModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedProofFileName, setSelectedProofFileName] = useState('');
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
   const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
@@ -381,19 +383,33 @@ export function MyHome() {
 
     try {
       await navigator.clipboard.writeText(value);
-      alert('Dados de pagamento copiados.');
+      toast.success('Dados de pagamento copiados.');
     } catch {
-      alert(value);
+      toast.info('Copia manualmente os dados de pagamento.', {
+        description: value,
+      });
     }
   };
 
   const handleUploadPaymentProof = (paymentId: string) => {
-    const updated = uploadPaymentProof(paymentId, `comprovativo-${new Date().toISOString().slice(0, 10)}.pdf`);
+    if (!selectedProofFileName) {
+      toast.error('Seleciona primeiro o ficheiro do comprovativo.');
+      return;
+    }
+
+    const updated = uploadPaymentProof(paymentId, selectedProofFileName);
 
     if (updated) {
+      setShowPaymentModal(false);
+      setSelectedProofFileName('');
       setFinanceRefreshKey(key => key + 1);
-      alert('Comprovativo enviado ao senhorio.');
+      toast.success('Comprovativo submetido.', {
+        description: 'O pagamento fica pendente até validação do senhorio.',
+      });
+      return;
     }
+
+    toast.error('Não foi possível submeter o comprovativo.');
   };
 
   const amenities = [
@@ -601,66 +617,6 @@ export function MyHome() {
               </div>
             </Card>
 
-            {(() => {
-              const houseChat = getHouseGroupConversation(property.id, user?.id || '');
-              if (!houseChat) return null;
-
-              const lastMessages = getMessagesForConversation(houseChat.id).slice(-3);
-
-              return (
-                <Card className="p-6">
-                  <div className="flex items-center justify-between mb-5">
-                    <div>
-                      <h3 className="text-lg font-bold text-foreground">Chat da casa</h3>
-                      <p className="text-sm text-muted-foreground">Conversa com os teus colegas</p>
-                    </div>
-                    {houseChat.unreadCount > 0 && (
-                      <Badge variant="default" className="bg-primary">
-                        {houseChat.unreadCount} nova{houseChat.unreadCount > 1 ? 's' : ''}
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="space-y-3 mb-4">
-                    {lastMessages.length === 0 ? (
-                      <div className="text-center py-6 text-muted-foreground text-sm">
-                        Nenhuma mensagem ainda. Começa a conversa!
-                      </div>
-                    ) : (
-                      lastMessages.map(message => (
-                        <div key={message.id} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
-                          <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-                            {message.senderName.charAt(0)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-semibold text-foreground">
-                                {message.senderName.split(' ')[0]}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {message.createdAt.toLocaleTimeString('pt-PT', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                            </div>
-                            <p className="text-sm text-foreground line-clamp-2">{message.content}</p>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <Link to={`/messages?conversation=${houseChat.id}`} className="block">
-                    <Button variant="primary" className="w-full">
-                      <MessageCircle className="w-4 h-4 mr-2" />
-                      Abrir chat da casa
-                    </Button>
-                  </Link>
-                </Card>
-              );
-            })()}
-
             <Card className="p-6">
               <h3 className="text-lg font-bold text-foreground mb-5">Regras principais</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -835,10 +791,22 @@ export function MyHome() {
                     <Copy className="w-4 h-4 mr-1.5" />
                     Copiar
                   </Button>
-                  {nextPayment && nextPayment.status !== 'paid' ? (
-                    <Button size="sm" onClick={() => handleUploadPaymentProof(nextPayment.id)}>
+                  {nextPayment && nextPayment.status !== 'paid' && !nextPayment.proofUrl ? (
+                    <Button size="sm" onClick={() => setShowPaymentModal(true)}>
                       <Upload className="w-4 h-4 mr-1.5" />
-                      Comprovativo
+                      Submeter comprovativo
+                    </Button>
+                  ) : nextPayment && nextPayment.status !== 'paid' && nextPayment.proofUrl ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedProofFileName(nextPayment.proofFileName || '');
+                        setShowPaymentModal(true);
+                      }}
+                    >
+                      <Clock className="w-4 h-4 mr-1.5" />
+                      Substituir comprovativo
                     </Button>
                   ) : (
                     <Button size="sm" disabled>
@@ -850,7 +818,7 @@ export function MyHome() {
 
                 <div className="mt-4 pt-4 border-t border-border">
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    A UniRoom não processa pagamentos. Usa estes dados e guarda sempre comprovativo.
+                    A UniRoom não processa pagamentos. Usa os dados acordados e submete apenas o comprovativo para validação.
                   </p>
                 </div>
               </div>
@@ -907,7 +875,7 @@ export function MyHome() {
                 </Button>
                 <Button variant="outline" className="w-full justify-start" disabled={paymentsWithProof.length === 0}>
                   <Receipt className="w-4 h-4 mr-2" />
-                  {paymentsWithProof.length} comprovativo{paymentsWithProof.length === 1 ? '' : 's'} enviado{paymentsWithProof.length === 1 ? '' : 's'}
+                  {paymentsWithProof.length} comprovativo{paymentsWithProof.length === 1 ? '' : 's'} submetido{paymentsWithProof.length === 1 ? '' : 's'}
                 </Button>
               </div>
             </Card>
@@ -915,46 +883,58 @@ export function MyHome() {
             <Card className="p-5">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-foreground">Histórico</h3>
-                  <p className="text-sm text-muted-foreground">Pagamentos recentes.</p>
+                  <h3 className="text-lg font-bold text-foreground">Pagamentos registados</h3>
+                  <p className="text-sm text-muted-foreground">Apenas pagamentos criados ou submetidos na tua estadia.</p>
                 </div>
                 <Receipt className="w-5 h-5 text-muted-foreground" />
               </div>
 
-              <div className="space-y-2">
-                {rentPayments.map(payment => (
-                  <div key={payment.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground capitalize">
-                        {new Date(payment.periodMonth).toLocaleDateString('pt-PT', {
-                          month: 'long',
-                          year: 'numeric',
-                        })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {payment.status === 'paid' && payment.paidAt
-                          ? `Pago em ${formatShortDate(payment.paidAt)}`
-                          : `Vence em ${formatShortDate(payment.dueDate)}`}
-                      </p>
+              {rentPayments.length > 0 ? (
+                <div className="space-y-2">
+                  {rentPayments.map(payment => (
+                    <div key={payment.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground capitalize">
+                          {new Date(payment.periodMonth).toLocaleDateString('pt-PT', {
+                            month: 'long',
+                            year: 'numeric',
+                          })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {payment.status === 'paid' && payment.paidAt
+                            ? `Validado em ${formatShortDate(payment.paidAt)}`
+                            : payment.proofUrl
+                              ? 'Comprovativo submetido · aguarda validação'
+                              : `Vence em ${formatShortDate(payment.dueDate)}`}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-bold text-foreground">{formatCurrency(payment.totalAmount)}</p>
+                        <Badge
+                          variant={
+                            payment.status === 'paid'
+                              ? 'success'
+                              : payment.status === 'late'
+                              ? 'outline'
+                              : 'warning'
+                          }
+                          className="text-[10px]"
+                        >
+                          {payment.status !== 'paid' && payment.proofUrl ? 'Em validação' : getPaymentStatusLabel(payment.status)}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-bold text-foreground">{formatCurrency(payment.totalAmount)}</p>
-                      <Badge
-                        variant={
-                          payment.status === 'paid'
-                            ? 'success'
-                            : payment.status === 'late'
-                            ? 'outline'
-                            : 'warning'
-                        }
-                        className="text-[10px]"
-                      >
-                        {getPaymentStatusLabel(payment.status)}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border p-5 text-center">
+                  <Receipt className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-foreground">Ainda sem pagamentos registados</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Quando submeteres comprovativos ou o senhorio validar pagamentos, aparecem aqui.
+                  </p>
+                </div>
+              )}
             </Card>
           </div>
         </div>
@@ -969,6 +949,143 @@ export function MyHome() {
         accommodationId={room.id}
         landlordId={property.landlordId}
       />
+
+      {showPaymentModal && nextPayment && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-2xl overflow-hidden">
+            <div className="flex items-start justify-between gap-4 p-6 border-b border-border">
+              <div>
+                <p className="text-sm font-semibold text-primary mb-1">Submeter comprovativo</p>
+                <h2 className="text-2xl font-bold text-foreground">{formatCurrency(nextPayment.totalAmount)}</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  A UniRoom não executa pagamentos. Paga pelo canal acordado e submete aqui o comprovativo.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setSelectedProofFileName('');
+                }}
+                className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors"
+                aria-label="Fechar submissão de comprovativo"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="rounded-2xl border border-border bg-muted/25 p-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Dados de recebimento do senhorio</p>
+                    <p className="text-lg font-bold text-foreground">{getPaymentMethodLabel(paymentMethod)}</p>
+                  </div>
+                  <Badge variant="outline">Informativo</Badge>
+                </div>
+
+                <div className="rounded-xl bg-card border border-border p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Dados para pagamento</p>
+                  <p className="font-semibold text-foreground break-all">
+                    {getPaymentMethodMainValue(paymentMethod) || 'O senhorio ainda não configurou dados de recebimento.'}
+                  </p>
+                  {paymentMethod.holderName && (
+                    <p className="text-xs text-muted-foreground mt-1">Titular: {paymentMethod.holderName}</p>
+                  )}
+                </div>
+
+                <Button variant="outline" size="sm" className="mt-3 w-full" onClick={handleCopyPaymentData}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copiar dados
+                </Button>
+              </div>
+
+              <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
+                <p className="text-sm font-semibold text-amber-900">Atenção</p>
+                <p className="text-xs text-amber-800 mt-1">
+                  Este ecrã não processa dinheiro. Serve apenas para anexar prova de pagamento. O senhorio valida
+                  o comprovativo e só depois o estado passa para “Pago”.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground mb-3">
+                  Comprovativo de pagamento *
+                </label>
+
+                <label className={`block rounded-2xl border-2 border-dashed p-5 cursor-pointer transition-all ${
+                  selectedProofFileName
+                    ? 'border-secondary bg-secondary/5'
+                    : 'border-border hover:border-primary/50 hover:bg-muted/40'
+                }`}>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={event => {
+                      const file = event.target.files?.[0];
+
+                      if (!file) return;
+
+                      setSelectedProofFileName(file.name);
+                    }}
+                  />
+
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                      selectedProofFileName ? 'bg-secondary/10' : 'bg-primary/10'
+                    }`}>
+                      <Upload className={`w-5 h-5 ${selectedProofFileName ? 'text-secondary' : 'text-primary'}`} />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground">
+                        {selectedProofFileName || nextPayment.proofFileName || 'Selecionar ficheiro'}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PDF, PNG, JPG ou WEBP. Podes submeter ou substituir enquanto aguarda validação.
+                      </p>
+                    </div>
+
+                    {selectedProofFileName && (
+                      <Badge variant="success">Selecionado</Badge>
+                    )}
+                  </div>
+                </label>
+              </div>
+
+              <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
+                <p className="text-sm font-semibold text-blue-900">Validação pelo senhorio</p>
+                <p className="text-xs text-blue-800 mt-1">
+                  Depois de submeteres, o pagamento fica “Em validação”. Enquanto o senhorio não validar,
+                  podes voltar a abrir e substituir o comprovativo.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-border flex flex-col sm:flex-row gap-3 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setSelectedProofFileName('');
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => handleUploadPaymentProof(nextPayment.id)}
+                disabled={!selectedProofFileName}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {nextPayment.proofUrl ? 'Substituir comprovativo' : 'Submeter comprovativo'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {showContractModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
