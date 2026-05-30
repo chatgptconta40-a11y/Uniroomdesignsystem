@@ -51,10 +51,13 @@ export function Navbar() {
     ? '/admin'
     : '/dashboard';
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
     setShowMenu(false);
+    setShowNotifications(false);
+
+    await logout();
+
+    navigate('/', { replace: true });
   };
 
   const handleNotificationClick = (notification: any) => {

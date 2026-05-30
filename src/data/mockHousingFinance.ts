@@ -465,12 +465,6 @@ export function getLandlordFinanceSummary(landlordId: string, landlordName = 'Se
     .filter(payment => payment.landlordId === landlordId)
     .map(normalizePaymentStatus);
 
-  const allPayments = read<RentPayment>(RENT_PAYMENTS_KEY);
-  write(
-    RENT_PAYMENTS_KEY,
-    allPayments.map(payment => payment.landlordId === landlordId ? normalizePaymentStatus(payment) : payment),
-  );
-
   const pendingPayments = payments.filter(payment => payment.status === 'pending');
   const latePayments = payments.filter(payment => payment.status === 'late');
   const proofPayments = payments.filter(payment => payment.proofUrl && payment.status !== 'paid');

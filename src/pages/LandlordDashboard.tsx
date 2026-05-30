@@ -94,7 +94,7 @@ function getActivityLabel(type: string) {
 export function LandlordDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { properties, rooms, refreshProperties } = useProperties();
+  const { properties, rooms } = useProperties();
   const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
 
   const userId = user?.id || '';
@@ -108,8 +108,6 @@ export function LandlordDashboard() {
 
   useEffect(() => {
     if (!user) return;
-
-    void refreshProperties();
 
     refreshHousingFinanceState()
       .then(() => setFinanceRefreshKey(key => key + 1))

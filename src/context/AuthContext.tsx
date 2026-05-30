@@ -480,16 +480,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    setUser(null);
+    localStorage.removeItem(STORAGE_KEY);
+
+    try {
+      window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue: null }));
+      window.dispatchEvent(new Event('uniroom:auth-logout'));
+    } catch {
+      // Ignorar em ambientes que não suportem StorageEvent.
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.auth.signOut();
       } catch {
-        // Mesmo que Supabase falhe, a sessão local deve terminar.
+        // Mesmo que Supabase falhe, a sessão local já terminou.
       }
     }
-
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
   };
 
   return (
