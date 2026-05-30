@@ -75,6 +75,19 @@ export interface RentPayment {
   updatedAt: string;
 }
 
+export interface RentalContractUpdateInput {
+  title?: string;
+  status?: ContractStatus;
+  startDate?: string;
+  endDate?: string;
+  monthlyRent?: number;
+  depositAmount?: number;
+  utilitiesAmount?: number;
+  notes?: string;
+  fileUrl?: string;
+  fileName?: string;
+}
+
 function read<T>(key: string): T[] {
   try {
     const raw = localStorage.getItem(key);
@@ -112,6 +125,18 @@ function buildDueDate(period: Date, paymentDay: number) {
   const due = new Date(period);
   due.setDate(Math.min(Math.max(paymentDay || 1, 1), 28));
   return due;
+}
+
+function normalizePaymentStatus(payment: RentPayment): RentPayment {
+  if (payment.status === 'pending' && new Date(payment.dueDate).getTime() < Date.now()) {
+    return {
+      ...payment,
+      status: 'late',
+      updatedAt: iso(new Date()),
+    };
+  }
+
+  return payment;
 }
 
 export function formatCurrency(value: number) {
@@ -208,6 +233,8 @@ export function upsertDefaultPaymentMethod(
   const next: PaymentMethod = {
     id: existing?.id || uid('pm'),
     landlordId,
+    propertyId: input.propertyId ?? existing?.propertyId,
+    roomId: input.roomId ?? existing?.roomId,
     methodType: input.methodType || existing?.methodType || 'mbway',
     label: input.label || existing?.label || 'Método principal',
     holderName: input.holderName || existing?.holderName || 'Senhorio UniRoom',
@@ -277,6 +304,72 @@ export function getOrCreateRentalContract(
   return contract;
 }
 
+export function getRentalContractsForLandlord(landlordId: string): RentalContract[] {
+  const contracts = read<RentalContract>(RENTAL_CONTRACTS_KEY);
+
+  return contracts
+    .filter(contract => contract.landlordId === landlordId)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+export function getRentalContractsForStudent(studentId: string): RentalContract[] {
+  const contracts = read<RentalContract>(RENTAL_CONTRACTS_KEY);
+
+  return contracts
+    .filter(contract => contract.studentId === studentId)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+export function getRentalContractById(contractId: string): RentalContract | null {
+  const contracts = read<RentalContract>(RENTAL_CONTRACTS_KEY);
+
+  return contracts.find(contract => contract.id === contractId) || null;
+}
+
+export function updateRentalContract(
+  contractId: string,
+  updates: RentalContractUpdateInput,
+): RentalContract | null {
+  const contracts = read<RentalContract>(RENTAL_CONTRACTS_KEY);
+  const current = contracts.find(contract => contract.id === contractId);
+
+  if (!current) return null;
+
+  const updated: RentalContract = {
+    ...current,
+    ...updates,
+    monthlyRent: updates.monthlyRent ?? current.monthlyRent,
+    depositAmount: updates.depositAmount ?? current.depositAmount,
+    utilitiesAmount: updates.utilitiesAmount ?? current.utilitiesAmount,
+    updatedAt: iso(new Date()),
+  };
+
+  write(
+    RENTAL_CONTRACTS_KEY,
+    contracts.map(contract => contract.id === contractId ? updated : contract),
+  );
+
+  return updated;
+}
+
+export function upsertRentalContractForActiveHome(
+  activeHome: ActiveHome,
+  monthlyRent: number,
+  utilities: number,
+  updates: RentalContractUpdateInput = {},
+): RentalContract {
+  const existing = getOrCreateRentalContract(activeHome, monthlyRent, utilities);
+
+  return updateRentalContract(existing.id, updates) || existing;
+}
+
+export function getContractStatusTone(status: ContractStatus): 'success' | 'warning' | 'outline' | 'default' {
+  if (status === 'active' || status === 'signed') return 'success';
+  if (status === 'draft' || status === 'sent') return 'warning';
+  if (status === 'expired' || status === 'cancelled') return 'outline';
+  return 'default';
+}
+
 export function getRentPaymentsForHome(
   activeHome: ActiveHome,
   monthlyRent: number,
@@ -284,8 +377,13 @@ export function getRentPaymentsForHome(
 ): RentPayment[] {
   const payments = read<RentPayment>(RENT_PAYMENTS_KEY);
   const existing = payments.filter(payment => payment.activeHomeId === activeHome.id);
+
   if (existing.length > 0) {
-    return existing.sort((a, b) => new Date(b.periodMonth).getTime() - new Date(a.periodMonth).getTime());
+    const normalized = existing.map(normalizePaymentStatus);
+    const others = payments.filter(payment => payment.activeHomeId !== activeHome.id);
+    write(RENT_PAYMENTS_KEY, [...others, ...normalized]);
+
+    return normalized.sort((a, b) => new Date(b.periodMonth).getTime() - new Date(a.periodMonth).getTime());
   }
 
   const paymentMethod = getPaymentMethodForHome(activeHome);
@@ -363,7 +461,16 @@ export function markRentPaymentAsPaid(paymentId: string): RentPayment | null {
 export function getLandlordFinanceSummary(landlordId: string, landlordName = 'Senhorio UniRoom') {
   const methods = getPaymentMethodsForLandlord(landlordId, landlordName);
   const contracts = read<RentalContract>(RENTAL_CONTRACTS_KEY).filter(contract => contract.landlordId === landlordId);
-  const payments = read<RentPayment>(RENT_PAYMENTS_KEY).filter(payment => payment.landlordId === landlordId);
+  const payments = read<RentPayment>(RENT_PAYMENTS_KEY)
+    .filter(payment => payment.landlordId === landlordId)
+    .map(normalizePaymentStatus);
+
+  const allPayments = read<RentPayment>(RENT_PAYMENTS_KEY);
+  write(
+    RENT_PAYMENTS_KEY,
+    allPayments.map(payment => payment.landlordId === landlordId ? normalizePaymentStatus(payment) : payment),
+  );
+
   const pendingPayments = payments.filter(payment => payment.status === 'pending');
   const latePayments = payments.filter(payment => payment.status === 'late');
   const proofPayments = payments.filter(payment => payment.proofUrl && payment.status !== 'paid');
@@ -390,12 +497,7 @@ export function getLandlordFinanceSummary(landlordId: string, landlordName = 'Se
 
 export function refreshHousingFinanceState(): void {
   const payments = read<RentPayment>(RENT_PAYMENTS_KEY);
-  const now = Date.now();
-  const updated = payments.map(payment =>
-    payment.status === 'pending' && new Date(payment.dueDate).getTime() < now
-      ? { ...payment, status: 'late' as RentPaymentStatus, updatedAt: iso(new Date()) }
-      : payment,
-  );
+  const updated = payments.map(normalizePaymentStatus);
   write(RENT_PAYMENTS_KEY, updated);
 }
 
