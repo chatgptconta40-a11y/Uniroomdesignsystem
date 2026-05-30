@@ -26,6 +26,7 @@ import {
   Trees,
   Layers,
   GraduationCap,
+  MapPin,
   PartyPopper,
   PawPrint,
   Cigarette,
@@ -56,6 +57,13 @@ interface RoomDraft {
   hasWindow: boolean;
   availableFrom: string;
   publishNow: boolean;
+  description: string;
+}
+
+interface SchoolEntry {
+  school: string;
+  distanceKm: number | '';
+  walkMinutes: number | '';
 }
 
 interface PropertyDraft {
@@ -64,9 +72,7 @@ interface PropertyDraft {
   address: string;
   zone: string;
   city: string;
-  university: string;
-  distanceToUniversity: number | '';
-  walkTimeMinutes: number | '';
+  nearbySchools: SchoolEntry[];
   utilitiesIncluded: boolean;
   utilitiesNotes: string;
   amenities: {
@@ -112,9 +118,7 @@ const defaultProperty: PropertyDraft = {
   address: '',
   zone: '',
   city: 'Viseu',
-  university: 'ESTGV',
-  distanceToUniversity: '',
-  walkTimeMinutes: '',
+  nearbySchools: [{ school: 'ESTGV', distanceKm: '', walkMinutes: '' }],
   utilitiesIncluded: false,
   utilitiesNotes: '',
   amenities: {
@@ -153,6 +157,7 @@ const emptyRoom = (): RoomDraft => ({
   hasWindow: true,
   availableFrom: '',
   publishNow: false,
+  description: '',
 });
 
 const STEPS: Array<{ number: StepNumber; title: string; icon: React.ElementType }> = [
@@ -160,6 +165,32 @@ const STEPS: Array<{ number: StepNumber; title: string; icon: React.ElementType 
   { number: 2, title: 'Quartos', icon: BedDouble },
   { number: 3, title: 'Regras', icon: Shield },
   { number: 4, title: 'Publicar', icon: CheckCircle },
+];
+
+const CITY_OPTIONS = [
+  'Viseu',
+  'Porto',
+  'Lisboa',
+  'Coimbra',
+  'Aveiro',
+  'Braga',
+  'Guarda',
+  'Castelo Branco',
+];
+
+const SCHOOL_OPTIONS = [
+  'ESTGV',
+  'IPV — Instituto Politécnico de Viseu',
+  'Escola Secundária Alves Martins',
+  'Escola Secundária de Emídio Navarro',
+  'Escola Secundária de Viriato',
+  'Universidade do Porto',
+  'Universidade de Lisboa',
+  'Universidade de Coimbra',
+  'Universidade de Aveiro',
+  'Universidade do Minho',
+  'Universidade da Beira Interior',
+  'Outra',
 ];
 
 // ─── Small UI helpers ─────────────────────────────────────────────────────────
@@ -250,9 +281,6 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
     else if (form.price < 100) errs.price = 'A renda parece demasiado baixa. Confirma o valor.';
     else if (form.price > 1200) errs.price = 'A renda parece demasiado alta para quarto universitário.';
 
-    if (form.utilities < 0) errs.utilities = 'As despesas não podem ser negativas.';
-    else if (form.utilities > 400) errs.utilities = 'Confirma o valor das despesas mensais.';
-
     if (size !== undefined && (Number.isNaN(size) || size < 6 || size > 80)) {
       errs.size = 'A área deve estar entre 6m² e 80m².';
     }
@@ -295,40 +323,21 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
               {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <FieldLabel required>Renda (€/mês)</FieldLabel>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">€</span>
-                  <input
-                    type="number"
-                    min={100}
-                    max={1200}
-                    className={`${inputCls(errors.price)} pl-7`}
-                    value={form.price || ''}
-                    onChange={e => set({ price: Number(e.target.value) })}
-                    placeholder="250"
-                  />
-                </div>
-                {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price}</p>}
+            <div>
+              <FieldLabel required>Renda (€/mês)</FieldLabel>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">€</span>
+                <input
+                  type="number"
+                  min={100}
+                  max={1200}
+                  className={`${inputCls(errors.price)} pl-7`}
+                  value={form.price || ''}
+                  onChange={e => set({ price: Number(e.target.value) })}
+                  placeholder="250"
+                />
               </div>
-
-              <div>
-                <FieldLabel>Despesas (€/mês)</FieldLabel>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">€</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={400}
-                    className={`${inputCls(errors.utilities)} pl-7`}
-                    value={form.utilities || ''}
-                    onChange={e => set({ utilities: Number(e.target.value) })}
-                    placeholder="0"
-                  />
-                </div>
-                {errors.utilities && <p className="text-xs text-red-500 mt-1">{errors.utilities}</p>}
-              </div>
+              {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -413,6 +422,17 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
             </div>
 
             <div>
+              <FieldLabel>Notas adicionais</FieldLabel>
+              <textarea
+                className={`${inputCls()} resize-none`}
+                rows={3}
+                value={form.description}
+                onChange={e => set({ description: e.target.value })}
+                placeholder="Ex: Vista para jardim, secretária grande, boa luminosidade natural..."
+              />
+            </div>
+
+            <div>
               <FieldLabel>Foto do quarto</FieldLabel>
               <div className="flex gap-3 flex-wrap">
                 {ROOM_PHOTOS.map((url, i) => (
@@ -465,6 +485,7 @@ export function NewListing() {
   const [propertyErrors, setPropertyErrors] = useState<Record<string, string>>({});
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<RoomDraft | null>(null);
+  const [propertyPhotoOptions, setPropertyPhotoOptions] = useState<string[]>(PROPERTY_IMAGES);
   const [selectedPropertyPhoto, setSelectedPropertyPhoto] = useState(0);
   const [saving, setSaving] = useState(false);
 
@@ -489,19 +510,20 @@ export function NewListing() {
 
   const validateStep1 = () => {
     const errs: Record<string, string> = {};
-    const distance = Number(property.distanceToUniversity);
-    const walkTime = property.walkTimeMinutes === '' ? undefined : Number(property.walkTimeMinutes);
+    const firstSchoolEntry = property.nearbySchools[0];
+    const walkTime = firstSchoolEntry?.walkMinutes === '' ? undefined : Number(firstSchoolEntry?.walkMinutes);
 
     if (property.title.trim().length < 8) errs.title = 'Dá um título claro com pelo menos 8 caracteres.';
     if (property.description.trim().length < 40) errs.description = 'Escreve uma descrição um pouco mais completa.';
     if (property.address.trim().length < 8) errs.address = 'Indica uma morada suficientemente completa.';
     if (property.zone.trim().length < 2) errs.zone = 'Indica a zona ou bairro para melhorar a pesquisa.';
     if (!property.city.trim()) errs.city = 'Indica a cidade.';
-    if (!property.university.trim()) errs.university = 'Seleciona a universidade de referência.';
-    if (Number.isNaN(distance)) errs.distanceToUniversity = 'Indica a distância aproximada à universidade.';
-    else if (distance <= 0 || distance > 20) errs.distanceToUniversity = 'A distância deve estar entre 0.1km e 20km.';
+    const firstSchool = property.nearbySchools[0];
+    if (!firstSchool?.school.trim()) errs.school = 'Seleciona pelo menos uma escola.';
+    if (!firstSchool?.distanceKm) errs.distanceToSchool = 'Indica a distância à escola principal.';
+    else if (Number(firstSchool.distanceKm) <= 0 || Number(firstSchool.distanceKm) > 20) errs.distanceToSchool = 'A distância deve estar entre 0.1km e 20km.';
     if (walkTime !== undefined && (Number.isNaN(walkTime) || walkTime < 1 || walkTime > 120)) {
-      errs.walkTimeMinutes = 'O tempo a pé deve estar entre 1 e 120 minutos.';
+      errs.walkTime = 'O tempo a pé deve estar entre 1 e 120 minutos.';
     }
 
     setPropertyErrors(errs);
@@ -556,6 +578,64 @@ export function NewListing() {
 
     setRooms(prev => [...prev, duplicate]);
     toast.success(`"${duplicate.title}" duplicado — fica em rascunho`);
+  };
+
+  const readImageFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePropertyPhotoUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+
+    if (validFiles.length === 0) {
+      toast.error('Escolhe ficheiros de imagem válidos.');
+      return;
+    }
+
+    try {
+      const uploadedImages = await Promise.all(validFiles.map(readImageFile));
+
+      setPropertyPhotoOptions(prev => {
+        const next = [...prev, ...uploadedImages];
+        setSelectedPropertyPhoto(prev.length);
+        return next;
+      });
+
+      toast.success(
+        validFiles.length === 1
+          ? 'Foto adicionada ao alojamento'
+          : `${validFiles.length} fotos adicionadas ao alojamento`,
+      );
+    } catch {
+      toast.error('Não foi possível carregar a imagem.');
+    }
+  };
+
+  const removePropertyPhoto = (index: number) => {
+    setPropertyPhotoOptions(prev => {
+      if (prev.length <= 1) {
+        toast.error('Mantém pelo menos uma foto.');
+        return prev;
+      }
+
+      const next = prev.filter((_, i) => i !== index);
+      setSelectedPropertyPhoto(current => {
+        if (index === current) return 0;
+        if (index < current) return Math.max(0, current - 1);
+        return Math.min(current, next.length - 1);
+      });
+
+      return next;
+    });
   };
 
   const toggleRoomPublish = (tempId: string) => {
@@ -654,6 +734,11 @@ export function NewListing() {
       });
 
       const propertyStatus = mode === 'draft' ? 'draft' as const : 'active' as const;
+      const selectedMainImage = propertyPhotoOptions[selectedPropertyPhoto] || propertyPhotoOptions[0] || PROPERTY_IMAGES[0];
+      const orderedPropertyImages = [
+        selectedMainImage,
+        ...propertyPhotoOptions.filter((image, index) => index !== selectedPropertyPhoto && image !== selectedMainImage),
+      ];
 
       const newProperty = {
         id: propertyId,
@@ -663,8 +748,8 @@ export function NewListing() {
         address: property.address.trim(),
         city: property.city.trim(),
         zone: property.zone.trim() || property.city.trim(),
-        distanceToUniversity: Number(property.distanceToUniversity) || 0,
-        images: [PROPERTY_IMAGES[selectedPropertyPhoto]],
+        distanceToUniversity: Number(property.nearbySchools[0]?.distanceKm) || 0,
+        images: orderedPropertyImages,
         amenities: {
           wifi: property.amenities.wifi,
           parking: property.amenities.parking,
@@ -733,8 +818,8 @@ export function NewListing() {
   if (property.address.trim().length < 8) missingFields.push('Morada completa');
   if (property.zone.trim().length < 2) missingFields.push('Zona ou bairro');
   if (!property.city.trim()) missingFields.push('Cidade');
-  if (!property.university.trim()) missingFields.push('Universidade');
-  if (!property.distanceToUniversity) missingFields.push('Distância à universidade');
+  if (!property.nearbySchools[0]?.school.trim()) missingFields.push('Escola');
+  if (!property.nearbySchools[0]?.distanceKm) missingFields.push('Distância à escola');
   if (rooms.length === 0) missingFields.push('Pelo menos um quarto');
 
   const AMENITY_OPTIONS = [
@@ -819,26 +904,14 @@ export function NewListing() {
               </div>
 
               <div>
-                <FieldLabel required>Título</FieldLabel>
+                <FieldLabel required>Título da casa/apartamento</FieldLabel>
                 <input
                   className={inputCls(propertyErrors.title)}
                   value={property.title}
                   onChange={e => setP({ title: e.target.value })}
-                  placeholder="Ex: Apartamento T3 perto da ESTGV"
+                  placeholder="Ex: Casa T3 perto da ESTGV ou Apartamento T2 no centro"
                 />
                 {propertyErrors.title && <p className="text-xs text-red-500 mt-1">{propertyErrors.title}</p>}
-              </div>
-
-              <div>
-                <FieldLabel required>Descrição</FieldLabel>
-                <textarea
-                  rows={5}
-                  className={inputCls(propertyErrors.description)}
-                  value={property.description}
-                  onChange={e => setP({ description: e.target.value })}
-                  placeholder="Descreve o alojamento, ambiente da casa, transportes, regras principais..."
-                />
-                {propertyErrors.description && <p className="text-xs text-red-500 mt-1">{propertyErrors.description}</p>}
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -868,75 +941,192 @@ export function NewListing() {
               <div className="grid md:grid-cols-4 gap-4">
                 <div>
                   <FieldLabel required>Cidade</FieldLabel>
-                  <input
+                  <select
                     className={inputCls(propertyErrors.city)}
                     value={property.city}
                     onChange={e => setP({ city: e.target.value })}
-                  />
+                  >
+                    {CITY_OPTIONS.map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
                   {propertyErrors.city && <p className="text-xs text-red-500 mt-1">{propertyErrors.city}</p>}
                 </div>
 
-                <div>
-                  <FieldLabel required>Universidade</FieldLabel>
-                  <input
-                    className={inputCls(propertyErrors.university)}
-                    value={property.university}
-                    onChange={e => setP({ university: e.target.value })}
-                  />
-                  {propertyErrors.university && <p className="text-xs text-red-500 mt-1">{propertyErrors.university}</p>}
-                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <FieldLabel required>Escolas próximas</FieldLabel>
+                      <p className="text-xs text-muted-foreground -mt-1">Adiciona todas as escolas (ensino superior ou secundário) a que o alojamento é próximo.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setP({
+                        nearbySchools: [
+                          ...property.nearbySchools,
+                          { school: 'ESTGV', distanceKm: '', walkMinutes: '' },
+                        ],
+                      })}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Adicionar
+                    </button>
+                  </div>
 
-                <div>
-                  <FieldLabel required>Distância (km)</FieldLabel>
-                  <input
-                    type="number"
-                    min={0.1}
-                    max={20}
-                    step={0.1}
-                    className={inputCls(propertyErrors.distanceToUniversity)}
-                    value={property.distanceToUniversity}
-                    onChange={e => setP({ distanceToUniversity: e.target.value ? Number(e.target.value) : '' })}
-                    placeholder="0.5"
-                  />
-                  {propertyErrors.distanceToUniversity && <p className="text-xs text-red-500 mt-1">{propertyErrors.distanceToUniversity}</p>}
-                </div>
+                  <div className="space-y-2">
+                    {property.nearbySchools.map((entry, idx) => (
+                      <div
+                        key={idx}
+                        className={`rounded-xl border transition-colors ${
+                          idx === 0 && (propertyErrors.school || propertyErrors.distanceToSchool)
+                            ? 'border-red-300 bg-red-50/40'
+                            : 'border-border bg-muted/20 hover:border-primary/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-0 divide-x divide-border">
+                          <div className="flex items-center gap-2 px-3 py-2.5 flex-1 min-w-0">
+                            <GraduationCap className="w-4 h-4 text-primary flex-shrink-0" />
+                            <select
+                              className="bg-transparent border-none outline-none text-sm font-medium text-foreground w-full cursor-pointer"
+                              value={entry.school}
+                              onChange={e => {
+                                const updated = property.nearbySchools.map((s, i) =>
+                                  i === idx ? { ...s, school: e.target.value } : s,
+                                );
+                                setP({ nearbySchools: updated });
+                              }}
+                            >
+                              {SCHOOL_OPTIONS.map(s => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
+                          </div>
 
-                <div>
-                  <FieldLabel>Tempo a pé (min)</FieldLabel>
-                  <input
-                    type="number"
-                    min={1}
-                    max={120}
-                    className={inputCls(propertyErrors.walkTimeMinutes)}
-                    value={property.walkTimeMinutes}
-                    onChange={e => setP({ walkTimeMinutes: e.target.value ? Number(e.target.value) : '' })}
-                    placeholder="8"
-                  />
-                  {propertyErrors.walkTimeMinutes && <p className="text-xs text-red-500 mt-1">{propertyErrors.walkTimeMinutes}</p>}
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 w-28 flex-shrink-0">
+                            <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            <input
+                              type="number"
+                              min={0.1}
+                              max={20}
+                              step={0.1}
+                              className="bg-transparent border-none outline-none text-sm w-full text-foreground placeholder:text-muted-foreground/60"
+                              value={entry.distanceKm}
+                              onChange={e => {
+                                const updated = property.nearbySchools.map((s, i) =>
+                                  i === idx ? { ...s, distanceKm: e.target.value ? Number(e.target.value) : '' } : s,
+                                );
+                                setP({ nearbySchools: updated });
+                              }}
+                              placeholder="0.5 km"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 w-28 flex-shrink-0">
+                            <Clock className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            <input
+                              type="number"
+                              min={1}
+                              max={120}
+                              className="bg-transparent border-none outline-none text-sm w-full text-foreground placeholder:text-muted-foreground/60"
+                              value={entry.walkMinutes}
+                              onChange={e => {
+                                const updated = property.nearbySchools.map((s, i) =>
+                                  i === idx ? { ...s, walkMinutes: e.target.value ? Number(e.target.value) : '' } : s,
+                                );
+                                setP({ nearbySchools: updated });
+                              }}
+                              placeholder="8 min"
+                            />
+                          </div>
+
+                          {property.nearbySchools.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setP({
+                                nearbySchools: property.nearbySchools.filter((_, i) => i !== idx),
+                              })}
+                              className="px-3 py-2.5 text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(propertyErrors.school || propertyErrors.distanceToSchool) && (
+                    <p className="text-xs text-red-500 mt-1.5">
+                      {propertyErrors.school || propertyErrors.distanceToSchool}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div>
-                <FieldLabel>Foto da propriedade</FieldLabel>
+                <FieldLabel>Fotos da casa/apartamento</FieldLabel>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Carrega fotografias reais do alojamento. A foto selecionada será usada como imagem principal.
+                </p>
+
                 <div className="flex gap-3 flex-wrap">
-                  {PROPERTY_IMAGES.map((url, index) => (
-                    <button
-                      key={url}
-                      type="button"
-                      onClick={() => setSelectedPropertyPhoto(index)}
-                      className={`relative w-32 h-20 rounded-xl overflow-hidden border-2 transition-all ${
+                  {propertyPhotoOptions.map((url, index) => (
+                    <div
+                      key={`${url}-${index}`}
+                      className={`group relative w-32 h-20 rounded-xl overflow-hidden border-2 transition-all ${
                         selectedPropertyPhoto === index ? 'border-primary ring-2 ring-primary/30' : 'border-border'
                       }`}
                     >
-                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPropertyPhoto(index)}
+                        className="w-full h-full"
+                      >
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                      </button>
+
                       {selectedPropertyPhoto === index && (
-                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center pointer-events-none">
                           <Check className="w-5 h-5 text-white drop-shadow" />
                         </div>
                       )}
-                    </button>
+
+                      <button
+                        type="button"
+                        onClick={() => removePropertyPhoto(index)}
+                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                        title="Remover foto"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   ))}
+
+                  <label className="w-32 h-20 rounded-xl border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary cursor-pointer">
+                    <Camera className="w-5 h-5" />
+                    <span className="text-[11px] font-medium">Adicionar fotos</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={event => handlePropertyPhotoUpload(event.target.files)}
+                    />
+                  </label>
                 </div>
+              </div>
+
+              <div>
+                <FieldLabel required>Descrição</FieldLabel>
+                <textarea
+                  rows={5}
+                  className={inputCls(propertyErrors.description)}
+                  value={property.description}
+                  onChange={e => setP({ description: e.target.value })}
+                  placeholder="Descreve o alojamento, ambiente da casa, transportes, regras principais..."
+                />
+                {propertyErrors.description && <p className="text-xs text-red-500 mt-1">{propertyErrors.description}</p>}
               </div>
 
               <div>
@@ -970,12 +1160,12 @@ export function NewListing() {
                 onClick={() => setP({ utilitiesIncluded: !property.utilitiesIncluded })}
                 className={`flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${
                   property.utilitiesIncluded
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-border hover:border-green-300'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/40'
                 }`}
               >
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${
-                  property.utilitiesIncluded ? 'bg-green-500 border-green-500' : 'border-muted-foreground/40'
+                  property.utilitiesIncluded ? 'bg-primary border-primary' : 'border-muted-foreground/40'
                 }`}>
                   {property.utilitiesIncluded && <Check className="w-3 h-3 text-white" />}
                 </div>
@@ -1250,7 +1440,7 @@ export function NewListing() {
                 <div className="border border-border rounded-xl overflow-hidden">
                   <div className="relative h-36">
                     <img
-                      src={PROPERTY_IMAGES[selectedPropertyPhoto]}
+                      src={propertyPhotoOptions[selectedPropertyPhoto] || propertyPhotoOptions[0] || PROPERTY_IMAGES[0]}
                       alt=""
                       className="w-full h-full object-cover"
                     />
@@ -1262,13 +1452,13 @@ export function NewListing() {
                   </div>
                   <div className="p-4 bg-card">
                     <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                      {property.university && (
-                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                      {property.nearbySchools.filter(s => s.school).map((s, i) => (
+                        <span key={i} className="flex items-center gap-1.5 text-muted-foreground">
                           <GraduationCap className="w-3.5 h-3.5" />
-                          {property.university}
-                          {property.distanceToUniversity ? ` · ${property.distanceToUniversity}km` : ''}
+                          {s.school}
+                          {s.distanceKm ? ` · ${s.distanceKm}km` : ''}
                         </span>
-                      )}
+                      ))}
                       {property.amenities.wifi && <span className="text-xs text-muted-foreground">Wi-Fi</span>}
                       {property.amenities.parking && <span className="text-xs text-muted-foreground">Estacionamento</span>}
                       {property.amenities.laundry && <span className="text-xs text-muted-foreground">Lavandaria</span>}
@@ -1472,22 +1662,10 @@ export function NewListing() {
             )}
 
             {step < 4 && (
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => buildAndSave('draft')}
-                  disabled={isSuspended || saving}
-                  className="hidden sm:flex"
-                >
-                  <Save className="w-4 h-4 mr-1.5" />
-                  Guardar como rascunho
-                </Button>
-
-                <Button onClick={handleNext} disabled={saving}>
-                  Continuar
-                  <ArrowRight className="w-4 h-4 ml-1.5" />
-                </Button>
-              </div>
+              <Button onClick={handleNext} disabled={saving}>
+                Continuar
+                <ArrowRight className="w-4 h-4 ml-1.5" />
+              </Button>
             )}
           </div>
         </Card>
