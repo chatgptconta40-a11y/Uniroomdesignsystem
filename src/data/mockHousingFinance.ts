@@ -495,7 +495,7 @@ export function getLandlordFinanceSummary(landlordId: string, landlordName = 'Se
   };
 }
 
-export function refreshHousingFinanceState(): void {
+export async function refreshHousingFinanceState(): Promise<void> {
   const payments = read<RentPayment>(RENT_PAYMENTS_KEY);
   const updated = payments.map(normalizePaymentStatus);
   write(RENT_PAYMENTS_KEY, updated);

@@ -1,9 +1,23 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
-  FileText, CheckCircle, XCircle, MessageCircle, Mail, GraduationCap,
-  Calendar, Shield, Star, SlidersHorizontal, ArrowUpDown, Trophy, AlertTriangle,
-  Building, ChevronRight, Clock, X,
+  FileText,
+  CheckCircle,
+  XCircle,
+  MessageCircle,
+  Mail,
+  GraduationCap,
+  Calendar,
+  Shield,
+  Star,
+  SlidersHorizontal,
+  ArrowUpDown,
+  Trophy,
+  AlertTriangle,
+  Building,
+  ChevronRight,
+  Clock,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -25,6 +39,13 @@ const decisionScore = (app: DetailedApplication) =>
 
 const isActionableStatus = (status: ApplicationStatus) =>
   status === 'pending' || status === 'under_review';
+
+const canBeBestCandidate = (app: DetailedApplication) =>
+  app.verificationLevel !== 'none' ||
+  app.verificationPending ||
+  app.trustLevel === 'confirmed' ||
+  app.trustLevel === 'trusted' ||
+  app.trustScore >= 75;
 
 export function LandlordApplications() {
   const { user } = useAuth();
@@ -57,15 +78,18 @@ export function LandlordApplications() {
 
     const status = normalizeRoomStatus(room.status);
 
-    if (status === 'reserved') return 'Este quarto ja esta reservado.';
-    if (status === 'occupied') return 'Este quarto ja esta ocupado.';
+    if (status === 'reserved') return 'Este quarto já está reservado.';
+    if (status === 'occupied') return 'Este quarto já está ocupado.';
 
     return null;
   }, [getRoom]);
 
   const bestCandidateId = useMemo(() => {
     const actionable = allApplications.filter(
-      app => isActionableStatus(app.status) && !getUnavailableReason(app),
+      app =>
+        isActionableStatus(app.status) &&
+        !getUnavailableReason(app) &&
+        canBeBestCandidate(app),
     );
 
     if (actionable.length === 0) return null;
@@ -134,7 +158,7 @@ export function LandlordApplications() {
     const unavailableReason = getUnavailableReason(app);
 
     if (unavailableReason) {
-      toast.error('Nao e possivel aceitar esta candidatura', {
+      toast.error('Não é possível aceitar esta candidatura', {
         description: unavailableReason,
       });
       setConfirmAcceptApp(null);
@@ -152,7 +176,7 @@ export function LandlordApplications() {
       return;
     }
 
-    toast.error('Nao foi possivel atualizar a candidatura.');
+    toast.error('Não foi possível atualizar a candidatura.');
   };
 
   const handleReject = (app: DetailedApplication) => {
@@ -165,12 +189,12 @@ export function LandlordApplications() {
     if (updateApplicationStatus(confirmRejectApp.id, 'rejected', user?.id)) {
       refreshProperties();
       toast.success('Candidatura rejeitada', {
-        description: 'O estudante foi notificado da decisao.',
+        description: 'O estudante foi notificado da decisão.',
       });
       setVersion(value => value + 1);
       setSelectedApp(null);
     } else {
-      toast.error('Nao foi possivel rejeitar a candidatura.');
+      toast.error('Não foi possível rejeitar a candidatura.');
     }
 
     setConfirmRejectApp(null);
@@ -190,7 +214,7 @@ export function LandlordApplications() {
 
   const statusLabel: Record<ApplicationStatus, string> = {
     pending: 'Pendente',
-    under_review: 'Em analise',
+    under_review: 'Em análise',
     accepted: 'Aceite',
     rejected: 'Rejeitada',
     withdrawn: 'Retirada',
@@ -225,7 +249,7 @@ export function LandlordApplications() {
           {([
             { label: 'Total', value: stats.total, key: 'all', color: 'text-foreground' },
             { label: 'Pendentes', value: stats.pending, key: 'pending', color: 'text-yellow-600' },
-            { label: 'Em analise', value: stats.underReview, key: 'under_review', color: 'text-blue-600' },
+            { label: 'Em análise', value: stats.underReview, key: 'under_review', color: 'text-blue-600' },
             { label: 'Aceites', value: stats.accepted, key: 'accepted', color: 'text-green-600' },
             { label: 'Confirmadas', value: stats.confirmed, key: 'confirmed', color: 'text-emerald-600' },
             { label: 'Rejeitadas', value: stats.rejected, key: 'rejected', color: 'text-red-600' },
@@ -253,7 +277,7 @@ export function LandlordApplications() {
               <option value="compatibility">Maior compatibilidade</option>
               <option value="trust">Maior trust score</option>
               <option value="decision">Melhor candidato</option>
-              <option value="movein">Entrada mais proxima</option>
+              <option value="movein">Entrada mais próxima</option>
             </select>
           </div>
 
@@ -356,7 +380,7 @@ export function LandlordApplications() {
                         {unavailableReason && isActionable && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-800 rounded-full text-[11px] font-medium">
                             <AlertTriangle className="w-3 h-3" />
-                            Quarto indisponivel
+                            Quarto indisponível
                           </span>
                         )}
                       </div>
@@ -383,7 +407,7 @@ export function LandlordApplications() {
                       <p className="text-xs text-muted-foreground line-clamp-1 flex items-center gap-1">
                         <Building className="w-3.5 h-3.5 flex-shrink-0" />
                         {app.listingTitle}
-                        <span className="text-primary font-semibold ml-1">€{app.listingPrice}/mes</span>
+                        <span className="text-primary font-semibold ml-1">€{app.listingPrice}/mês</span>
                       </p>
                     </div>
 
@@ -481,7 +505,7 @@ export function LandlordApplications() {
         <Modal
           isOpen={true}
           onClose={() => setConfirmAcceptApp(null)}
-          title="Confirmar aceitacao"
+          title="Confirmar aceitação"
           size="sm"
           footer={
             <div className="flex gap-3">
@@ -495,7 +519,7 @@ export function LandlordApplications() {
                 onClick={() => handleAccept(confirmAcceptApp)}
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
-                Confirmar aceitacao
+                Confirmar aceitação
               </Button>
             </div>
           }
@@ -512,7 +536,7 @@ export function LandlordApplications() {
               <p className={`text-sm ${
                 confirmAcceptUnavailableReason ? 'text-red-800' : 'text-amber-800'
               }`}>
-                {confirmAcceptUnavailableReason || 'Ao aceitar esta candidatura, o quarto ficara reservado. A ocupacao so fica ativa quando o estudante confirmar a estadia.'}
+                {confirmAcceptUnavailableReason || 'Ao aceitar esta candidatura, o quarto ficará reservado. A ocupação só fica ativa quando o estudante confirmar a estadia.'}
               </p>
             </div>
 
@@ -548,7 +572,7 @@ export function LandlordApplications() {
         onClose={() => setConfirmRejectApp(null)}
         onConfirm={handleRejectConfirm}
         title="Rejeitar candidatura?"
-        description="Esta candidatura sera marcada como rejeitada e o estudante sera notificado."
+        description="Esta candidatura será marcada como rejeitada e o estudante será notificado."
         cancelLabel="Voltar"
         confirmLabel="Rejeitar candidatura"
       />
@@ -674,7 +698,7 @@ function ApplicationDetailModal({
           <div className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl">
             <AlertTriangle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold text-orange-900">Quarto indisponivel</p>
+              <p className="text-sm font-semibold text-orange-900">Quarto indisponível</p>
               <p className="text-sm text-orange-800">{unavailableReason}</p>
             </div>
           </div>
@@ -699,7 +723,7 @@ function ApplicationDetailModal({
             </div>
             <p className="text-3xl font-bold">{app.trustScore}</p>
             <p className="text-xs mt-1 opacity-75">
-              {app.trustScore >= 75 ? 'Muito confiavel' : app.trustScore >= 50 ? 'Confiavel' : 'Perfil recente'}
+              {app.trustScore >= 75 ? 'Muito confiável' : app.trustScore >= 50 ? 'Confiável' : 'Perfil recente'}
             </p>
           </div>
         </div>
@@ -726,7 +750,7 @@ function ApplicationDetailModal({
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Alojamento pretendido</p>
               <p className="text-sm font-medium text-foreground line-clamp-1">{app.listingTitle}</p>
-              <p className="text-xs text-primary font-semibold">€{app.listingPrice}/mes</p>
+              <p className="text-xs text-primary font-semibold">€{app.listingPrice}/mês</p>
             </div>
           </div>
 

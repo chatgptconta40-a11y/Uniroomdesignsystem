@@ -53,19 +53,51 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function getCompatibilityScore(app: Application): number {
-  const seed = `${app.id}:${app.userId}:${app.propertyId ?? ''}:${app.roomId ?? app.accommodationId}`;
-  const base = hashToRange(seed, 66, 91);
-  const message = app.message || '';
-  const messageBonus = message.length >= 180 ? 6 : message.length >= 100 ? 3 : 0;
-  const moveInBonus = app.moveInDate ? 2 : 0;
+function hasRealVerification(userId: string): boolean {
+  const verification = getVerificationStatus(userId);
 
-  return clamp(base + messageBonus + moveInBonus, 55, 98);
+  return Boolean(
+    verification?.emailVerified ||
+    verification?.universityEmailVerified ||
+    verification?.documentVerified ||
+    verification?.documentReviewStatus === 'pending',
+  );
 }
 
-function getTrustLevel(score: number): DetailedApplication['trustLevel'] {
-  if (score >= 80) return 'trusted';
-  if (score >= 60) return 'confirmed';
+function hasCompleteStudentProfile(userId: string): boolean {
+  const profile = getProfile(userId);
+
+  return Boolean(
+    profile?.personal?.fullName &&
+    profile?.personal?.institution &&
+    profile?.personal?.course &&
+    profile?.lifestyle &&
+    profile?.preferences,
+  );
+}
+
+function getCompatibilityScore(app: Application): number {
+  const seed = `${app.id}:${app.userId}:${app.propertyId ?? ''}:${app.roomId ?? app.accommodationId}`;
+  const base = hashToRange(seed, 60, 86);
+  const message = app.message || '';
+  const messageBonus = message.length >= 180 ? 5 : message.length >= 100 ? 2 : 0;
+  const moveInBonus = app.moveInDate ? 2 : 0;
+  const verificationPenalty = hasRealVerification(app.userId) || hasCompleteStudentProfile(app.userId) ? 0 : -10;
+
+  return clamp(base + messageBonus + moveInBonus + verificationPenalty, 45, 95);
+}
+
+function getTrustLevel(userId: string, score: number): DetailedApplication['trustLevel'] {
+  const verification = getVerificationStatus(userId);
+
+  if (verification?.documentVerified || verification?.universityEmailVerified || score >= 85) {
+    return 'trusted';
+  }
+
+  if (verification?.emailVerified || hasCompleteStudentProfile(userId)) {
+    return 'confirmed';
+  }
+
   return 'new';
 }
 
@@ -82,26 +114,32 @@ function calculateCandidateTrustScore(user: any, app: Application): number {
   const verification = getVerificationStatus(app.userId);
   const trust = getTrustScore(app.userId);
 
-  let score = 35 + hashToRange(app.userId, 0, 8);
+  let score = 30;
 
-  if (user?.name) score += 6;
-  if (user?.email && !String(user.email).includes('exemplo.com')) score += 5;
-  if (profile?.personal) score += 10;
-  if (profile?.personal?.institution) score += 5;
+  if (user?.name) score += 4;
+  if (user?.email && !String(user.email).includes('exemplo.com')) score += 4;
+
+  if (profile?.personal?.fullName) score += 5;
+  if (profile?.personal?.institution) score += 4;
   if (profile?.personal?.course) score += 4;
-  if (profile?.lifestyle) score += 4;
-  if (profile?.preferences) score += 4;
+  if (profile?.personal?.yearOfStudy) score += 2;
+  if (profile?.lifestyle) score += 5;
+  if (profile?.preferences) score += 5;
 
-  if (verification?.emailVerified) score += 8;
-  if (verification?.universityEmailVerified) score += 12;
+  if (verification?.emailVerified) score += 10;
+  if (verification?.universityEmailVerified) score += 14;
   if (verification?.documentReviewStatus === 'pending') score += 4;
-  if (verification?.documentVerified) score += 18;
+  if (verification?.documentVerified) score += 20;
 
-  if (trust?.score) {
-    score = Math.round(score * 0.65 + trust.score * 0.35);
+  if (!hasRealVerification(app.userId) && !hasCompleteStudentProfile(app.userId)) {
+    score -= 15;
   }
 
-  return clamp(score, 35, 98);
+  if (trust?.score && hasRealVerification(app.userId)) {
+    score = Math.round(score * 0.75 + trust.score * 0.25);
+  }
+
+  return clamp(score, 20, 98);
 }
 
 export function getApplicationsForLandlord(landlordId: string, listingId?: string): DetailedApplication[] {
@@ -130,7 +168,7 @@ export function getApplicationsForLandlord(landlordId: string, listingId?: strin
       applicantYear: profile?.personal?.yearOfStudy || app.studentYear || 1,
       compatibilityScore,
       trustScore,
-      trustLevel: getTrustLevel(trustScore),
+      trustLevel: getTrustLevel(app.userId, trustScore),
       verificationLevel,
       verificationLabel: getVerificationLabel(verificationLevel, verificationPending),
       verificationPending,
