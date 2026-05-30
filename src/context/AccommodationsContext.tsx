@@ -165,9 +165,6 @@ export function AccommodationsProvider({ children }: { children: ReactNode }) {
         supabase.from('rooms').select('*'),
       ]);
 
-      if (propsRes.error) console.error('Accommodations props error:', propsRes.error.message);
-      if (roomsRes.error) console.error('Accommodations rooms error:', roomsRes.error.message);
-
       const remoteProps = (propsRes.data ?? []).map(normalizeProp);
       const remoteRooms = (roomsRes.data ?? []).map(normalizeRoom);
 
@@ -189,6 +186,8 @@ export function AccommodationsProvider({ children }: { children: ReactNode }) {
         });
 
       setAccommodations(mergeById(localList, remoteList));
+    } catch {
+      // network unavailable — local data already set above
     } finally {
       setLoading(false);
     }
@@ -217,8 +216,9 @@ export function AccommodationsProvider({ children }: { children: ReactNode }) {
     setAccommodations(prev => prev.map(a => a.id === id ? { ...a, status, updatedAt: new Date() } : a));
 
     if (isSupabaseConfigured) {
-      const { error } = await supabase.from('properties').update({ status }).eq('id', id);
-      if (error) console.error('updateAccommodationStatus error:', error.message);
+      try {
+        await supabase.from('properties').update({ status }).eq('id', id);
+      } catch { /* network unavailable */ }
     }
   };
 
@@ -257,8 +257,9 @@ export function AccommodationsProvider({ children }: { children: ReactNode }) {
       if (updates.verified !== undefined) dbUpd.verified = updates.verified;
 
       if (Object.keys(dbUpd).length > 0) {
-        const { error } = await supabase.from('properties').update(dbUpd).eq('id', id);
-        if (error) console.error('updateAccommodation error:', error.message);
+        try {
+          await supabase.from('properties').update(dbUpd).eq('id', id);
+        } catch { /* network unavailable */ }
       }
     }
   };

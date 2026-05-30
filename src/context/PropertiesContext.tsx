@@ -264,64 +264,54 @@ function mergeByFreshest<T extends { id: string; updatedAt: Date }>(localItems: 
 
 async function fetchRemoteProperties(): Promise<Property[]> {
   if (!isSupabaseConfigured) return [];
-
-  const { data, error } = await supabase
-    .from('properties')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.warn('[UniRoom] Properties fetch error:', error.message);
+  try {
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) return [];
+    return (data ?? []).map(normalizeProperty);
+  } catch {
     return [];
   }
-
-  return (data ?? []).map(normalizeProperty);
 }
 
 async function fetchRemoteRooms(): Promise<Room[]> {
   if (!isSupabaseConfigured) return [];
-
-  const { data, error } = await supabase
-    .from('rooms')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.warn('[UniRoom] Rooms fetch error:', error.message);
+  try {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) return [];
+    return (data ?? []).map(normalizeRoom);
+  } catch {
     return [];
   }
-
-  return (data ?? []).map(normalizeRoom);
 }
 
 async function syncPropertyToSupabase(property: Property): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
-
-  const { error } = await supabase
-    .from('properties')
-    .upsert(propertyToDb(property), { onConflict: 'id' });
-
-  if (error) {
-    console.warn('[UniRoom] Property sync error:', error.message);
+  try {
+    const { error } = await supabase
+      .from('properties')
+      .upsert(propertyToDb(property), { onConflict: 'id' });
+    return !error;
+  } catch {
     return false;
   }
-
-  return true;
 }
 
 async function syncRoomToSupabase(room: Room): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
-
-  const { error } = await supabase
-    .from('rooms')
-    .upsert(roomToDb(room), { onConflict: 'id' });
-
-  if (error) {
-    console.warn('[UniRoom] Room sync error:', error.message);
+  try {
+    const { error } = await supabase
+      .from('rooms')
+      .upsert(roomToDb(room), { onConflict: 'id' });
+    return !error;
+  } catch {
     return false;
   }
-
-  return true;
 }
 
 async function syncLocalToSupabase(localProperties: Property[], localRooms: Room[]): Promise<void> {
