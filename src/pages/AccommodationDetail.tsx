@@ -117,11 +117,6 @@ export function AccommodationDetail() {
       return;
     }
 
-    if (isLandlordOwner) {
-      toast.info('Não podes candidatar-te ao teu próprio alojamento.');
-      return;
-    }
-
     setShowApplicationModal(true);
   };
 
@@ -696,15 +691,9 @@ export function AccommodationDetail() {
             <p className="text-xs text-muted-foreground">Conforto: {comfortScore.overall}/10</p>
           </div>
 
-          {isLandlordOwner ? (
-            <Button disabled size="lg" className="cursor-not-allowed opacity-70">
-              O teu anúncio
-            </Button>
-          ) : (
-            <Button onClick={handleApply} size="lg">
-              Candidatar-me
-            </Button>
-          )}
+          <Button onClick={handleApply} size="lg">
+            Candidatar-me
+          </Button>
         </div>
       </div>
 

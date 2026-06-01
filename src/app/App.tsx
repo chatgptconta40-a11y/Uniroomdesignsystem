@@ -33,8 +33,6 @@ import { LandlordAnalytics } from '../pages/LandlordAnalytics';
 import { LandlordMaintenance } from '../pages/LandlordMaintenance';
 import { LandlordPropertyDetail } from '../pages/LandlordPropertyDetail';
 import { NewListing } from '../pages/NewListing';
-import { LandlordContracts } from '../pages/LandlordContracts';
-import { LandlordPayments } from '../pages/LandlordPayments';
 import { AdminLayout } from '../layouts/AdminLayout';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminUsers } from '../pages/admin/AdminUsers';
@@ -250,26 +248,6 @@ function AppShell() {
               <ProtectedRoute allowedTypes={['landlord']}>
                 <Navbar />
                 <LandlordMaintenance />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/landlord/contracts"
-            element={
-              <ProtectedRoute allowedTypes={['landlord']}>
-                <Navbar />
-                <LandlordContracts />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/landlord/payments"
-            element={
-              <ProtectedRoute allowedTypes={['landlord']}>
-                <Navbar />
-                <LandlordPayments />
               </ProtectedRoute>
             }
           />

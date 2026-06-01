@@ -24,7 +24,7 @@ import { useFavorites } from '../context/FavoritesContext';
 import { Property, Room } from '../types/property';
 
 export function Dashboard() {
-  const { user, viewMode } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { rooms, properties } = useProperties();
   const { favoriteIds, refreshFavorites } = useFavorites();
@@ -53,10 +53,8 @@ export function Dashboard() {
   useEffect(() => {
     if (user?.type === 'admin') {
       navigate('/admin');
-    } else if (user?.type === 'landlord' && viewMode === 'landlord') {
-      navigate('/landlord/dashboard');
     }
-  }, [user, viewMode, navigate]);
+  }, [user, navigate]);
 
   useEffect(() => {
     if (!user) return;

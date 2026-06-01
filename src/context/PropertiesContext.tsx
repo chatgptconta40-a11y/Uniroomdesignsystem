@@ -262,36 +262,53 @@ function mergeByFreshest<T extends { id: string; updatedAt: Date }>(localItems: 
   return Array.from(map.values());
 }
 
+function isNetworkError(message?: string): boolean {
+  if (!message) return false;
+  return /failed to fetch|networkerror|load failed/i.test(message);
+}
+
 async function fetchRemoteProperties(): Promise<Property[]> {
   if (!isSupabaseConfigured) return [];
 
-  const { data, error } = await supabase
-    .from('properties')
-    .select('*')
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.warn('[UniRoom] Properties fetch error:', error.message);
+    if (error) {
+      if (!isNetworkError(error.message)) {
+        console.warn('[UniRoom] Properties fetch error:', error.message);
+      }
+      return [];
+    }
+
+    return (data ?? []).map(normalizeProperty);
+  } catch {
     return [];
   }
-
-  return (data ?? []).map(normalizeProperty);
 }
 
 async function fetchRemoteRooms(): Promise<Room[]> {
   if (!isSupabaseConfigured) return [];
 
-  const { data, error } = await supabase
-    .from('rooms')
-    .select('*')
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.warn('[UniRoom] Rooms fetch error:', error.message);
+    if (error) {
+      if (!isNetworkError(error.message)) {
+        console.warn('[UniRoom] Rooms fetch error:', error.message);
+      }
+      return [];
+    }
+
+    return (data ?? []).map(normalizeRoom);
+  } catch {
     return [];
   }
-
-  return (data ?? []).map(normalizeRoom);
 }
 
 async function syncPropertyToSupabase(property: Property): Promise<boolean> {
@@ -302,7 +319,9 @@ async function syncPropertyToSupabase(property: Property): Promise<boolean> {
       .from('properties')
       .upsert(propertyToDb(property), { onConflict: 'id' });
 
-    if (error) console.warn('[UniRoom] Property sync error:', error.message);
+    if (error && !isNetworkError(error.message)) {
+      console.warn('[UniRoom] Property sync error:', error.message);
+    }
     return !error;
   } catch {
     return false;
@@ -317,7 +336,9 @@ async function syncRoomToSupabase(room: Room): Promise<boolean> {
       .from('rooms')
       .upsert(roomToDb(room), { onConflict: 'id' });
 
-    if (error) console.warn('[UniRoom] Room sync error:', error.message);
+    if (error && !isNetworkError(error.message)) {
+      console.warn('[UniRoom] Room sync error:', error.message);
+    }
     return !error;
   } catch {
     return false;
