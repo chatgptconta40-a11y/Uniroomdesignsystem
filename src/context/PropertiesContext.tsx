@@ -297,31 +297,31 @@ async function fetchRemoteRooms(): Promise<Room[]> {
 async function syncPropertyToSupabase(property: Property): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
-  const { error } = await supabase
-    .from('properties')
-    .upsert(propertyToDb(property), { onConflict: 'id' });
+  try {
+    const { error } = await supabase
+      .from('properties')
+      .upsert(propertyToDb(property), { onConflict: 'id' });
 
-  if (error) {
-    console.warn('[UniRoom] Property sync error:', error.message);
+    if (error) console.warn('[UniRoom] Property sync error:', error.message);
+    return !error;
+  } catch {
     return false;
   }
-
-  return true;
 }
 
 async function syncRoomToSupabase(room: Room): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
-  const { error } = await supabase
-    .from('rooms')
-    .upsert(roomToDb(room), { onConflict: 'id' });
+  try {
+    const { error } = await supabase
+      .from('rooms')
+      .upsert(roomToDb(room), { onConflict: 'id' });
 
-  if (error) {
-    console.warn('[UniRoom] Room sync error:', error.message);
+    if (error) console.warn('[UniRoom] Room sync error:', error.message);
+    return !error;
+  } catch {
     return false;
   }
-
-  return true;
 }
 
 async function syncLocalToSupabase(localProperties: Property[], localRooms: Room[]): Promise<void> {

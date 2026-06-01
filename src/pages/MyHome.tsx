@@ -159,7 +159,7 @@ export function MyHome() {
   const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
 
   const activeHome = useMemo(() => {
-    if (!user || user.type !== 'student') {
+    if (!user || (user.type !== 'student' && user.type !== 'landlord')) {
       return null;
     }
 
@@ -221,7 +221,7 @@ export function MyHome() {
       accommodation,
       activeHomeData,
     };
-  }, [user?.id, user?.type, homeRefreshKey, getProperty, getRoom]);
+  }, [user?.id, user?.type, homeRefreshKey, getProperty, getRoom, getActiveHomeForStudent]);
 
   const refreshMaintenanceRequests = () => {
     if (!user) {
@@ -235,7 +235,7 @@ export function MyHome() {
   useEffect(() => {
     refreshProperties();
     refreshMaintenanceRequests();
-  }, [user?.id]);
+  }, [user?.id, refreshProperties]);
 
   useEffect(() => {
     if (!activeHome) return;
@@ -250,7 +250,7 @@ export function MyHome() {
       .catch(error => {
         console.warn('Erro ao sincronizar finanças da casa:', error);
       });
-  }, [activeHome?.activeHomeData.id]);
+  }, [activeHome?.activeHomeData?.id]);
 
   if (!activeHome) {
     const acceptedApp = user

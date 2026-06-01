@@ -5,6 +5,8 @@ import {
   ArrowUpRight,
   BarChart2,
   BedDouble,
+  Building2,
+  Check,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
@@ -13,15 +15,18 @@ import {
   FileText,
   Heart,
   Home,
+  Info,
   MessageCircle,
   PauseCircle,
   PlusCircle,
   Receipt,
   RefreshCw,
   ShieldCheck,
+  Smartphone,
   Star,
   TrendingUp,
   Users,
+  Wallet,
   Wrench,
   X,
 } from 'lucide-react';
@@ -703,123 +708,202 @@ export function LandlordDashboard() {
 
 
         {showReceivingSettings && (
-          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-2xl overflow-hidden">
-              <div className="flex items-start justify-between gap-4 p-6 border-b border-border">
-                <div>
-                  <p className="text-sm font-semibold text-primary mb-1">Dados de recebimento</p>
-                  <h2 className="text-2xl font-bold text-foreground">Configurar dados de recebimento</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Define para onde recebes pagamentos quando o estudante escolher transferência, MB WAY ou PayPal.
-                  </p>
-                </div>
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border border-border w-full sm:max-w-lg overflow-hidden flex flex-col max-h-[95svh]">
 
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Wallet className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-foreground leading-tight">Dados de recebimento</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">Onde recebes o pagamento da renda</p>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowReceivingSettings(false)}
-                  className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors"
-                  aria-label="Fechar método de pagamento"
+                  className="w-9 h-9 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0"
+                  aria-label="Fechar"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="p-6 space-y-5">
+              {/* Body */}
+              <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+                {/* Method selector */}
                 <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">Tipo de método</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2.5">Método de recebimento</p>
+                  <div className="grid grid-cols-3 gap-2">
                     {[
-                      { value: 'mbway', label: 'MB WAY' },
-                      { value: 'iban', label: 'IBAN' },
-                      { value: 'paypal', label: 'PayPal' },
-                    ].map(option => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setPaymentDraft(draft => ({ ...draft, methodType: option.value }))}
-                        className={`rounded-xl border px-3 py-3 text-sm font-semibold transition-all ${
-                          paymentDraft.methodType === option.value
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border hover:border-primary/40 text-foreground'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
+                      { value: 'mbway', label: 'MB WAY', icon: Smartphone, color: 'text-rose-600', bg: 'bg-rose-50 border-rose-200', activeBg: 'bg-rose-500' },
+                      { value: 'iban', label: 'Transferência', icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', activeBg: 'bg-blue-500' },
+                      { value: 'paypal', label: 'PayPal', icon: CreditCard, color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-200', activeBg: 'bg-indigo-500' },
+                    ].map(option => {
+                      const Icon = option.icon;
+                      const active = paymentDraft.methodType === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setPaymentDraft(draft => ({ ...draft, methodType: option.value }))}
+                          className={`relative flex flex-col items-center gap-2 rounded-2xl border-2 px-3 py-4 transition-all ${
+                            active
+                              ? `${option.bg} border-current ${option.color} shadow-sm`
+                              : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/30 hover:bg-muted/60'
+                          }`}
+                        >
+                          {active && (
+                            <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-current flex items-center justify-center">
+                              <Check className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          )}
+                          <Icon className="w-6 h-6" />
+                          <span className="text-xs font-semibold leading-tight text-center">{option.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
+                {/* Holder name */}
                 <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">Titular</label>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">
+                    Nome do titular
+                  </label>
                   <input
                     value={paymentDraft.holderName}
                     onChange={event => setPaymentDraft(draft => ({ ...draft, holderName: event.target.value }))}
-                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Nome do titular"
+                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+                    placeholder="Nome completo do titular"
                   />
                 </div>
 
+                {/* MB WAY */}
                 {paymentDraft.methodType === 'mbway' && (
                   <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Número MB WAY</label>
-                    <input
-                      value={paymentDraft.mbwayPhone}
-                      onChange={event => setPaymentDraft(draft => ({ ...draft, mbwayPhone: event.target.value }))}
-                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="912 345 678"
-                    />
+                    <label className="block text-sm font-semibold text-foreground mb-1.5">
+                      Número de telemóvel MB WAY
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-muted-foreground pointer-events-none select-none">
+                        <span className="text-sm">🇵🇹</span>
+                        <span className="text-sm text-muted-foreground/60">+351</span>
+                        <span className="text-border">|</span>
+                      </div>
+                      <input
+                        type="tel"
+                        value={paymentDraft.mbwayPhone}
+                        onChange={event => setPaymentDraft(draft => ({ ...draft, mbwayPhone: event.target.value }))}
+                        className="w-full pl-24 pr-4 py-3 bg-input-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+                        placeholder="912 345 678"
+                        maxLength={13}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                      <Info className="w-3 h-3 flex-shrink-0" />
+                      O estudante vê este número ao enviar o pagamento.
+                    </p>
                   </div>
                 )}
 
+                {/* IBAN */}
                 {paymentDraft.methodType === 'iban' && (
                   <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">IBAN</label>
+                    <label className="block text-sm font-semibold text-foreground mb-1.5">IBAN</label>
                     <input
                       value={paymentDraft.iban}
-                      onChange={event => setPaymentDraft(draft => ({ ...draft, iban: event.target.value }))}
-                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                      onChange={event => setPaymentDraft(draft => ({ ...draft, iban: event.target.value.toUpperCase() }))}
+                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
                       placeholder="PT50 0000 0000 0000 0000 0000 0"
                     />
+                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                      <Info className="w-3 h-3 flex-shrink-0" />
+                      Usado para transferência bancária ou referência multibanco.
+                    </p>
                   </div>
                 )}
 
+                {/* PayPal */}
                 {paymentDraft.methodType === 'paypal' && (
                   <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Email PayPal</label>
+                    <label className="block text-sm font-semibold text-foreground mb-1.5">Email PayPal</label>
                     <input
+                      type="email"
                       value={paymentDraft.paypalEmail}
                       onChange={event => setPaymentDraft(draft => ({ ...draft, paypalEmail: event.target.value }))}
-                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
                       placeholder="pagamentos@exemplo.pt"
                     />
                   </div>
                 )}
 
+                {/* Instructions */}
                 <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">Instruções para o estudante</label>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">
+                    Instruções para o estudante
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">(opcional)</span>
+                  </label>
                   <textarea
                     value={paymentDraft.instructions}
                     onChange={event => setPaymentDraft(draft => ({ ...draft, instructions: event.target.value }))}
-                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow resize-none"
                     rows={3}
-                    placeholder="Ex: pagar até dia 5 e submeter comprovativo na plataforma."
+                    placeholder="Ex: Pagar até dia 5 de cada mês e submeter comprovativo na plataforma."
                   />
                 </div>
 
-                <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
-                  <p className="text-sm font-semibold text-amber-900">Lógica do protótipo</p>
-                  <p className="text-xs text-amber-800 mt-1">
-                    O estudante escolhe como quer pagar. O senhorio apenas configura os dados de recebimento e valida comprovativos quando existirem.
-                  </p>
-                </div>
+                {/* Preview */}
+                {(paymentDraft.mbwayPhone || paymentDraft.iban || paymentDraft.paypalEmail) && (
+                  <div className="rounded-xl border border-border bg-muted/30 p-4">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5" />
+                      Pré-visualização — o que o estudante vê
+                    </p>
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-card border border-border">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        paymentDraft.methodType === 'mbway' ? 'bg-rose-100' :
+                        paymentDraft.methodType === 'iban' ? 'bg-blue-100' : 'bg-indigo-100'
+                      }`}>
+                        {paymentDraft.methodType === 'mbway' && <Smartphone className="w-4 h-4 text-rose-600" />}
+                        {paymentDraft.methodType === 'iban' && <Building2 className="w-4 h-4 text-blue-600" />}
+                        {paymentDraft.methodType === 'paypal' && <CreditCard className="w-4 h-4 text-indigo-600" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">
+                          {paymentDraft.methodType === 'mbway' && 'MB WAY'}
+                          {paymentDraft.methodType === 'iban' && 'Transferência bancária'}
+                          {paymentDraft.methodType === 'paypal' && 'PayPal'}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                          {paymentDraft.methodType === 'mbway' && (paymentDraft.mbwayPhone ? `+351 ${paymentDraft.mbwayPhone}` : '')}
+                          {paymentDraft.methodType === 'iban' && paymentDraft.iban}
+                          {paymentDraft.methodType === 'paypal' && paymentDraft.paypalEmail}
+                        </p>
+                        {paymentDraft.holderName && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{paymentDraft.holderName}</p>
+                        )}
+                        {paymentDraft.instructions && (
+                          <p className="text-xs text-muted-foreground mt-1 italic">"{paymentDraft.instructions}"</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="p-5 border-t border-border flex flex-col sm:flex-row gap-3 justify-end">
-                <Button variant="outline" onClick={() => setShowReceivingSettings(false)}>
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-border flex gap-3 flex-shrink-0">
+                <Button variant="outline" onClick={() => setShowReceivingSettings(false)} className="flex-1">
                   Cancelar
                 </Button>
-                <Button onClick={handleSaveReceivingDetails}>
-                  Guardar método
+                <Button onClick={handleSaveReceivingDetails} className="flex-1">
+                  <Check className="w-4 h-4 mr-1.5" />
+                  Guardar dados
                 </Button>
               </div>
             </div>

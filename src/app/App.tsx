@@ -67,7 +67,7 @@ function AppShell() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute allowedTypes={['student']}>
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
                 <Navbar />
                 <Dashboard />
               </ProtectedRoute>
@@ -77,7 +77,7 @@ function AppShell() {
           <Route
             path="/onboarding"
             element={
-              <ProtectedRoute allowedTypes={['student']}>
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
                 <Onboarding />
               </ProtectedRoute>
             }
@@ -86,7 +86,7 @@ function AppShell() {
           <Route
             path="/profile"
             element={
-              <ProtectedRoute allowedTypes={['student']}>
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
                 <Navbar />
                 <Profile />
               </ProtectedRoute>
@@ -96,7 +96,7 @@ function AppShell() {
           <Route
             path="/search"
             element={
-              <ProtectedRoute allowedTypes={['student']}>
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
                 <Navbar />
                 <SearchRooms />
               </ProtectedRoute>
@@ -106,7 +106,7 @@ function AppShell() {
           <Route
             path="/accommodation/:id"
             element={
-              <ProtectedRoute allowedTypes={['student']}>
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
                 <Navbar />
                 <AccommodationDetail />
               </ProtectedRoute>
@@ -136,7 +136,7 @@ function AppShell() {
           <Route
             path="/favorites"
             element={
-              <ProtectedRoute allowedTypes={['student']}>
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
                 <Navbar />
                 <Favorites />
               </ProtectedRoute>
@@ -146,7 +146,7 @@ function AppShell() {
           <Route
             path="/applications"
             element={
-              <ProtectedRoute allowedTypes={['student']}>
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
                 <Navbar />
                 <Applications />
               </ProtectedRoute>
@@ -176,7 +176,7 @@ function AppShell() {
           <Route
             path="/my-home"
             element={
-              <ProtectedRoute allowedTypes={['student']}>
+              <ProtectedRoute allowedTypes={['student', 'landlord']}>
                 <Navbar />
                 <MyHome />
               </ProtectedRoute>

@@ -50,12 +50,13 @@ export function RoomDetail() {
   const ratingBreakdown = room ? getAverageRatingBreakdown(room.id) : null;
 
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
-  const existingApplication = user?.type === 'student' && room
+  const canActAsApplicant = (user?.type === 'student' || user?.type === 'landlord') && !isLandlordOwner;
+  const existingApplication = canActAsApplicant && room
     ? getExistingApplicationForRoom(user.id, room.id)
     : null;
   const canShowCompatibility = Boolean(
-    user?.type === 'student' &&
-    hasCompletedCompatibilityProfile(user.id) &&
+    canActAsApplicant &&
+    hasCompletedCompatibilityProfile(user!.id) &&
     room?.compatibilityScore
   );
   const shouldInviteProfileCompletion = !user;
@@ -498,14 +499,6 @@ export function RoomDetail() {
                       <span className="text-3xl font-bold text-foreground">€{room.price}</span>
                       <span className="text-muted-foreground text-sm">/mês</span>
                     </div>
-                    {room.utilities && room.utilities > 0 ? (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        + €{room.utilities} despesas
-                        <span className="ml-1 font-semibold text-foreground">= €{room.price + room.utilities} total</span>
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-sm text-green-600 font-medium">Despesas incluídas</p>
-                    )}
                   </div>
 
                   {canShowCompatibility && (

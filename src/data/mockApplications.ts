@@ -554,3 +554,56 @@ export function removeActiveHome(studentId: string, propertyId: string, roomId: 
 export async function refreshApplicationsState(): Promise<void> {
   loadLocalState();
 }
+
+// ─── ID migration ──────────────────────────────────────────────────────────
+// Called after login to recover data stored under an old local ID when
+// Supabase had previously assigned a different UUID to the same email.
+
+export function migrateActiveHomeByEmail(email: string, currentStudentId: string): void {
+  if (!email || !currentStudentId) return;
+  loadLocalState();
+
+  // No migration needed if a home already exists under the current ID.
+  if (Array.from(activeHomesCache.values()).some(h => h.studentId === currentStudentId)) return;
+
+  let allUsers: any[] = [];
+  try {
+    allUsers = safeParse<any[]>(localStorage.getItem('uniroom_all_users'), []);
+  } catch { return; }
+
+  const normalizedEmail = String(email).toLowerCase();
+  const oldIds = allUsers
+    .filter(u => String(u.email || '').toLowerCase() === normalizedEmail && String(u.id) !== String(currentStudentId))
+    .map(u => String(u.id));
+
+  if (oldIds.length === 0) return;
+
+  let migratedHomes = false;
+  let migratedApps = false;
+  let migratedNotifs = false;
+
+  for (const [key, home] of activeHomesCache) {
+    if (oldIds.includes(home.studentId)) {
+      activeHomesCache.set(key, { ...home, studentId: currentStudentId });
+      migratedHomes = true;
+    }
+  }
+
+  for (const [key, app] of applicationsCache) {
+    if (oldIds.includes(app.userId)) {
+      applicationsCache.set(key, { ...app, userId: currentStudentId });
+      migratedApps = true;
+    }
+  }
+
+  for (const [key, notif] of notificationsCache) {
+    if (oldIds.includes(notif.userId)) {
+      notificationsCache.set(key, { ...notif, userId: currentStudentId });
+      migratedNotifs = true;
+    }
+  }
+
+  if (migratedHomes) saveActiveHomesLocal();
+  if (migratedApps) saveApplicationsLocal();
+  if (migratedNotifs) saveNotificationsLocal();
+}

@@ -100,7 +100,7 @@ export function RoomCard({
   const isFav = isFavorite(room.id);
   const isManagement = variant === 'management';
 
-  const personalizedCompatibility = user?.type === 'student'
+  const personalizedCompatibility = (user?.type === 'student' || user?.type === 'landlord')
     ? getRoomCompatibilityScore(user.id, room, property)
     : undefined;
 
@@ -108,7 +108,7 @@ export function RoomCard({
 
   const canShowCompatibility = Boolean(
     !isManagement &&
-    user?.type === 'student' &&
+    (user?.type === 'student' || user?.type === 'landlord') &&
     displayCompatibility
   );
 
@@ -132,7 +132,7 @@ export function RoomCard({
 
   const roomTypeBadge = (() => {
     const types = {
-      private: { label: 'Privado', color: 'bg-blue-100 text-blue-700' },
+      private: { label: 'Privado', color: 'bg-blue-500/20 text-blue-700 border border-blue-400/40' },
       shared: { label: 'Partilhado', color: 'bg-accent/15 text-accent' },
       studio: { label: 'Estúdio', color: 'bg-green-100 text-green-700' },
       apartment: { label: 'Apartamento', color: 'bg-orange-100 text-orange-700' },
@@ -304,13 +304,6 @@ export function RoomCard({
                   <span className="text-xs text-muted-foreground">/mês</span>
                 </div>
 
-                {room.utilities && room.utilities > 0 ? (
-                  <p className="text-[10px] text-muted-foreground whitespace-nowrap">
-                    +€{room.utilities} desp. · €{totalPrice} total
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-green-600">Despesas incluídas</p>
-                )}
               </div>
 
               {canShowCompatibility && (
@@ -505,13 +498,6 @@ export function RoomCard({
               <span className="text-sm text-muted-foreground">/mês</span>
             </div>
 
-            {room.utilities && room.utilities > 0 ? (
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                +€{room.utilities} desp. · total €{totalPrice}/mês
-              </p>
-            ) : (
-              <p className="text-[11px] text-green-600 mt-0.5">Despesas incluídas</p>
-            )}
 
             {roomRating.total > 0 ? (
               <div className="flex items-center gap-1 mt-1">

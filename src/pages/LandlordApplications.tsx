@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Clock,
   X,
+  ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -235,6 +236,13 @@ export function LandlordApplications() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8">
+        <button
+          onClick={() => navigate('/landlord/listings')}
+          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-4 text-sm"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Voltar aos alojamentos
+        </button>
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">

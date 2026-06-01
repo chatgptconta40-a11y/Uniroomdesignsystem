@@ -83,14 +83,6 @@ export function CompareModal({ items, onClose, onRemove }: CompareModalProps) {
       ),
     },
     {
-      label: 'Despesas',
-      render: ({ room }) => (
-        <div className="text-center text-sm">
-          {room.utilities ? <span className="text-foreground">€{room.utilities}/mês</span> : <span className="text-green-600 font-medium">Incluídas</span>}
-        </div>
-      ),
-    },
-    {
       label: 'Cidade / Zona',
       icon: <MapPin className="w-3.5 h-3.5" />,
       render: ({ property }) => (

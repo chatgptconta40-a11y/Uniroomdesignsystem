@@ -171,70 +171,93 @@ export function LandlordAnalytics() {
         </div>
 
         <div className="mb-8">
-          <h2 className="text-xl font-bold text-foreground mb-4">Comparação com outros senhorios</h2>
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-xl font-bold text-foreground">Comparação com outros senhorios</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">O teu desempenho face à média e ao melhor da plataforma</p>
+            </div>
+            {/* Legend */}
+            <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block" />
+                Tu
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-px h-3 bg-muted-foreground/40 inline-block" />
+                Média
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-secondary/60 inline-block" />
+                Top
+              </span>
+            </div>
+          </div>
 
-          <Card className="p-6">
-            <div className="space-y-6">
-              {comparisons.map((comparison, index) => {
-                const percentage = (comparison.yourValue / comparison.topPerformer) * 100;
-                const vsAverage = comparison.yourValue >= comparison.average;
+          <div className="rounded-2xl border border-border bg-card divide-y divide-border">
+            {comparisons.map((comparison, index) => {
+              const yourPct = Math.min((comparison.yourValue / comparison.topPerformer) * 100, 100);
+              const avgPct  = Math.min((comparison.average   / comparison.topPerformer) * 100, 100);
+              const vsAverage = comparison.yourValue >= comparison.average;
+              const diffAbs   = Math.abs(comparison.yourValue - comparison.average);
 
-                return (
-                  <div key={index}>
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-3">
-                      <span className="text-sm font-medium text-foreground">{comparison.metric}</span>
+              return (
+                <div key={index} className="p-5 flex flex-col gap-4">
+                  {/* Header row */}
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-sm font-semibold text-foreground leading-tight">{comparison.metric}</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0 border ${
+                      vsAverage
+                        ? 'bg-secondary/10 text-secondary border-secondary/25'
+                        : 'bg-accent/10 text-accent-foreground border-accent/30'
+                    }`}>
+                      {vsAverage
+                        ? <TrendingUp className="w-3 h-3" />
+                        : <TrendingDown className="w-3 h-3" />}
+                      {vsAverage ? '+' : '-'}{diffAbs} vs média
+                    </span>
+                  </div>
 
-                      <div className="flex flex-wrap items-center gap-4 text-sm">
-                        <span className="text-muted-foreground">
-                          Tu: <span className="font-semibold text-foreground">{comparison.yourValue}</span>
-                        </span>
-
-                        <span className="text-muted-foreground">
-                          Média: <span className="font-semibold">{comparison.average}</span>
-                        </span>
-
-                        <span className="text-muted-foreground">
-                          Top: <span className="font-semibold text-green-600">{comparison.topPerformer}</span>
-                        </span>
+                  {/* Three value pills */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: 'Tu',    value: comparison.yourValue,    cls: 'bg-primary/8 border-primary/20 text-primary' },
+                      { label: 'Média', value: comparison.average,      cls: 'bg-muted border-border text-muted-foreground' },
+                      { label: 'Top',   value: comparison.topPerformer, cls: 'bg-secondary/8 border-secondary/20 text-secondary' },
+                    ].map(item => (
+                      <div key={item.label} className={`rounded-xl px-3 py-2.5 text-center border ${item.cls}`}>
+                        <p className="text-lg font-bold tabular-nums">{item.value}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide font-medium">{item.label}</p>
                       </div>
-                    </div>
+                    ))}
+                  </div>
 
-                    <div className="relative w-full bg-muted rounded-full h-3 overflow-hidden">
+                  {/* Progress track */}
+                  <div className="space-y-1.5">
+                    <div className="relative h-2.5 bg-muted rounded-full overflow-visible">
                       <div
-                        className={`h-3 rounded-full transition-all ${
-                          vsAverage
-                            ? 'bg-gradient-to-r from-green-500 to-green-600'
-                            : 'bg-gradient-to-r from-yellow-500 to-orange-500'
-                        }`}
-                        style={{ width: `${Math.min(percentage, 100)}%` }}
+                        className={`absolute left-0 top-0 h-2.5 rounded-full ${vsAverage ? 'bg-secondary' : 'bg-accent'}`}
+                        style={{ width: `${yourPct}%` }}
                       />
-
                       <div
-                        className="absolute top-0 bottom-0 w-0.5 bg-gray-600"
-                        style={{ left: `${(comparison.average / comparison.topPerformer) * 100}%` }}
-                      >
-                        <div className="absolute -top-1 -left-2 w-4 h-4 border-2 border-gray-600 bg-white rounded-full" />
-                      </div>
+                        className="absolute top-1/2 -translate-y-1/2 w-px h-4 bg-muted-foreground/40"
+                        style={{ left: `${avgPct}%` }}
+                      />
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-secondary/60 border-2 border-card" />
                     </div>
-
-                    <div className="flex items-center gap-2 mt-1">
-                      {vsAverage ? (
-                        <span className="text-xs text-green-600 flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3" />
-                          Acima da média
-                        </span>
-                      ) : (
-                        <span className="text-xs text-orange-600 flex items-center gap-1">
-                          <TrendingDown className="w-3 h-3" />
-                          Abaixo da média
-                        </span>
-                      )}
+                    <div className="relative h-3.5">
+                      <span
+                        className="absolute text-[10px] text-muted-foreground -translate-x-1/2 leading-none"
+                        style={{ left: `${avgPct}%` }}
+                      >
+                        Média
+                      </span>
+                      <span className="absolute right-0 text-[10px] text-secondary leading-none">Top</span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </Card>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div>

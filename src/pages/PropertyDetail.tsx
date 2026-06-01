@@ -576,7 +576,7 @@ export function PropertyDetail() {
                   room={room}
                   property={property}
                   variant="public"
-                  showFavorite={!!user && user.type === 'student'}
+                  showFavorite={!!user && (user.type === 'student' || user.type === 'landlord')}
                   showPropertyContext={false}
                   availableRooms={availableRooms.length}
                 />

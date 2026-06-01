@@ -58,6 +58,7 @@ interface RoomDraft {
   availableFrom: string;
   publishNow: boolean;
   description: string;
+  images: string[];
 }
 
 interface SchoolEntry {
@@ -158,7 +159,17 @@ const emptyRoom = (): RoomDraft => ({
   availableFrom: '',
   publishNow: false,
   description: '',
+  images: [],
 });
+
+function readImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 const STEPS: Array<{ number: StepNumber; title: string; icon: React.ElementType }> = [
   { number: 1, title: 'Propriedade', icon: Home },
@@ -254,8 +265,13 @@ interface RoomFormModalProps {
 
 function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
   const [form, setForm] = useState<RoomDraft>(initial ?? emptyRoom());
-  const [selectedPhoto, setSelectedPhoto] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Photos: start from the room's saved images, falling back to the stock set.
+  const [roomPhotos, setRoomPhotos] = useState<string[]>(
+    initial?.images?.length ? initial.images : ROOM_PHOTOS,
+  );
+  const [selectedPhoto, setSelectedPhoto] = useState(0);
 
   const todayIso = new Date().toISOString().split('T')[0];
 
@@ -292,9 +308,41 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
     return Object.keys(errs).length === 0;
   };
 
+  const handleRoomPhotoUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (validFiles.length === 0) return;
+    try {
+      const dataUrls = await Promise.all(validFiles.map(readImageFile));
+      setRoomPhotos(prev => {
+        const next = [...prev, ...dataUrls];
+        setSelectedPhoto(prev.length);
+        return next;
+      });
+    } catch {
+      // silently ignore
+    }
+  };
+
+  const removeRoomPhoto = (index: number) => {
+    setRoomPhotos(prev => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, i) => i !== index);
+      setSelectedPhoto(cur => {
+        if (index === cur) return 0;
+        if (index < cur) return Math.max(0, cur - 1);
+        return Math.min(cur, next.length - 1);
+      });
+      return next;
+    });
+  };
+
   const handleSave = () => {
     if (!validate()) return;
-    onSave({ ...form, title: form.title.trim() });
+    const selectedImages = roomPhotos.length > 0
+      ? [roomPhotos[selectedPhoto], ...roomPhotos.filter((_, i) => i !== selectedPhoto)]
+      : ROOM_PHOTOS;
+    onSave({ ...form, title: form.title.trim(), images: selectedImages });
   };
 
   return (
@@ -433,30 +481,51 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
             </div>
 
             <div>
-              <FieldLabel>Foto do quarto</FieldLabel>
+              <FieldLabel>Fotos do quarto</FieldLabel>
+              <p className="text-xs text-muted-foreground mb-2">
+                Carrega fotografias reais do quarto. A selecionada será a imagem principal.
+              </p>
               <div className="flex gap-3 flex-wrap">
-                {ROOM_PHOTOS.map((url, i) => (
-                  <button
-                    key={url}
-                    type="button"
-                    onClick={() => setSelectedPhoto(i)}
-                    className={`relative w-24 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                {roomPhotos.map((url, i) => (
+                  <div
+                    key={`${url}-${i}`}
+                    className={`group relative w-24 h-16 rounded-lg overflow-hidden border-2 transition-all ${
                       selectedPhoto === i ? 'border-primary ring-2 ring-primary/30' : 'border-border'
                     }`}
                   >
-                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPhoto(i)}
+                      className="w-full h-full"
+                    >
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                    </button>
                     {selectedPhoto === i && (
-                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center pointer-events-none">
                         <Check className="w-4 h-4 text-white drop-shadow" />
                       </div>
                     )}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => removeRoomPhoto(i)}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
                 ))}
 
-                <div className="w-24 h-16 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground">
+                <label className="w-24 h-16 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary cursor-pointer">
                   <Camera className="w-4 h-4" />
-                  <span className="text-[10px]">Upload</span>
-                </div>
+                  <span className="text-[10px] font-medium">Adicionar</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={e => handleRoomPhotoUpload(e.target.files)}
+                  />
+                </label>
               </div>
             </div>
           </div>
@@ -578,17 +647,6 @@ export function NewListing() {
 
     setRooms(prev => [...prev, duplicate]);
     toast.success(`"${duplicate.title}" duplicado — fica em rascunho`);
-  };
-
-  const readImageFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-
-      reader.readAsDataURL(file);
-    });
   };
 
   const handlePropertyPhotoUpload = async (files: FileList | null) => {
@@ -713,7 +771,7 @@ export function NewListing() {
           roomNumber: `Q${index + 1}`,
           title: room.title,
           description: `${room.roomType === 'private' ? 'Quarto privado' : room.roomType === 'shared' ? 'Quarto partilhado' : 'Estúdio'}${room.privateBathroom ? ' com WC privativo' : ''}${room.size ? `, ${room.size}m²` : ''}.`,
-          images: [ROOM_PHOTOS[index % ROOM_PHOTOS.length]],
+          images: room.images?.length ? room.images : [ROOM_PHOTOS[index % ROOM_PHOTOS.length]],
           size: room.size ? Number(room.size) : undefined,
           roomType: room.roomType,
           maxOccupants: room.roomType === 'shared' ? 2 : 1,

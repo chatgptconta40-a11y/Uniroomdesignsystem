@@ -41,7 +41,7 @@ export function NotFound() {
             <Home className="w-4 h-4" />
             {isAuthenticated ? 'Ir para o Dashboard' : 'Ir para o início'}
           </Link>
-          {isAuthenticated && user?.type === 'student' && (
+          {isAuthenticated && (user?.type === 'student' || user?.type === 'landlord') && (
             <Link
               to="/search"
               className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-secondary text-secondary-foreground font-semibold rounded-lg hover:bg-secondary-hover transition-colors"

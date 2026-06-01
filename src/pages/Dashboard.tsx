@@ -37,7 +37,7 @@ export function Dashboard() {
   const favoritesCount = favoriteIds.length;
 
   const activeHome = useMemo(() => {
-    if (!user || user.type !== 'student') return null;
+    if (!user || (user.type !== 'student' && user.type !== 'landlord')) return null;
 
     const activeHomeData = getActiveHomeForStudent(user.id);
     if (!activeHomeData) return null;
@@ -51,9 +51,7 @@ export function Dashboard() {
   }, [user?.id, user?.type]);
 
   useEffect(() => {
-    if (user?.type === 'landlord') {
-      navigate('/landlord/dashboard');
-    } else if (user?.type === 'admin') {
+    if (user?.type === 'admin') {
       navigate('/admin');
     }
   }, [user, navigate]);
@@ -163,7 +161,7 @@ export function Dashboard() {
     return 'Boa noite';
   };
 
-  const statsCards = user?.type === 'student'
+  const statsCards = (user?.type === 'student' || user?.type === 'landlord')
     ? [
         { label: 'Candidaturas', value: String(applicationsCount), icon: Calendar, color: 'primary', link: '/applications' },
         { label: 'Favoritos', value: String(favoritesCount), icon: Heart, color: 'secondary', link: '/favorites' },
@@ -193,7 +191,7 @@ export function Dashboard() {
               </div>
             </div>
 
-            {user?.type === 'student' && (
+            {(user?.type === 'student' || user?.type === 'landlord') && (
               <Link to="/search">
                 <Button variant="primary" size="lg">
                   <Search className="w-5 h-5" />
@@ -247,7 +245,7 @@ export function Dashboard() {
           })}
         </div>
 
-        {user?.type === 'student' && (
+        {(user?.type === 'student' || user?.type === 'landlord') && (
           <>
             <div className="mb-10">
               <div className="flex items-center justify-between mb-6">

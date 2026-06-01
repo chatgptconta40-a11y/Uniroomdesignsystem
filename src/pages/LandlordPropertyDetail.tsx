@@ -296,12 +296,6 @@ function RoomCard({ room, reservedByName, onEdit, onPause, onReactivate }: {
           <span className="text-muted-foreground text-xs">Preço</span>
           <p className="font-semibold text-foreground">€{room.price}/mês</p>
         </div>
-        {room.utilities !== undefined && (
-          <div>
-            <span className="text-muted-foreground text-xs">Despesas</span>
-            <p className="font-medium text-foreground">€{room.utilities}/mês</p>
-          </div>
-        )}
         {room.size && (
           <div>
             <span className="text-muted-foreground text-xs">Tamanho</span>
@@ -741,28 +735,6 @@ function EditRoomDetailModal({
                   <option value="apartment">Apartamento</option>
                 </select>
               </div>
-            </div>
-
-            <div>
-              <label className="flex items-center gap-2 cursor-pointer mb-2">
-                <input
-                  type="checkbox"
-                  checked={form.utilitiesIncluded}
-                  onChange={e => set('utilitiesIncluded', e.target.checked)}
-                  className="w-4 h-4 accent-primary"
-                />
-                <span className="text-sm font-medium">Despesas incluídas</span>
-              </label>
-              {form.utilitiesIncluded && (
-                <input
-                  type="number"
-                  value={form.utilities}
-                  onChange={e => set('utilities', e.target.value)}
-                  placeholder="Valor das despesas (€/mês)"
-                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  min="0"
-                />
-              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

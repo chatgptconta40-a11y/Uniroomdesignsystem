@@ -150,12 +150,12 @@ export function ComfortScorePanel({ room, property, canUseCompatibility = true }
   const { user } = useAuth();
 
   const personalized = useMemo(
-    () => getPersonalizedCompatibility(user?.type === 'student' ? user.id : null, room, property),
+    () => getPersonalizedCompatibility((user?.type === 'student' || user?.type === 'landlord') ? user.id : null, room, property),
     [user?.id, user?.type, room, property],
   );
 
   const effectiveCompatibility = personalized?.overall ?? room.compatibilityScore;
-  const canUsePersonalCompatibility = Boolean(canUseCompatibility && user?.type === 'student' && effectiveCompatibility);
+  const canUsePersonalCompatibility = Boolean(canUseCompatibility && (user?.type === 'student' || user?.type === 'landlord') && effectiveCompatibility);
 
   const { score10, categories } = useMemo(
     () => computeScores(room, property, effectiveCompatibility, canUsePersonalCompatibility),

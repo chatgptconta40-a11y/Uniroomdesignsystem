@@ -335,13 +335,6 @@ function MapRoomCard({
                   <span className="text-xs text-muted-foreground">/mês</span>
                 </div>
 
-                {room.utilities && room.utilities > 0 ? (
-                  <p className="text-[10px] text-muted-foreground">
-                    +€{room.utilities} desp. · €{totalPrice} total
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-green-600">Despesas incluídas</p>
-                )}
               </div>
 
               <span className="text-xs font-semibold text-primary">
@@ -717,7 +710,7 @@ export function SearchRooms() {
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
 
   const canShowCompatibility = Boolean(
-    user?.type === 'student' &&
+    (user?.type === 'student' || user?.type === 'landlord') &&
     hasCompletedCompatibilityProfile(user.id),
   );
 

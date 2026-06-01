@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, AuthContextType, RegisterData, UserType } from '../types/auth';
 import { StudentProfile } from '../types/profile';
 import { getProfile, saveProfile } from '../data/mockProfiles';
+import { migrateActiveHomeByEmail } from '../data/mockApplications';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -331,11 +332,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const sessionUser = session?.user;
 
       if (sessionUser) {
-        const profile = await fetchSupabaseProfile(sessionUser.id, sessionUser.email);
+        // If the stored local user has the same email, preserve their local ID.
+        // Never let the Supabase UUID overwrite a local ID that already has data.
+        const storedParsed = storedUser ? safeParse<User>(storedUser, null as any) : null;
+        const sameEmail = storedParsed &&
+          String(storedParsed.email).toLowerCase() === String(sessionUser.email ?? '').toLowerCase();
 
-        if (mounted && profile) {
-          const normalized = persistLocalUser(profile);
-          setUser(normalized);
+        if (!sameEmail) {
+          const profile = await fetchSupabaseProfile(sessionUser.id, sessionUser.email);
+
+          if (mounted && profile) {
+            const normalized = persistLocalUser(profile);
+            setUser(normalized);
+          }
         }
       }
 
@@ -362,6 +371,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.removeItem(STORAGE_KEY);
             return;
           }
+
+          // Preserve local ID: if the current stored user has the same email
+          // but a different ID, do NOT let Supabase overwrite the local ID.
+          const storedRaw = localStorage.getItem(STORAGE_KEY);
+          const storedParsed = storedRaw ? safeParse<User>(storedRaw, null as any) : null;
+          const sameEmailDiffId = storedParsed &&
+            String(storedParsed.email).toLowerCase() === String(session.user.email ?? '').toLowerCase() &&
+            storedParsed.id !== session.user.id;
+
+          if (sameEmailDiffId) return;
 
           const profile = await fetchSupabaseProfile(session.user.id, session.user.email);
 
@@ -405,9 +424,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(normalized);
       setLoading(false);
 
-      // Tenta sincronizar Supabase em background, mas não bloqueia o login local.
-      void safeSignIn(normalizedEmail, password);
+      // Recover data that may have been stored under a different ID in past sessions.
+      migrateActiveHomeByEmail(normalizedEmail, normalized.id);
 
+      // Background Supabase sign-in intentionally removed: it triggers onAuthStateChange
+      // with a Supabase UUID that would overwrite the local ID and orphan stored data.
       return { success: true, user: normalized };
     }
 
@@ -425,6 +446,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const normalized = persistLocalUser(storedUser);
         setUser(normalized);
         setLoading(false);
+
+        migrateActiveHomeByEmail(normalizedEmail, normalized.id);
 
         return { success: true, user: normalized };
       }

@@ -30,7 +30,7 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
   const isFav = isFavorite(accommodation.id);
 
   const canShowCompatibility = Boolean(
-    user?.type === 'student' &&
+    (user?.type === 'student' || user?.type === 'landlord') &&
       hasCompletedCompatibilityProfile(user.id) &&
       accommodation.compatibilityScore,
   );
