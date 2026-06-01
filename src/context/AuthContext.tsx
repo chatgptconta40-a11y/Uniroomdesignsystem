@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, AuthContextType, RegisterData, UserType } from '../types/auth';
+import { User, AuthContextType, RegisterData, UserType, ViewMode } from '../types/auth';
 import { StudentProfile } from '../types/profile';
 import { getProfile, saveProfile } from '../data/mockProfiles';
 import { migrateActiveHomeByEmail } from '../data/mockApplications';
@@ -9,6 +9,34 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'uniroom_user';
 const USERS_KEY = 'uniroom_all_users';
+const VIEW_MODE_KEY_PREFIX = 'uniroom_view_mode_';
+
+function defaultViewModeFor(user: User | null): ViewMode {
+  if (!user) return 'tenant';
+  return user.type === 'landlord' ? 'landlord' : 'tenant';
+}
+
+function loadViewMode(user: User | null): ViewMode {
+  if (!user) return 'tenant';
+  try {
+    const stored = localStorage.getItem(VIEW_MODE_KEY_PREFIX + user.id);
+    if (stored === 'landlord' || stored === 'tenant') {
+      if (stored === 'landlord' && user.type !== 'landlord') return 'tenant';
+      return stored;
+    }
+  } catch {
+    // ignore
+  }
+  return defaultViewModeFor(user);
+}
+
+function persistViewMode(userId: string, mode: ViewMode) {
+  try {
+    localStorage.setItem(VIEW_MODE_KEY_PREFIX + userId, mode);
+  } catch {
+    // ignore
+  }
+}
 
 type DbProfile = {
   id: string;
@@ -315,6 +343,20 @@ async function safeSyncStudentProfile(user: User, profileToSave: StudentProfile)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewModeState] = useState<ViewMode>('tenant');
+
+  useEffect(() => {
+    setViewModeState(loadViewMode(user));
+  }, [user?.id, user?.type]);
+
+  const setViewMode = (mode: ViewMode) => {
+    if (!user) return;
+    if (mode === 'landlord' && user.type !== 'landlord') return;
+    persistViewMode(user.id, mode);
+    setViewModeState(mode);
+  };
+
+  const canSwitchModes = user?.type === 'landlord';
 
   useEffect(() => {
     let mounted = true;
@@ -568,6 +610,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         saveStudentProfile,
         isAuthenticated: !!user,
+        viewMode,
+        setViewMode,
+        canSwitchModes,
       }}
     >
       {children}

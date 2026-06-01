@@ -144,6 +144,10 @@ export function RoomDetail() {
       requestAuthentication();
       return;
     }
+    if (isLandlordOwner) {
+      toast.info('Não podes candidatar-te ao teu próprio alojamento.');
+      return;
+    }
     setShowApplicationModal(true);
   };
 
@@ -596,6 +600,9 @@ export function RoomDetail() {
                     <p className="text-sm text-muted-foreground">
                       Estás a ver este quarto como senhorio responsável.
                     </p>
+                    <Button variant="outline" disabled className="w-full mt-3 cursor-not-allowed opacity-70">
+                      O teu anúncio — não podes candidatar-te
+                    </Button>
                   </div>
                   <div className="grid grid-cols-1 gap-3">
                     <Button variant="primary" onClick={() => toast.info('Edição rápida disponível em Os Meus Alojamentos.')}>

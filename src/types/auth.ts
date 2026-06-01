@@ -1,6 +1,7 @@
 import type { StudentProfile as FullStudentProfile } from './profile';
 
 export type UserType = 'student' | 'landlord' | 'admin';
+export type ViewMode = 'landlord' | 'tenant';
 
 export interface User {
   id: string;
@@ -48,6 +49,9 @@ export interface AuthContextType {
     profile: FullStudentProfile
   ) => Promise<{ success: boolean; error?: string }>;
   isAuthenticated: boolean;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  canSwitchModes: boolean;
 }
 
 export interface RegisterData {

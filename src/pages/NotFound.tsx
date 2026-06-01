@@ -1,17 +1,13 @@
 import { Link, useNavigate } from 'react-router';
 import { Home, ArrowLeft, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getHomePath } from '../utils/navigation';
 
 export function NotFound() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, viewMode } = useAuth();
   const navigate = useNavigate();
 
-  const getDashboardPath = () => {
-    if (!isAuthenticated) return '/';
-    if (user?.type === 'landlord') return '/landlord/dashboard';
-    if (user?.type === 'admin') return '/admin';
-    return '/dashboard';
-  };
+  const getDashboardPath = () => (isAuthenticated ? getHomePath(user, viewMode) : '/');
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-6">
