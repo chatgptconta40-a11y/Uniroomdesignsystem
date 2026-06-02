@@ -19,7 +19,7 @@ import { OnboardingLifestyle } from '../components/onboarding/OnboardingLifestyl
 import { OnboardingPreferences } from '../components/onboarding/OnboardingPreferences';
 import { OnboardingWelcome } from '../components/onboarding/OnboardingWelcome';
 import { StudentProfile, PersonalProfile, LifestyleProfile, AccommodationPreferences } from '../types/profile';
-import { saveProfile, calculateCompleteness } from '../data/mockProfiles';
+import { calculateCompleteness } from '../data/mockProfiles';
 import { toast } from 'sonner';
 
 type StepNumber = 1 | 2 | 3 | 4;
@@ -198,9 +198,12 @@ export function Onboarding() {
       onboardingCompleted: true,
     };
 
-    saveProfile(profile);
     localStorage.removeItem(storageKey);
-    await saveStudentProfile(profile, completeness);
+    const result = await saveStudentProfile(profile);
+    if (!result.success) {
+      toast.error(result.error || 'Erro ao guardar perfil.');
+      return;
+    }
 
     toast.success('Perfil criado com sucesso.');
     navigate('/dashboard');

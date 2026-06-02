@@ -14,14 +14,13 @@ import {
   Wrench,
   MapPin,
 } from 'lucide-react';
-import { getMaintenanceRequests } from '../data/mockMaintenance';
-import { getApplicationsForUser, getActiveHomeForStudent } from '../data/mockApplications';
+import { useMaintenance } from '../hooks/useDb';
 import { getTotalUnreadCount } from '../data/mockMessages';
-import { getProperty, getRoom } from '../data/mockProperties';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useProperties } from '../context/PropertiesContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { Property, Room } from '../types/property';
+import { supabase } from '../lib/supabase';
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -32,23 +31,11 @@ export function Dashboard() {
   const [suggestions, setSuggestions] = useState<{ room: Room; property: Property; availableRooms: number }[]>([]);
   const [applicationsCount, setApplicationsCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
-  const [maintenanceRequests, setMaintenanceRequests] = useState<any[]>([]);
+  const { requests: allMaintenanceRequests } = useMaintenance({ scope: 'student' });
+  const maintenanceRequests = allMaintenanceRequests.slice(0, 3);
+  const [activeHome, setActiveHome] = useState<{ property: Property; room: Room; activeHomeData: { moveInDate: Date } } | null>(null);
 
   const favoritesCount = favoriteIds.length;
-
-  const activeHome = useMemo(() => {
-    if (!user || (user.type !== 'student' && user.type !== 'landlord')) return null;
-
-    const activeHomeData = getActiveHomeForStudent(user.id);
-    if (!activeHomeData) return null;
-
-    const property = getProperty(activeHomeData.propertyId);
-    const room = getRoom(activeHomeData.roomId);
-
-    if (!property || !room) return null;
-
-    return { property, room, activeHomeData };
-  }, [user?.id, user?.type]);
 
   useEffect(() => {
     if (user?.type === 'admin') {
@@ -63,48 +50,65 @@ export function Dashboard() {
   }, [user?.id, refreshFavorites]);
 
   useEffect(() => {
+    if (!user || (user.type !== 'student' && user.type !== 'landlord')) {
+      setActiveHome(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('active_homes')
+        .select('property_id, room_id, move_in_date')
+        .eq('student_id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        setActiveHome(null);
+        return;
+      }
+      const property = properties.find(p => p.id === data.property_id) ?? null;
+      const room = rooms.find(r => r.id === data.room_id) ?? null;
+      if (!property || !room) {
+        setActiveHome(null);
+        return;
+      }
+      setActiveHome({
+        property,
+        room,
+        activeHomeData: { moveInDate: data.move_in_date ? new Date(data.move_in_date) : new Date() },
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.type, properties, rooms]);
+
+  useEffect(() => {
     if (!user) return;
 
-    const updateCounters = () => {
-      const applications = getApplicationsForUser(user.id);
-      const activeApplications = applications.filter(
-        app => app.status === 'pending' || app.status === 'under_review' || app.status === 'accepted',
-      );
+    let cancelled = false;
 
-      setApplicationsCount(activeApplications.length);
-
-      const unreadCount = getTotalUnreadCount(user.id);
-      setUnreadMessagesCount(unreadCount);
-    };
-
-    updateCounters();
-
-    const handleStorageChange = (event: StorageEvent) => {
-      if (
-        event.key === 'uniroom_applications' ||
-        event.key === 'uniroom_notifications' ||
-        event.key === 'uniroom_messages'
-      ) {
-        updateCounters();
+    const updateCounters = async () => {
+      const { data, error } = await supabase
+        .from('applications')
+        .select('id')
+        .eq('user_id', user.id)
+        .in('status', ['pending', 'under_review', 'accepted']);
+      if (!cancelled && !error && data) {
+        setApplicationsCount(data.length);
       }
-
-      if (event.key?.startsWith('uniroom_favorites_')) {
-        void refreshFavorites();
+      if (!cancelled) {
+        setUnreadMessagesCount(getTotalUnreadCount(user.id));
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    void updateCounters();
 
-    const interval = setInterval(() => {
-      updateCounters();
-      void refreshFavorites();
-    }, 2000);
+    const interval = setInterval(() => void updateCounters(), 30000);
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      cancelled = true;
       clearInterval(interval);
     };
-  }, [user, refreshFavorites]);
+  }, [user?.id]);
 
   useEffect(() => {
     const activeProperties = properties.filter(property => property.status === 'active');
@@ -132,11 +136,6 @@ export function Dashboard() {
       .slice(0, 3);
 
     setSuggestions(topSuggestions);
-
-    if (user) {
-      const requests = getMaintenanceRequests(user.id);
-      setMaintenanceRequests(requests.slice(0, 3));
-    }
   }, [user, rooms, properties]);
 
   const getDashboardTitle = () => {

@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, AuthContextType, RegisterData, UserType } from '../types/auth';
 import { StudentProfile } from '../types/profile';
-import { getProfile, saveProfile } from '../data/mockProfiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { upsertStudentProfileToDb } from '../db/profilesDb';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -14,6 +14,12 @@ type DbProfile = {
   status?: 'active' | 'suspended' | 'blocked';
   verified?: boolean;
   onboarding_completed?: boolean;
+  profile_completeness?: {
+    personal: number;
+    lifestyle: number;
+    preferences: number;
+    overall: number;
+  } | null;
   created_at?: string;
 };
 
@@ -42,25 +48,16 @@ function translateAuthError(message: string | undefined): string {
   return message;
 }
 
-function getLocalProfileSnapshot(userId: string) {
-  const profile = getProfile(userId);
-  return {
-    profileCompleteness: profile?.completeness || defaultCompleteness,
-    profileName: profile?.personal?.fullName,
-  };
-}
-
 function mapDbProfile(row: DbProfile): User {
-  const cache = getLocalProfileSnapshot(row.id);
   return {
     id: row.id,
-    name: cache.profileName || row.full_name || row.email,
+    name: row.full_name || row.email,
     email: row.email,
     type: row.type,
     verified: Boolean(row.verified),
     status: row.status || 'active',
     onboardingCompleted: Boolean(row.onboarding_completed),
-    profileCompleteness: cache.profileCompleteness,
+    profileCompleteness: row.profile_completeness || defaultCompleteness,
     createdAt: row.created_at ? new Date(row.created_at) : new Date(),
   };
 }
@@ -79,7 +76,7 @@ async function fetchProfileById(userId: string): Promise<User | null> {
     const { data, error } = await withTimeout(
       supabase
         .from('profiles')
-        .select('id,email,full_name,type,status,verified,onboarding_completed,created_at')
+        .select('id,email,full_name,type,status,verified,onboarding_completed,profile_completeness,created_at')
         .eq('id', userId)
         .maybeSingle(),
       5000,
@@ -115,73 +112,6 @@ async function upsertProfileRow(userId: string, data: RegisterData): Promise<voi
   if (error) throw new Error(`Erro ao gravar perfil: ${error.message}`);
 }
 
-async function syncStudentProfileToDb(user: User, profile: StudentProfile): Promise<void> {
-  if (!supabase) return;
-
-  const personalPayload = {
-    user_id: user.id,
-    photo_url: profile.personal.photoUrl,
-    full_name: profile.personal.fullName,
-    age: profile.personal.age,
-    gender: profile.personal.gender,
-    course: profile.personal.course,
-    institution: profile.personal.institution,
-    year_of_study: profile.personal.yearOfStudy,
-    hometown: profile.personal.hometown,
-    bio: profile.personal.bio,
-    languages: profile.personal.languages || [],
-  };
-
-  const lifestylePayload = {
-    user_id: user.id,
-    bedtime: profile.lifestyle.bedtime,
-    wakeup_time: profile.lifestyle.wakeupTime,
-    schedule: profile.lifestyle.schedule,
-    cleanliness: profile.lifestyle.cleanliness,
-    cleaning_frequency: profile.lifestyle.cleaningFrequency,
-    noise_tolerance: profile.lifestyle.noiseTolerance,
-    music_volume: profile.lifestyle.musicVolume,
-    guests_frequency: profile.lifestyle.guestsFrequency,
-    guests_acceptance: profile.lifestyle.guestsAcceptance,
-    smoking: profile.lifestyle.smoking,
-    pets: profile.lifestyle.pets,
-    cooking: profile.lifestyle.cooking,
-    personality: profile.lifestyle.personality,
-    social_preference: profile.lifestyle.socialPreference,
-  };
-
-  const preferencesPayload = {
-    user_id: user.id,
-    max_budget: profile.preferences.maxBudget,
-    preferred_cities: profile.preferences.preferredCities || [],
-    max_distance_from_university: profile.preferences.maxDistanceFromUniversity,
-    move_in_date: profile.preferences.moveInDate
-      ? new Date(profile.preferences.moveInDate).toISOString().slice(0, 10)
-      : null,
-    stay_duration: profile.preferences.stayDuration,
-    room_type: profile.preferences.roomType,
-    amenities: profile.preferences.amenities || {},
-  };
-
-  const results = await Promise.allSettled([
-    supabase.from('personal_profiles').upsert(personalPayload, { onConflict: 'user_id' }),
-    supabase.from('lifestyle_profiles').upsert(lifestylePayload, { onConflict: 'user_id' }),
-    supabase.from('accommodation_preferences').upsert(preferencesPayload, { onConflict: 'user_id' }),
-    supabase
-      .from('profiles')
-      .update({
-        full_name: profile.personal.fullName || user.name,
-        onboarding_completed: true,
-      })
-      .eq('id', user.id),
-  ]);
-
-  const failed = results.find(r => r.status === 'rejected');
-  if (failed && failed.status === 'rejected') {
-    throw new Error(`Erro ao sincronizar perfil: ${failed.reason}`);
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -214,15 +144,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       console.log('[AUTH] onAuthStateChange', event, 'session user id:', session?.user?.id);
       if (event === 'SIGNED_OUT' || !session?.user) {
         setUser(null);
         return;
       }
-      const profile = await fetchProfileById(session.user.id);
-      if (mounted) setUser(profile);
+      // Defer Supabase calls outside the auth callback to avoid the gotrue lock deadlock.
+      const uid = session.user.id;
+      setTimeout(() => {
+        if (!mounted) return;
+        fetchProfileById(uid).then(profile => {
+          if (mounted) setUser(profile);
+        });
+      }, 0);
     });
 
     return () => {
@@ -319,12 +255,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onboardingCompleted: true,
     };
     try {
-      await syncStudentProfileToDb(user, profileToSave);
+      await upsertStudentProfileToDb(user.id, profileToSave);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao sincronizar perfil.';
       return { success: false, error: msg };
     }
-    saveProfile(profileToSave);
     setUser({
       ...user,
       name: profileToSave.personal.fullName || user.name,

@@ -15,8 +15,8 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
-import { getExistingApplicationForRoom } from '../data/mockApplications';
 import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
+import { supabase } from '../lib/supabase';
 import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
@@ -35,10 +35,36 @@ export function RoomDetail() {
   const [showContactModal, setShowContactModal] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [, setReviewsVersion] = useState(0);
+  const [existingApplication, setExistingApplication] = useState<{ id: string; status: string } | null>(null);
+  const [appRefreshKey, setAppRefreshKey] = useState(0);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [id]);
+
+  useEffect(() => {
+    const isApplicant =
+      (user?.type === 'student' || user?.type === 'landlord') &&
+      !(user?.type === 'landlord' && room?.landlordId === user?.id);
+
+    if (!user?.id || !room?.id || !isApplicant) {
+      setExistingApplication(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('applications')
+        .select('id, status')
+        .eq('user_id', user.id)
+        .eq('room_id', room.id)
+        .in('status', ['pending', 'under_review', 'accepted', 'confirmed'])
+        .maybeSingle();
+      if (cancelled) return;
+      setExistingApplication(error ? null : (data ?? null));
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.type, room?.id, room?.landlordId, appRefreshKey]);
 
   const room = getRoom(id || '');
   const property = room ? getProperty(room.propertyId) : null;
@@ -51,9 +77,6 @@ export function RoomDetail() {
 
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
   const canActAsApplicant = (user?.type === 'student' || user?.type === 'landlord') && !isLandlordOwner;
-  const existingApplication = canActAsApplicant && room
-    ? getExistingApplicationForRoom(user.id, room.id)
-    : null;
   const canShowCompatibility = Boolean(
     canActAsApplicant &&
     hasCompletedCompatibilityProfile(user!.id) &&
@@ -726,7 +749,7 @@ export function RoomDetail() {
           propertyId={property.id}
           propertyTitle={property.title}
           onClose={() => setShowApplicationModal(false)}
-          onSuccess={() => {}}
+          onSuccess={() => setAppRefreshKey(k => k + 1)}
         />
       )}
 

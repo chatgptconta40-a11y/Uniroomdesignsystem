@@ -13,29 +13,7 @@ interface AccommodationsContextType {
 
 const AccommodationsContext = createContext<AccommodationsContextType | undefined>(undefined);
 
-const PROPERTIES_STORAGE_KEY = 'uniroom_properties';
-const ROOMS_STORAGE_KEY = 'uniroom_rooms';
 const ACCOMMODATIONS_REFRESH_EVENT = 'uniroom:properties-updated';
-
-function safeParse<T>(value: string | null, fallback: T): T {
-  try {
-    return value ? JSON.parse(value) as T : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function readLocalProperties(): any[] {
-  return safeParse<any[]>(localStorage.getItem(PROPERTIES_STORAGE_KEY), []);
-}
-
-function readLocalRooms(): any[] {
-  return safeParse<any[]>(localStorage.getItem(ROOMS_STORAGE_KEY), []);
-}
-
-function writeLocalProperties(properties: any[]): void {
-  localStorage.setItem(PROPERTIES_STORAGE_KEY, JSON.stringify(properties));
-}
 
 function normalizeProp(prop: any) {
   return {
@@ -61,6 +39,7 @@ function normalizeRoom(room: any) {
     maxOccupants: room.maxOccupants ?? room.max_occupants,
     privateBathroom: room.privateBathroom ?? room.private_bathroom,
     airConditioning: room.airConditioning ?? room.air_conditioning,
+    size: room.size ?? room.area,
     createdAt: room.createdAt ?? room.created_at,
     updatedAt: room.updatedAt ?? room.updated_at,
   };
@@ -115,50 +94,16 @@ function buildAccommodation(rawProp: any, rawRoom: any | null, totalOccupied: nu
   };
 }
 
-function buildAccommodationsFromLocal(): Accommodation[] {
-  const properties = readLocalProperties().map(normalizeProp);
-  const rooms = readLocalRooms().map(normalizeRoom);
-
-  return properties
-    .filter(prop => prop.status === 'active')
-    .flatMap(prop => {
-      const propRooms = rooms.filter(room => room.propertyId === prop.id);
-      const visibleRooms = propRooms.filter(room => room.status === 'available');
-
-      if (visibleRooms.length === 0 && prop.wholePropertyAvailable) {
-        const occupied = propRooms.filter(room => room.status === 'occupied').length;
-        return [buildAccommodation(prop, null, occupied)];
-      }
-
-      return visibleRooms.map(room => {
-        const occupied = propRooms.filter(item => item.status === 'occupied').length;
-        return buildAccommodation(prop, room, occupied);
-      });
-    });
-}
-
-function mergeById<T extends { id: string }>(localItems: T[], remoteItems: T[]): T[] {
-  const map = new Map<string, T>();
-  localItems.forEach(item => map.set(item.id, item));
-  remoteItems.forEach(item => map.set(item.id, item));
-  return Array.from(map.values());
-}
-
 export function AccommodationsProvider({ children }: { children: ReactNode }) {
-  const [accommodations, setAccommodations] = useState<Accommodation[]>(() => buildAccommodationsFromLocal());
+  const [accommodations, setAccommodations] = useState<Accommodation[]>([]);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    const localList = buildAccommodationsFromLocal();
-    setAccommodations(localList);
-
     if (!isSupabaseConfigured) {
       setLoading(false);
       return;
     }
-
     setLoading(true);
-
     try {
       const [propsRes, roomsRes] = await Promise.all([
         supabase.from('properties').select('*'),
@@ -168,7 +113,7 @@ export function AccommodationsProvider({ children }: { children: ReactNode }) {
       const remoteProps = (propsRes.data ?? []).map(normalizeProp);
       const remoteRooms = (roomsRes.data ?? []).map(normalizeRoom);
 
-      const remoteList = remoteProps
+      const list = remoteProps
         .filter(prop => prop.status === 'active')
         .flatMap(prop => {
           const propRooms = remoteRooms.filter(room => room.propertyId === prop.id);
@@ -185,9 +130,9 @@ export function AccommodationsProvider({ children }: { children: ReactNode }) {
           });
         });
 
-      setAccommodations(mergeById(localList, remoteList));
+      setAccommodations(list);
     } catch {
-      // network unavailable — local data already set above
+      // network unavailable — keep existing state
     } finally {
       setLoading(false);
     }
@@ -196,55 +141,23 @@ export function AccommodationsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh();
 
-    const handler = () => {
-      void refresh();
-    };
-
+    const handler = () => void refresh();
     window.addEventListener(ACCOMMODATIONS_REFRESH_EVENT, handler);
-
     return () => window.removeEventListener(ACCOMMODATIONS_REFRESH_EVENT, handler);
   }, [refresh]);
 
   const updateAccommodationStatus = async (id: string, status: AccommodationStatus) => {
-    const properties = readLocalProperties();
-    const nextProperties = properties.map(property =>
-      property.id === id ? { ...property, status, updatedAt: new Date() } : property,
-    );
-
-    writeLocalProperties(nextProperties);
-    window.dispatchEvent(new Event(ACCOMMODATIONS_REFRESH_EVENT));
     setAccommodations(prev => prev.map(a => a.id === id ? { ...a, status, updatedAt: new Date() } : a));
-
     if (isSupabaseConfigured) {
       try {
         await supabase.from('properties').update({ status }).eq('id', id);
       } catch { /* network unavailable */ }
     }
+    void refresh();
   };
 
   const updateAccommodation = async (id: string, updates: Partial<Accommodation>) => {
-    const properties = readLocalProperties();
-    const nextProperties = properties.map(property =>
-      property.id === id
-        ? {
-            ...property,
-            title: updates.title ?? property.title,
-            description: updates.description ?? property.description,
-            address: updates.address ?? property.address,
-            city: updates.city ?? property.city,
-            zone: updates.zone ?? property.zone,
-            status: updates.status ?? property.status,
-            images: updates.images ?? property.images,
-            verified: updates.verified ?? property.verified,
-            updatedAt: new Date(),
-          }
-        : property,
-    );
-
-    writeLocalProperties(nextProperties);
-    window.dispatchEvent(new Event(ACCOMMODATIONS_REFRESH_EVENT));
     setAccommodations(prev => prev.map(a => a.id === id ? { ...a, ...updates, updatedAt: new Date() } : a));
-
     if (isSupabaseConfigured) {
       const dbUpd: Record<string, unknown> = {};
       if (updates.title !== undefined) dbUpd.title = updates.title;
@@ -255,13 +168,13 @@ export function AccommodationsProvider({ children }: { children: ReactNode }) {
       if (updates.status !== undefined) dbUpd.status = updates.status;
       if (updates.images !== undefined) dbUpd.images = updates.images;
       if (updates.verified !== undefined) dbUpd.verified = updates.verified;
-
       if (Object.keys(dbUpd).length > 0) {
         try {
           await supabase.from('properties').update(dbUpd).eq('id', id);
         } catch { /* network unavailable */ }
       }
     }
+    void refresh();
   };
 
   const deleteAccommodation = async (id: string) => {

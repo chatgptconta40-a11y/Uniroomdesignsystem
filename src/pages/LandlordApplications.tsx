@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   FileText,
@@ -22,8 +22,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
-import { getApplicationsForLandlord, updateApplicationStatus, getApplicationStats, DetailedApplication } from '../data/mockLandlordApplications';
-import { ApplicationStatus } from '../types/accommodation';
+import { Application, ApplicationStatus } from '../types/accommodation';
+import { supabase } from '../lib/supabase';
+import { dbToApplication } from '../hooks/useDb';
 import { normalizeRoomStatus } from '../utils/roomStatus';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -31,6 +32,22 @@ import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { TrustPill, trustLevelToPill } from '../components/TrustPill';
 import { toast } from 'sonner';
+
+interface DetailedApplication extends Application {
+  applicantName: string;
+  applicantEmail: string;
+  applicantCourse: string;
+  applicantUniversity: string;
+  applicantYear: number;
+  compatibilityScore: number;
+  trustScore: number;
+  trustLevel: 'new' | 'confirmed' | 'trusted';
+  verificationLevel: 'none' | 'bronze' | 'silver' | 'gold';
+  verificationLabel: string;
+  verificationPending: boolean;
+  listingTitle: string;
+  listingPrice: number;
+}
 
 type SortOption = 'recent' | 'compatibility' | 'trust' | 'decision' | 'movein';
 type SpecialFilter = 'verified' | 'compat80' | 'trust75';
@@ -50,7 +67,7 @@ const canBeBestCandidate = (app: DetailedApplication) =>
 
 export function LandlordApplications() {
   const { user } = useAuth();
-  const { getRoom, refreshProperties } = useProperties();
+  const { getRoom, getProperty, refreshProperties } = useProperties();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const listingFilter = searchParams.get('listing') || undefined;
@@ -63,12 +80,72 @@ export function LandlordApplications() {
   const [confirmRejectApp, setConfirmRejectApp] = useState<DetailedApplication | null>(null);
   const [version, setVersion] = useState(0);
 
-  const allApplications = useMemo(
-    () => getApplicationsForLandlord(user?.id || '', listingFilter),
-    [user?.id, listingFilter, version],
-  );
+  const [baseApplications, setBaseApplications] = useState<Application[]>([]);
 
-  const stats = useMemo(() => getApplicationStats(user?.id || ''), [user?.id, version]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!user?.id) { setBaseApplications([]); return; }
+    (async () => {
+      const { data, error } = await supabase
+        .from('applications')
+        .select('*')
+        .eq('landlord_id', user.id)
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        console.error('[UniRoom] Landlord applications fetch error:', error.message);
+        toast.error(`Erro ao carregar candidaturas: ${error.message}`);
+        setBaseApplications([]);
+        return;
+      }
+      setBaseApplications((data ?? []).map(dbToApplication));
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, version]);
+
+  const allApplications = useMemo<DetailedApplication[]>(() => {
+    const list = listingFilter
+      ? baseApplications.filter(app => app.roomId === listingFilter || app.propertyId === listingFilter)
+      : baseApplications;
+    return list.map(app => {
+      const room = app.roomId ? getRoom(app.roomId) : undefined;
+      const property = app.propertyId
+        ? getProperty(app.propertyId)
+        : room?.propertyId
+          ? getProperty(room.propertyId)
+          : undefined;
+      const roomLabel = room?.title || 'Quarto';
+      const propertyLabel = property?.title || 'Alojamento';
+      return {
+        ...app,
+        applicantName: '',
+        applicantEmail: '',
+        applicantCourse: '',
+        applicantUniversity: '',
+        applicantYear: 0,
+        compatibilityScore: 0,
+        trustScore: 0,
+        trustLevel: 'new',
+        verificationLevel: 'none',
+        verificationLabel: 'Não verificado',
+        verificationPending: false,
+        listingTitle: room ? `${roomLabel} · ${propertyLabel}` : propertyLabel,
+        listingPrice: room?.price || 0,
+      };
+    });
+  }, [baseApplications, listingFilter, getRoom, getProperty]);
+
+  const stats = useMemo(() => {
+    const t = baseApplications;
+    return {
+      total: t.length,
+      pending: t.filter(a => a.status === 'pending').length,
+      underReview: t.filter(a => a.status === 'under_review').length,
+      accepted: t.filter(a => a.status === 'accepted').length,
+      confirmed: t.filter(a => a.status === 'confirmed').length,
+      rejected: t.filter(a => a.status === 'rejected').length,
+    };
+  }, [baseApplications]);
 
   const getUnavailableReason = useCallback((app: DetailedApplication): string | null => {
     if (!app.roomId) return null;
@@ -155,7 +232,7 @@ export function LandlordApplications() {
     });
   };
 
-  const handleAccept = (app: DetailedApplication) => {
+  const handleAccept = async (app: DetailedApplication) => {
     const unavailableReason = getUnavailableReason(app);
 
     if (unavailableReason) {
@@ -166,38 +243,51 @@ export function LandlordApplications() {
       return;
     }
 
-    if (updateApplicationStatus(app.id, 'accepted', user?.id)) {
-      refreshProperties();
-      toast.success(`Candidatura de ${app.applicantName} aceite!`, {
-        description: 'O quarto foi marcado como reservado e o estudante foi notificado.',
-      });
-      setVersion(value => value + 1);
-      setConfirmAcceptApp(null);
-      setSelectedApp(null);
+    const { error } = await supabase
+      .from('applications')
+      .update({ status: 'accepted', reviewed_at: new Date().toISOString() })
+      .eq('id', app.id);
+
+    if (error) {
+      console.error('[APPLICATIONS] accept failed', error);
+      toast.error('Não foi possível atualizar a candidatura.', { description: error.message });
       return;
     }
 
-    toast.error('Não foi possível atualizar a candidatura.');
+    refreshProperties();
+    toast.success(`Candidatura de ${app.applicantName || 'candidato'} aceite!`, {
+      description: 'O quarto foi marcado como reservado e o estudante foi notificado.',
+    });
+    setVersion(value => value + 1);
+    setConfirmAcceptApp(null);
+    setSelectedApp(null);
   };
 
   const handleReject = (app: DetailedApplication) => {
     setConfirmRejectApp(app);
   };
 
-  const handleRejectConfirm = () => {
+  const handleRejectConfirm = async () => {
     if (!confirmRejectApp) return;
 
-    if (updateApplicationStatus(confirmRejectApp.id, 'rejected', user?.id)) {
-      refreshProperties();
-      toast.success('Candidatura rejeitada', {
-        description: 'O estudante foi notificado da decisão.',
-      });
-      setVersion(value => value + 1);
-      setSelectedApp(null);
-    } else {
-      toast.error('Não foi possível rejeitar a candidatura.');
+    const { error } = await supabase
+      .from('applications')
+      .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
+      .eq('id', confirmRejectApp.id);
+
+    if (error) {
+      console.error('[APPLICATIONS] reject failed', error);
+      toast.error('Não foi possível rejeitar a candidatura.', { description: error.message });
+      setConfirmRejectApp(null);
+      return;
     }
 
+    refreshProperties();
+    toast.success('Candidatura rejeitada', {
+      description: 'O estudante foi notificado da decisão.',
+    });
+    setVersion(value => value + 1);
+    setSelectedApp(null);
     setConfirmRejectApp(null);
   };
 

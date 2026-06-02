@@ -1,4 +1,4 @@
-import { useMemo, useState, type ElementType } from 'react';
+import { useEffect, useMemo, useState, type ElementType } from 'react';
 import { useNavigate } from 'react-router';
 import {
   FileText,
@@ -24,9 +24,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
-import { getApplicationsForUser, confirmStay } from '../data/mockApplications';
-import { cancelUnifiedApplication } from '../data/unifiedApplications';
 import { findOrCreateRoomConversation } from '../data/mockMessages';
+import { supabase } from '../lib/supabase';
+import { dbToApplication } from '../hooks/useDb';
 import { Application, ApplicationStatus } from '../types/accommodation';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -218,13 +218,31 @@ export function Applications() {
   const [confirmWithdrawId, setConfirmWithdrawId] = useState<string | null>(null);
   const [confirmStayApp, setConfirmStayApp] = useState<Application | null>(null);
 
-  const applications = useMemo(
-    () =>
-      getApplicationsForUser(user?.id || '').sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      ),
-    [user?.id, refreshKey],
-  );
+  const [applications, setApplications] = useState<Application[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user?.id) {
+      setApplications([]);
+      return;
+    }
+    (async () => {
+      const { data, error } = await supabase
+        .from('applications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        console.error('[UniRoom] Applications fetch error:', error.message);
+        toast.error(`Erro ao carregar candidaturas: ${error.message}`);
+        setApplications([]);
+        return;
+      }
+      setApplications((data ?? []).map(dbToApplication));
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, refreshKey]);
 
   const filteredApplications = useMemo(() => {
     if (filter === 'all') return applications;
@@ -245,32 +263,91 @@ export function Applications() {
     setConfirmWithdrawId(applicationId);
   };
 
-  const handleWithdrawConfirm = () => {
+  const handleWithdrawConfirm = async () => {
     if (!confirmWithdrawId) return;
-
-    cancelUnifiedApplication(confirmWithdrawId);
+    const { error } = await supabase
+      .from('applications')
+      .delete()
+      .eq('id', confirmWithdrawId);
+    if (error) {
+      toast.error(`Erro ao cancelar candidatura: ${error.message}`);
+      return;
+    }
     toast.success('Candidatura cancelada.');
     setConfirmWithdrawId(null);
     setRefreshKey(key => key + 1);
     refreshProperties();
   };
 
-  const handleConfirmStay = () => {
-    if (!confirmStayApp) return;
+  const handleConfirmStay = async () => {
+    if (!confirmStayApp || !user) return;
 
-    const home = confirmStay(confirmStayApp.id);
-
-    if (home) {
-      toast.success('Estadia confirmada! Bem-vindo/a à tua nova casa.');
+    if (confirmStayApp.status !== 'accepted') {
+      toast.error('Esta candidatura ainda não foi aceite.');
       setConfirmStayApp(null);
-      setRefreshKey(key => key + 1);
-      refreshProperties();
-      setTimeout(() => navigate('/my-home'), 900);
-    } else {
-      toast.error('Não foi possível confirmar a estadia.');
-      setConfirmStayApp(null);
-      refreshProperties();
+      return;
     }
+    if (confirmStayApp.userId !== user.id) {
+      toast.error('Apenas o estudante da candidatura pode confirmar a estadia.');
+      setConfirmStayApp(null);
+      return;
+    }
+    if (!confirmStayApp.propertyId || !confirmStayApp.landlordId) {
+      toast.error('Candidatura sem imóvel ou senhorio associados.');
+      setConfirmStayApp(null);
+      return;
+    }
+
+    const { data: existing, error: dupError } = await supabase
+      .from('active_homes')
+      .select('id')
+      .eq('student_id', user.id)
+      .limit(1);
+    if (dupError) {
+      console.error('[ACTIVE_HOMES] dup check failed', dupError);
+      toast.error('Não foi possível verificar a tua casa ativa.', { description: dupError.message });
+      return;
+    }
+    if (existing && existing.length > 0) {
+      toast.error('Já tens uma casa ativa.');
+      setConfirmStayApp(null);
+      setTimeout(() => navigate('/my-home'), 600);
+      return;
+    }
+
+    const { error: insertError } = await supabase.from('active_homes').insert({
+      id: crypto.randomUUID(),
+      student_id: user.id,
+      landlord_id: confirmStayApp.landlordId,
+      property_id: confirmStayApp.propertyId,
+      room_id: confirmStayApp.roomId || null,
+      application_id: confirmStayApp.id,
+      move_in_date: confirmStayApp.moveInDate
+        ? new Date(confirmStayApp.moveInDate).toISOString().slice(0, 10)
+        : null,
+    });
+    if (insertError) {
+      console.error('[ACTIVE_HOMES] insert failed', insertError);
+      toast.error('Não foi possível confirmar a estadia.', { description: insertError.message });
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from('applications')
+      .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+      .eq('id', confirmStayApp.id)
+      .eq('user_id', user.id);
+    if (updateError) {
+      console.error('[ACTIVE_HOMES] application update failed', updateError);
+      toast.error('Estadia criada mas não foi possível atualizar a candidatura.', {
+        description: updateError.message,
+      });
+    }
+
+    toast.success('Estadia confirmada! Bem-vindo/a à tua nova casa.');
+    setConfirmStayApp(null);
+    setRefreshKey(key => key + 1);
+    setTimeout(() => navigate('/my-home'), 900);
   };
 
   const handleContactLandlord = (app: Application) => {
@@ -443,7 +520,7 @@ export function Applications() {
                   const property = application.propertyId ? getProperty(application.propertyId) : room ? getProperty(room.propertyId) : undefined;
                   const images = room?.images.length ? room.images : property?.images || [];
                   const coverImage = images[0];
-                  const title = room?.title || application.accommodationId || 'Quarto';
+                  const title = room?.title || 'Quarto';
                   const propertyTitle = property?.title;
                   const city = property?.city || '';
                   const zone = property?.zone || '';

@@ -15,7 +15,8 @@ export type MaintenanceStatus = 'pending' | 'received' | 'in_progress' | 'resolv
 export interface MaintenanceRequest {
   id: string;
   userId: string;
-  accommodationId: string;
+  roomId?: string;
+  propertyId?: string;
   landlordId: string;
   category: MaintenanceCategory;
   title: string;

@@ -39,7 +39,7 @@ import { TrustBadge } from '../components/TrustBadge';
 import { LandlordContractManager } from '../components/LandlordContractManager';
 import { getLandlordMetrics, getDashboardActivity, getPerformanceData } from '../data/mockLandlord';
 import { getPendingCountForLandlord } from '../data/mockLandlordCandidates';
-import { getMaintenanceStats } from '../data/mockMaintenance';
+import { useMaintenance } from '../hooks/useDb';
 import {
   formatCurrency,
   getLandlordFinanceSummary,
@@ -120,7 +120,16 @@ export function LandlordDashboard() {
   const mockMetrics = getLandlordMetrics(userId);
   const activities = getDashboardActivity(userId);
   const performanceData = getPerformanceData(userId, 30);
-  const maintenanceStats = getMaintenanceStats(userId);
+  const { requests: maintenanceRequests } = useMaintenance({ scope: 'landlord' });
+  const maintenanceStats = useMemo(() => ({
+    total: maintenanceRequests.length,
+    pending: maintenanceRequests.filter(r => r.status === 'pending').length,
+    inProgress: maintenanceRequests.filter(r => r.status === 'in_progress').length,
+    resolved: maintenanceRequests.filter(r => r.status === 'resolved').length,
+    highUrgency: maintenanceRequests.filter(
+      r => r.urgency === 'high' && r.status !== 'resolved' && r.status !== 'closed',
+    ).length,
+  }), [maintenanceRequests]);
   const financeSummary = getLandlordFinanceSummary(userId);
   const defaultPaymentMethod = financeSummary.methods.find(method => method.isDefault) || financeSummary.methods[0];
 

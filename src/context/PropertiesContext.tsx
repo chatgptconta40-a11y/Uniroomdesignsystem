@@ -25,8 +25,6 @@ interface PropertiesContextType {
 
 const PropertiesContext = createContext<PropertiesContextType | undefined>(undefined);
 
-const PROPERTIES_STORAGE_KEY = 'uniroom_properties';
-const ROOMS_STORAGE_KEY = 'uniroom_rooms';
 export const PROPERTIES_REFRESH_EVENT = 'uniroom:properties-updated';
 
 const defaultAmenities: Property['amenities'] = {
@@ -43,14 +41,6 @@ const defaultAmenities: Property['amenities'] = {
   microwave: false,
   elevator: false,
 };
-
-function safeParse<T>(value: string | null, fallback: T): T {
-  try {
-    return value ? JSON.parse(value) as T : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function toDate(value: unknown, fallback = new Date()): Date {
   if (!value) return fallback;
@@ -137,26 +127,6 @@ function normalizeRoom(value: any): Room {
   };
 }
 
-function readLocalProperties(): Property[] {
-  return safeParse<any[]>(localStorage.getItem(PROPERTIES_STORAGE_KEY), [])
-    .filter(item => item?.id)
-    .map(normalizeProperty);
-}
-
-function readLocalRooms(): Room[] {
-  return safeParse<any[]>(localStorage.getItem(ROOMS_STORAGE_KEY), [])
-    .filter(item => item?.id)
-    .map(normalizeRoom);
-}
-
-function writeLocalProperties(properties: Property[]): void {
-  localStorage.setItem(PROPERTIES_STORAGE_KEY, JSON.stringify(properties));
-}
-
-function writeLocalRooms(rooms: Room[]): void {
-  localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
-}
-
 function notifyPropertiesChanged(): void {
   window.dispatchEvent(new Event(PROPERTIES_REFRESH_EVENT));
 }
@@ -164,7 +134,6 @@ function notifyPropertiesChanged(): void {
 function attachRoomIds(properties: Property[], rooms: Room[]): Property[] {
   return properties.map(property => {
     const propertyRooms = rooms.filter(room => room.propertyId === property.id);
-
     return {
       ...property,
       roomIds: propertyRooms.map(room => room.id),
@@ -196,10 +165,6 @@ function propertyToDb(p: Partial<Property>): Record<string, unknown> {
   if (p.status !== undefined) out.status = p.status;
   if (p.verified !== undefined) out.verified = p.verified;
   if (p.views !== undefined) out.views = p.views;
-  if (p.adminSuspended !== undefined) out.admin_suspended = p.adminSuspended;
-  if (p.adminSuspensionReason !== undefined) out.admin_suspension_reason = p.adminSuspensionReason;
-  if (p.adminSuspendedAt !== undefined) out.admin_suspended_at = p.adminSuspendedAt;
-  if (p.adminSuspendedBy !== undefined) out.admin_suspended_by = p.adminSuspendedBy;
   if (p.createdAt !== undefined) out.created_at = p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt;
   if (p.updatedAt !== undefined) out.updated_at = p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt;
 
@@ -216,7 +181,7 @@ function roomToDb(r: Partial<Room>): Record<string, unknown> {
   if (r.title !== undefined) out.title = r.title;
   if (r.description !== undefined) out.description = r.description;
   if (r.images !== undefined) out.images = r.images;
-  if (r.size !== undefined) out.size = r.size;
+  if (r.size !== undefined) { out.area = r.size; out.size = r.size; }
   if (r.roomType !== undefined) out.room_type = r.roomType;
   if (r.maxOccupants !== undefined) out.max_occupants = r.maxOccupants;
   if (r.privateBathroom !== undefined) out.private_bathroom = r.privateBathroom;
@@ -240,28 +205,6 @@ function roomToDb(r: Partial<Room>): Record<string, unknown> {
   return out;
 }
 
-function mergeByFreshest<T extends { id: string; updatedAt: Date }>(localItems: T[], remoteItems: T[]): T[] {
-  const map = new Map<string, T>();
-
-  localItems.forEach(item => map.set(item.id, item));
-
-  remoteItems.forEach(item => {
-    const current = map.get(item.id);
-
-    if (!current) {
-      map.set(item.id, item);
-      return;
-    }
-
-    const remoteTime = item.updatedAt?.getTime?.() ?? 0;
-    const localTime = current.updatedAt?.getTime?.() ?? 0;
-
-    map.set(item.id, remoteTime >= localTime ? item : current);
-  });
-
-  return Array.from(map.values());
-}
-
 function isNetworkError(message?: string): boolean {
   if (!message) return false;
   return /failed to fetch|networkerror|load failed/i.test(message);
@@ -269,20 +212,15 @@ function isNetworkError(message?: string): boolean {
 
 async function fetchRemoteProperties(): Promise<Property[]> {
   if (!isSupabaseConfigured) return [];
-
   try {
     const { data, error } = await supabase
       .from('properties')
       .select('*')
       .order('created_at', { ascending: false });
-
     if (error) {
-      if (!isNetworkError(error.message)) {
-        console.warn('[UniRoom] Properties fetch error:', error.message);
-      }
+      if (!isNetworkError(error.message)) console.warn('[UniRoom] Properties fetch error:', error.message);
       return [];
     }
-
     return (data ?? []).map(normalizeProperty);
   } catch {
     return [];
@@ -291,20 +229,15 @@ async function fetchRemoteProperties(): Promise<Property[]> {
 
 async function fetchRemoteRooms(): Promise<Room[]> {
   if (!isSupabaseConfigured) return [];
-
   try {
     const { data, error } = await supabase
       .from('rooms')
       .select('*')
       .order('created_at', { ascending: false });
-
     if (error) {
-      if (!isNetworkError(error.message)) {
-        console.warn('[UniRoom] Rooms fetch error:', error.message);
-      }
+      if (!isNetworkError(error.message)) console.warn('[UniRoom] Rooms fetch error:', error.message);
       return [];
     }
-
     return (data ?? []).map(normalizeRoom);
   } catch {
     return [];
@@ -313,15 +246,11 @@ async function fetchRemoteRooms(): Promise<Room[]> {
 
 async function syncPropertyToSupabase(property: Property): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
-
   try {
     const { error } = await supabase
       .from('properties')
       .upsert(propertyToDb(property), { onConflict: 'id' });
-
-    if (error && !isNetworkError(error.message)) {
-      console.warn('[UniRoom] Property sync error:', error.message);
-    }
+    if (error && !isNetworkError(error.message)) console.warn('[UniRoom] Property sync error:', error.message);
     return !error;
   } catch {
     return false;
@@ -330,214 +259,101 @@ async function syncPropertyToSupabase(property: Property): Promise<boolean> {
 
 async function syncRoomToSupabase(room: Room): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
-
   try {
     const { error } = await supabase
       .from('rooms')
       .upsert(roomToDb(room), { onConflict: 'id' });
-
-    if (error && !isNetworkError(error.message)) {
-      console.warn('[UniRoom] Room sync error:', error.message);
-    }
+    if (error && !isNetworkError(error.message)) console.warn('[UniRoom] Room sync error:', error.message);
     return !error;
   } catch {
     return false;
   }
 }
 
-async function syncLocalToSupabase(localProperties: Property[], localRooms: Room[]): Promise<void> {
-  if (!isSupabaseConfigured) return;
-
-  await Promise.allSettled([
-    ...localProperties.map(property => syncPropertyToSupabase(property)),
-    ...localRooms.map(room => syncRoomToSupabase(room)),
-  ]);
-}
-
 export function PropertiesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
 
-  const [properties, setProperties] = useState<Property[]>(() => {
-    const localProperties = readLocalProperties();
-    const localRooms = readLocalRooms();
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(true);
 
-    return attachRoomIds(localProperties, localRooms);
-  });
-
-  const [rooms, setRooms] = useState<Room[]>(() => readLocalRooms());
-  const [loading, setLoading] = useState(false);
-
-  const persistLocal = useCallback((nextProperties: Property[], nextRooms: Room[]) => {
+  const applyToState = useCallback((nextProperties: Property[], nextRooms: Room[]) => {
     const normalizedRooms = nextRooms.map(normalizeRoom);
     const normalizedProperties = attachRoomIds(nextProperties.map(normalizeProperty), normalizedRooms);
-
     setProperties(normalizedProperties);
     setRooms(normalizedRooms);
-
-    writeLocalProperties(normalizedProperties);
-    writeLocalRooms(normalizedRooms);
-
     notifyPropertiesChanged();
   }, []);
 
   const refreshProperties = useCallback(async () => {
-    const localProperties = readLocalProperties();
-    const localRooms = readLocalRooms();
-
-    persistLocal(localProperties, localRooms);
-
     if (!isSupabaseConfigured) {
       setLoading(false);
       return;
     }
-
     setLoading(true);
-
     try {
       const [remoteProperties, remoteRooms] = await Promise.all([
         fetchRemoteProperties(),
         fetchRemoteRooms(),
       ]);
-
-      const mergedRooms = mergeByFreshest(localRooms, remoteRooms);
-      const mergedProperties = attachRoomIds(
-        mergeByFreshest(localProperties, remoteProperties),
-        mergedRooms,
-      );
-
-      persistLocal(mergedProperties, mergedRooms);
-
-      void syncLocalToSupabase(mergedProperties, mergedRooms);
+      applyToState(remoteProperties, remoteRooms);
     } finally {
       setLoading(false);
     }
-  }, [persistLocal]);
+  }, [applyToState]);
 
   useEffect(() => {
     void refreshProperties();
   }, [refreshProperties, user?.id, user?.type]);
 
   useEffect(() => {
-    const handleStorage = (event: StorageEvent) => {
-      if (
-        event.key === PROPERTIES_STORAGE_KEY ||
-        event.key === ROOMS_STORAGE_KEY ||
-        event.key === 'uniroom_user'
-      ) {
-        void refreshProperties();
-      }
-    };
-
-    const handleFocus = () => {
-      void refreshProperties();
-    };
-
-    const handleVisibility = () => {
-      if (!document.hidden) void refreshProperties();
-    };
+    const handleFocus = () => void refreshProperties();
+    const handleVisibility = () => { if (!document.hidden) void refreshProperties(); };
 
     /*
-      IMPORTANTE:
-      Não escutamos PROPERTIES_REFRESH_EVENT aqui, porque este próprio
-      contexto emite esse evento dentro de persistLocal().
-      Se o contexto ouvir o evento que ele próprio dispara, entra em loop:
-      refreshProperties -> persistLocal -> dispatch event -> refreshProperties...
+      Não escutamos PROPERTIES_REFRESH_EVENT aqui porque este contexto
+      dispara esse evento dentro de applyToState — ouvir o próprio evento
+      criaria um loop infinito.
     */
-    window.addEventListener('storage', handleStorage);
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      window.removeEventListener('storage', handleStorage);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [refreshProperties]);
 
   const addProperty = async (property: Property) => {
-    const latestProperties = readLocalProperties();
-    const latestRooms = readLocalRooms();
-
-    const nextProperty: Property = normalizeProperty({
+    const nextProperty = normalizeProperty({
       ...property,
       createdAt: property.createdAt || new Date(),
       updatedAt: new Date(),
     });
-
-    const nextProperties = [
-      nextProperty,
-      ...latestProperties.filter(item => item.id !== nextProperty.id),
-    ];
-
-    persistLocal(nextProperties, latestRooms);
-
-    const synced = await syncPropertyToSupabase(nextProperty);
-    if (synced) void refreshProperties();
+    await syncPropertyToSupabase(nextProperty);
+    await refreshProperties();
   };
 
   const addRoom = async (room: Room) => {
-    const latestProperties = readLocalProperties();
-    const latestRooms = readLocalRooms();
-
-    const nextRoom: Room = normalizeRoom({
+    const nextRoom = normalizeRoom({
       ...room,
       createdAt: room.createdAt || new Date(),
       updatedAt: new Date(),
     });
+    await syncRoomToSupabase(nextRoom);
+    await refreshProperties();
+  };
 
-    const nextRooms = [
-      nextRoom,
-      ...latestRooms.filter(item => item.id !== nextRoom.id),
-    ];
-
-    const nextProperties = latestProperties.map(property =>
-      property.id === nextRoom.propertyId
-        ? {
-            ...property,
-            roomIds: Array.from(new Set([...(property.roomIds || []), nextRoom.id])),
-            totalRooms: Math.max(
-              property.totalRooms || 0,
-              nextRooms.filter(item => item.propertyId === property.id).length,
-            ),
-            updatedAt: new Date(),
-          }
-        : property,
-    );
-
-    persistLocal(nextProperties, nextRooms);
-
-    const [roomSynced, parentSynced] = await Promise.all([
-      syncRoomToSupabase(nextRoom),
-      (async () => {
-        const parent = nextProperties.find(property => property.id === nextRoom.propertyId);
-        return parent ? syncPropertyToSupabase(normalizeProperty(parent)) : false;
-      })(),
-    ]);
-
-    if (roomSynced || parentSynced) void refreshProperties();
+  const updateProperty = async (id: string, updates: Partial<Property>) => {
+    const existing = properties.find(p => p.id === id);
+    if (!existing) return;
+    const updated = normalizeProperty({ ...existing, ...updates, updatedAt: new Date() });
+    await syncPropertyToSupabase(updated);
+    await refreshProperties();
   };
 
   const updatePropertyStatus = async (id: string, status: PropertyStatus) => {
     await updateProperty(id, { status });
-  };
-
-  const updateProperty = async (id: string, updates: Partial<Property>) => {
-    const latestProperties = readLocalProperties();
-    const latestRooms = readLocalRooms();
-
-    const nextProperties = latestProperties.map(property =>
-      property.id === id
-        ? normalizeProperty({ ...property, ...updates, updatedAt: new Date() })
-        : property,
-    );
-
-    persistLocal(nextProperties, latestRooms);
-
-    const updated = nextProperties.find(property => property.id === id);
-    if (updated) {
-      const synced = await syncPropertyToSupabase(updated);
-      if (synced) void refreshProperties();
-    }
   };
 
   const deleteProperty = async (id: string) => {
@@ -545,22 +361,11 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
   };
 
   const updateRoom = async (id: string, updates: Partial<Room>) => {
-    const latestProperties = readLocalProperties();
-    const latestRooms = readLocalRooms();
-
-    const nextRooms = latestRooms.map(room =>
-      room.id === id
-        ? normalizeRoom({ ...room, ...updates, updatedAt: new Date() })
-        : room,
-    );
-
-    persistLocal(latestProperties, nextRooms);
-
-    const updated = nextRooms.find(room => room.id === id);
-    if (updated) {
-      const synced = await syncRoomToSupabase(updated);
-      if (synced) void refreshProperties();
-    }
+    const existing = rooms.find(r => r.id === id);
+    if (!existing) return;
+    const updated = normalizeRoom({ ...existing, ...updates, updatedAt: new Date() });
+    await syncRoomToSupabase(updated);
+    await refreshProperties();
   };
 
   const updateRoomStatus = async (id: string, status: RoomStatus) => {
@@ -571,12 +376,9 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     await updateRoomStatus(id, 'paused');
   };
 
-  const getProperty = (id: string) => properties.find(property => property.id === id);
-
-  const getRoom = (id: string) => rooms.find(room => room.id === id);
-
-  const getRoomsByProperty = (propertyId: string) =>
-    rooms.filter(room => room.propertyId === propertyId);
+  const getProperty = (id: string) => properties.find(p => p.id === id);
+  const getRoom = (id: string) => rooms.find(r => r.id === id);
+  const getRoomsByProperty = (propertyId: string) => rooms.filter(r => r.propertyId === propertyId);
 
   const adminSuspendProperty = async (id: string, reason: string, adminName: string) => {
     await updateProperty(id, {
@@ -626,10 +428,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
 
 export function useProperties() {
   const ctx = useContext(PropertiesContext);
-
-  if (!ctx) {
-    throw new Error('useProperties must be used within PropertiesProvider');
-  }
-
+  if (!ctx) throw new Error('useProperties must be used within PropertiesProvider');
   return ctx;
 }

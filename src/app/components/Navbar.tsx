@@ -2,7 +2,7 @@ import { Home, LogOut, LayoutDashboard, ChevronDown, User, Bell, Heart, FileText
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import { useState } from 'react';
-import { getNotificationsForUser, getUnreadCount, markNotificationAsRead, markAllNotificationsAsRead, getActiveHomeForStudent } from '../../data/mockApplications';
+import { getNotificationsForUser, getUnreadCount, markNotificationAsRead, markAllNotificationsAsRead } from '../../data/mockApplications';
 import { getTotalUnreadCount } from '../../data/mockMessages';
 import { getVerificationStatus } from '../../data/mockTrust';
 
@@ -32,9 +32,6 @@ export function Navbar() {
   const notifications = getNotificationsForUser(user?.id || '');
   const unreadCount = getUnreadCount(user?.id || '');
   const unreadMessagesCount = getTotalUnreadCount(user?.id || '');
-  const hasActiveHome = (user?.type === 'student' || user?.type === 'landlord')
-    ? !!getActiveHomeForStudent(user.id)
-    : false;
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
 
@@ -230,16 +227,14 @@ export function Navbar() {
                               <LayoutDashboard className="w-4 h-4" />
                               <span className="text-sm">Dashboard</span>
                             </Link>
-                            {hasActiveHome && (
-                              <Link
-                                to="/my-home"
-                                className={navLinkClass('/my-home')}
-                                onClick={() => setShowMenu(false)}
-                              >
-                                <Home className="w-4 h-4" />
-                                <span className="text-sm">A Minha Casa</span>
-                              </Link>
-                            )}
+                            <Link
+                              to="/my-home"
+                              className={navLinkClass('/my-home')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <Home className="w-4 h-4" />
+                              <span className="text-sm">A Minha Casa</span>
+                            </Link>
                             <div className="border-t border-border my-1" />
                             <Link
                               to="/verification"
@@ -361,16 +356,14 @@ export function Navbar() {
                               <span className="text-sm">Dashboard</span>
                             </Link>
 
-                            {hasActiveHome && (
-                              <Link
-                                to="/my-home"
-                                className={navLinkClass('/my-home')}
-                                onClick={() => setShowMenu(false)}
-                              >
-                                <Home className="w-4 h-4" />
-                                <span className="text-sm">A Minha Casa</span>
-                              </Link>
-                            )}
+                            <Link
+                              to="/my-home"
+                              className={navLinkClass('/my-home')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <Home className="w-4 h-4" />
+                              <span className="text-sm">A Minha Casa</span>
+                            </Link>
 
                             <Link
                               to="/profile"

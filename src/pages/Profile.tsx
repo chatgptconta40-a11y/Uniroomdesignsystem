@@ -6,7 +6,8 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
 import { TrustBadge } from '../components/TrustBadge';
-import { getProfile, saveProfile } from '../data/mockProfiles';
+import { calculateCompleteness } from '../data/mockProfiles';
+import { fetchStudentProfileFromDb, upsertStudentProfileToDb } from '../db/profilesDb';
 import {
   StudentProfile,
   PersonalProfile,
@@ -39,57 +40,68 @@ export function Profile() {
   const [isPersonalModalOpen, setIsPersonalModalOpen] = useState(false);
   const [isLifestyleModalOpen, setIsLifestyleModalOpen] = useState(false);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      const userProfile = getProfile(user.id);
-      setProfile(userProfile || {
-        personal: {
-          userId: user.id,
-          fullName: user.name,
-        },
-        lifestyle: {
-          userId: user.id,
-        },
-        preferences: {
-          userId: user.id,
-        },
-        completeness: user.profileCompleteness || {
-          personal: 100,
-          lifestyle: 100,
-          preferences: 100,
-          overall: 100,
-        },
-        onboardingCompleted: true,
-      });
+    if (!user) {
+      setIsLoading(false);
+      return;
     }
+
+    fetchStudentProfileFromDb(user.id)
+      .then(dbProfile => {
+        setProfile(dbProfile || {
+          personal: { userId: user.id, fullName: user.name },
+          lifestyle: { userId: user.id },
+          preferences: { userId: user.id },
+          completeness: user.profileCompleteness || { personal: 0, lifestyle: 0, preferences: 0, overall: 0 },
+          onboardingCompleted: false,
+        });
+      })
+      .catch(err => console.error('[Profile] fetch error', err))
+      .finally(() => setIsLoading(false));
   }, [user]);
 
-  const handleSavePersonal = (updatedPersonal: PersonalProfile) => {
-    if (profile) {
-      const updatedProfile = { ...profile, personal: updatedPersonal };
-      setProfile(updatedProfile);
-      saveProfile(updatedProfile);
+  const handleSavePersonal = async (updatedPersonal: PersonalProfile) => {
+    if (!profile || !user?.id) return;
+    const draft = { ...profile, personal: updatedPersonal };
+    const withCompleteness = { ...draft, completeness: calculateCompleteness(draft) };
+    setProfile(withCompleteness);
+    try {
+      await upsertStudentProfileToDb(user.id, withCompleteness);
+    } catch (err) {
+      console.error('[Profile] save personal failed', err);
+      setProfile(profile);
     }
   };
 
-  const handleSaveLifestyle = (updatedLifestyle: LifestyleProfile) => {
-    if (profile) {
-      const updatedProfile = { ...profile, lifestyle: updatedLifestyle };
-      setProfile(updatedProfile);
-      saveProfile(updatedProfile);
+  const handleSaveLifestyle = async (updatedLifestyle: LifestyleProfile) => {
+    if (!profile || !user?.id) return;
+    const draft = { ...profile, lifestyle: updatedLifestyle };
+    const withCompleteness = { ...draft, completeness: calculateCompleteness(draft) };
+    setProfile(withCompleteness);
+    try {
+      await upsertStudentProfileToDb(user.id, withCompleteness);
+    } catch (err) {
+      console.error('[Profile] save lifestyle failed', err);
+      setProfile(profile);
     }
   };
 
-  const handleSavePreferences = (updatedPreferences: AccommodationPreferences) => {
-    if (profile) {
-      const updatedProfile = { ...profile, preferences: updatedPreferences };
-      setProfile(updatedProfile);
-      saveProfile(updatedProfile);
+  const handleSavePreferences = async (updatedPreferences: AccommodationPreferences) => {
+    if (!profile || !user?.id) return;
+    const draft = { ...profile, preferences: updatedPreferences };
+    const withCompleteness = { ...draft, completeness: calculateCompleteness(draft) };
+    setProfile(withCompleteness);
+    try {
+      await upsertStudentProfileToDb(user.id, withCompleteness);
+    } catch (err) {
+      console.error('[Profile] save preferences failed', err);
+      setProfile(profile);
     }
   };
 
-  if (!profile) return null;
+  if (isLoading || !profile) return null;
   if (false) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">

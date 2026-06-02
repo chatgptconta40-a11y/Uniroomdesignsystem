@@ -28,22 +28,16 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { MaintenanceModal } from '../components/MaintenanceModal';
 import { StartConversationModal } from '../components/StartConversationModal';
-import { getMaintenanceRequests } from '../data/mockMaintenance';
-import { getActiveHomeForStudent, getApplicationsForUser, confirmStay } from '../data/mockApplications';
+import { useMaintenance } from '../hooks/useDb';
 import {
   formatCurrency,
   getContractStatusLabel,
-  getOrCreateRentalContract,
-  getPaymentMethodForHome,
   getPaymentMethodLabel,
   getPaymentMethodMainValue,
   getPaymentStatusLabel,
-  getRentPaymentsForHome,
-  uploadPaymentProof,
-  ensureFinanceForHome,
-  refreshHousingFinanceState,
 } from '../data/mockHousingFinance';
-import { Accommodation } from '../types/accommodation';
+import { supabase } from '../lib/supabase';
+import { Accommodation, ActiveHome } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
 import { toast } from 'sonner';
 
@@ -55,14 +49,6 @@ interface RealHousemate {
   room: string;
   initials: string;
   since: string;
-}
-
-function safeParse<T>(value: string | null, fallback: T): T {
-  try {
-    return value ? JSON.parse(value) as T : fallback;
-  } catch {
-    return fallback;
-  }
 }
 
 function formatDate(date: Date | string) {
@@ -96,52 +82,20 @@ function getInitials(name: string) {
     .join('') || 'E';
 }
 
-function readRealHousemates(propertyId: string, currentStudentId: string): RealHousemate[] {
-  const activeHomes = safeParse<any[]>(localStorage.getItem('uniroom_active_homes'), []);
-  const users = safeParse<any[]>(localStorage.getItem('uniroom_all_users'), []);
-  const rooms = safeParse<any[]>(localStorage.getItem('uniroom_rooms'), []);
-  const profiles = safeParse<any[]>(localStorage.getItem('uniroom_student_profiles'), []);
-
-  return activeHomes
-    .filter(home =>
-      String(home.propertyId) === String(propertyId) &&
-      String(home.studentId) !== String(currentStudentId),
-    )
-    .map(home => {
-      const matchedUser = users.find(user => String(user.id) === String(home.studentId));
-      const matchedProfile = profiles.find(profile => String(profile?.personal?.userId) === String(home.studentId));
-      const matchedRoom = rooms.find(room => String(room.id) === String(home.roomId));
-
-      const name =
-        matchedProfile?.personal?.fullName ||
-        matchedUser?.name ||
-        matchedUser?.fullName ||
-        matchedUser?.email ||
-        'Estudante confirmado';
-
-      const course =
-        matchedProfile?.personal?.course ||
-        matchedUser?.course ||
-        'Estudante';
-
-      const moveInDate = home.moveInDate ? new Date(home.moveInDate) : new Date();
-      const since = Number.isNaN(moveInDate.getTime())
-        ? 'Data não definida'
-        : new Intl.DateTimeFormat('pt-PT', {
-            month: 'long',
-            year: 'numeric',
-          }).format(moveInDate);
-
-      return {
-        id: `mate_${home.id}`,
-        propertyId: String(propertyId),
-        name,
-        course,
-        room: matchedRoom?.roomNumber || matchedRoom?.title || home.roomTitle || 'Quarto',
-        initials: getInitials(name),
-        since,
-      };
-    });
+function dbRowToActiveHome(row: any): ActiveHome {
+  return {
+    id: row.id,
+    studentId: row.student_id,
+    propertyId: row.property_id,
+    roomId: row.room_id || '',
+    applicationId: row.application_id || '',
+    landlordId: row.landlord_id,
+    landlordName: '',
+    moveInDate: row.move_in_date ? new Date(row.move_in_date) : new Date(),
+    contractEndDate: new Date(0),
+    paymentDay: 1,
+    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+  };
 }
 
 export function MyHome() {
@@ -154,21 +108,130 @@ export function MyHome() {
   const [showContractModal, setShowContractModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedProofFileName, setSelectedProofFileName] = useState('');
-  const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
+  const { requests: maintenanceRequests, refresh: refreshMaintenanceRequests } = useMaintenance({ scope: 'student' });
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
   const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
 
+  const [activeHomeRow, setActiveHomeRow] = useState<ActiveHome | null>(null);
+  const [acceptedAppRow, setAcceptedAppRow] = useState<{
+    id: string;
+    userId: string;
+    landlordId: string;
+    propertyId: string;
+    roomId?: string;
+    status: string;
+    moveInDate?: string | null;
+  } | null>(null);
+  const [housemates, setHousemates] = useState<RealHousemate[]>([]);
+  const [homeLoading, setHomeLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setActiveHomeRow(null);
+      setAcceptedAppRow(null);
+      setHomeLoading(false);
+      return;
+    }
+    (async () => {
+      setHomeLoading(true);
+      const { data, error } = await supabase
+        .from('active_homes')
+        .select('*')
+        .eq('student_id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.error('[MY_HOME] fetch active_homes failed', error);
+        toast.error('Não foi possível carregar a tua casa ativa.', { description: error.message });
+        setActiveHomeRow(null);
+      } else {
+        setActiveHomeRow(data ? dbRowToActiveHome(data) : null);
+      }
+
+      if (!data) {
+        const { data: accepted, error: accErr } = await supabase
+          .from('applications')
+          .select('id,user_id,landlord_id,property_id,room_id,status,move_in_date')
+          .eq('user_id', user.id)
+          .eq('status', 'accepted')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (cancelled) return;
+        if (accErr) {
+          console.error('[MY_HOME] fetch accepted application failed', accErr);
+        }
+        const row = accepted?.[0];
+        setAcceptedAppRow(
+          row
+            ? {
+                id: row.id,
+                userId: row.user_id,
+                landlordId: row.landlord_id,
+                propertyId: row.property_id,
+                roomId: row.room_id || undefined,
+                status: row.status,
+                moveInDate: row.move_in_date,
+              }
+            : null,
+        );
+      } else {
+        setAcceptedAppRow(null);
+      }
+      setHomeLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, homeRefreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeHomeRow || !user) {
+      setHousemates([]);
+      return;
+    }
+    (async () => {
+      const { data, error } = await supabase
+        .from('active_homes')
+        .select('id,student_id,room_id,move_in_date')
+        .eq('property_id', activeHomeRow.propertyId)
+        .neq('student_id', user.id);
+      if (cancelled || error || !data) {
+        if (error) console.error('[MY_HOME] fetch housemates failed', error);
+        setHousemates([]);
+        return;
+      }
+      setHousemates(
+        data.map(row => {
+          const moveIn = row.move_in_date ? new Date(row.move_in_date) : new Date();
+          const since = Number.isNaN(moveIn.getTime())
+            ? 'Data não definida'
+            : new Intl.DateTimeFormat('pt-PT', { month: 'long', year: 'numeric' }).format(moveIn);
+          const r = row.room_id ? getRoom(row.room_id) : undefined;
+          const name = 'Estudante confirmado';
+          return {
+            id: `mate_${row.id}`,
+            propertyId: activeHomeRow.propertyId,
+            name,
+            course: 'Estudante',
+            room: r?.roomNumber || r?.title || 'Quarto',
+            initials: getInitials(name),
+            since,
+          };
+        }),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeHomeRow?.id, user?.id, getRoom]);
+
   const activeHome = useMemo(() => {
-    if (!user || (user.type !== 'student' && user.type !== 'landlord')) {
-      return null;
-    }
+    if (!activeHomeRow) return null;
+    if (!user || (user.type !== 'student' && user.type !== 'landlord')) return null;
 
-    const activeHomeData = getActiveHomeForStudent(user.id);
-
-    if (!activeHomeData) {
-      return null;
-    }
-
+    const activeHomeData = activeHomeRow;
     const property = getProperty(activeHomeData.propertyId);
     const room = getRoom(activeHomeData.roomId);
 
@@ -221,42 +284,23 @@ export function MyHome() {
       accommodation,
       activeHomeData,
     };
-  }, [user?.id, user?.type, homeRefreshKey, getProperty, getRoom, getActiveHomeForStudent]);
-
-  const refreshMaintenanceRequests = () => {
-    if (!user) {
-      setMaintenanceRequests([]);
-      return;
-    }
-
-    setMaintenanceRequests(getMaintenanceRequests(user.id));
-  };
+  }, [activeHomeRow, user?.id, user?.type, getProperty, getRoom]);
 
   useEffect(() => {
     refreshProperties();
-    refreshMaintenanceRequests();
   }, [user?.id, refreshProperties]);
 
-  useEffect(() => {
-    if (!activeHome) return;
-
-    const { activeHomeData, room } = activeHome;
-    const rent = activeHomeData.monthlyRent ?? room.price;
-    const utilities = activeHomeData.utilities ?? room.utilities ?? 0;
-
-    ensureFinanceForHome(activeHomeData, rent, utilities)
-      .then(() => refreshHousingFinanceState())
-      .then(() => setFinanceRefreshKey(key => key + 1))
-      .catch(error => {
-        console.warn('Erro ao sincronizar finanças da casa:', error);
-      });
-  }, [activeHome?.activeHomeData?.id]);
-
   if (!activeHome) {
-    const acceptedApp = user
-      ? getApplicationsForUser(user.id).find(application => application.status === 'accepted')
-      : null;
-
+    if (homeLoading) {
+      return (
+        <div className="min-h-screen bg-background">
+          <div className="max-w-2xl mx-auto px-6 py-16 text-center text-muted-foreground">
+            A carregar a tua casa…
+          </div>
+        </div>
+      );
+    }
+    const acceptedApp = acceptedAppRow;
     const acceptedRoom = acceptedApp?.roomId ? getRoom(acceptedApp.roomId) : undefined;
     const acceptedProperty = acceptedApp?.propertyId ? getProperty(acceptedApp.propertyId) : undefined;
 
@@ -306,13 +350,7 @@ export function MyHome() {
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Button
-                    onClick={() => {
-                      const home = confirmStay(acceptedApp.id);
-                      if (home) {
-                        refreshProperties();
-                        setHomeRefreshKey(key => key + 1);
-                      }
-                    }}
+                    onClick={() => navigate('/applications')}
                     className="bg-green-600 hover:bg-green-700 text-white"
                   >
                     <HomeIcon className="w-4 h-4 mr-2" />
@@ -355,18 +393,50 @@ export function MyHome() {
   const utilitiesAmount = activeHomeData.utilities ?? room.utilities ?? 0;
   const monthlyTotal = monthlyRent + utilitiesAmount;
 
-  const paymentMethod = getPaymentMethodForHome(activeHomeData);
-  const contract = getOrCreateRentalContract(activeHomeData, monthlyRent, utilitiesAmount);
-  const rentPayments = getRentPaymentsForHome(activeHomeData, monthlyRent, utilitiesAmount);
-
-  const housemates = readRealHousemates(property.id, user?.id || '');
-  const nextPayment = rentPayments.find(payment => payment.status !== 'paid') || rentPayments[0];
-  const paidPayments = rentPayments.filter(payment => payment.status === 'paid');
-  const paymentsWithProof = rentPayments.filter(payment => Boolean(payment.proofUrl));
+  // FASE 2: pagamentos/contratos ainda não migrados para Supabase.
+  // Mostramos placeholders read-only. Nenhuma escrita em localStorage.
+  const paymentMethod: any = {
+    id: 'placeholder',
+    landlordId: activeHomeData.landlordId,
+    landlordName: '',
+    type: 'iban',
+    label: 'Por definir',
+    holderName: '',
+    iban: '',
+    isDefault: true,
+    active: true,
+  };
+  const nowIso = new Date().toISOString();
+  const startDateIso = new Date(activeHomeData.moveInDate).toISOString();
+  const contract: any = {
+    id: 'placeholder',
+    activeHomeId: activeHomeData.id,
+    applicationId: activeHomeData.applicationId,
+    propertyId: activeHomeData.propertyId,
+    roomId: activeHomeData.roomId,
+    landlordId: activeHomeData.landlordId,
+    studentId: activeHomeData.studentId,
+    title: 'Contrato de arrendamento',
+    contractNumber: '—',
+    status: 'draft',
+    startDate: startDateIso,
+    endDate: undefined,
+    monthlyRent,
+    depositAmount: monthlyRent,
+    utilitiesAmount,
+    signedAt: undefined,
+    notes: '',
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  const rentPayments: any[] = [];
+  const nextPayment = undefined;
+  const paidPayments: any[] = [];
+  const paymentsWithProof: any[] = [];
 
   const visibleMaintenanceRequests = maintenanceRequests.filter(request =>
-    request.accommodationId === room.id ||
-    request.accommodationId === accommodation.id ||
+    request.roomId === room.id ||
+    request.roomId === accommodation.id ||
     request.landlordId === property.landlordId,
   );
 
@@ -391,25 +461,10 @@ export function MyHome() {
     }
   };
 
-  const handleUploadPaymentProof = (paymentId: string) => {
-    if (!selectedProofFileName) {
-      toast.error('Seleciona primeiro o ficheiro do comprovativo.');
-      return;
-    }
-
-    const updated = uploadPaymentProof(paymentId, selectedProofFileName);
-
-    if (updated) {
-      setShowPaymentModal(false);
-      setSelectedProofFileName('');
-      setFinanceRefreshKey(key => key + 1);
-      toast.success('Comprovativo submetido.', {
-        description: 'O pagamento fica pendente até validação do senhorio.',
-      });
-      return;
-    }
-
-    toast.error('Não foi possível submeter o comprovativo.');
+  const handleUploadPaymentProof = (_paymentId: string) => {
+    toast.info('Pagamentos ainda não estão disponíveis nesta versão.', {
+      description: 'A área financeira será ativada numa próxima atualização.',
+    });
   };
 
   const amenities = [
@@ -944,7 +999,7 @@ export function MyHome() {
         isOpen={showMaintenanceModal}
         onClose={() => {
           setShowMaintenanceModal(false);
-          refreshMaintenanceRequests();
+          void refreshMaintenanceRequests();
         }}
         accommodationId={room.id}
         landlordId={property.landlordId}

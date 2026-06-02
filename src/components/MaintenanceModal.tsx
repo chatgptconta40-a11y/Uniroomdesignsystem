@@ -18,7 +18,7 @@ import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
 import { useAuth } from '../context/AuthContext';
-import { createMaintenanceRequest } from '../data/mockMaintenance';
+import { supabase } from '../lib/supabase';
 import { maintenanceUrgencyLabels } from '../types/maintenance';
 import type { MaintenanceCategory, MaintenanceUrgency } from '../types/maintenance';
 
@@ -141,24 +141,32 @@ export function MaintenanceModal({
   };
 
   const handleSubmit = async () => {
-    if (!validateIssues()) return;
+    if (!validateIssues() || !user) return;
 
     setIsSubmitting(true);
 
-    await new Promise(resolve => setTimeout(resolve, 700));
+    const rows = issues.map(issue => ({
+      id: `maint-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      user_id: user.id,
+      room_id: accommodationId,
+      property_id: null as string | null,
+      landlord_id: landlordId,
+      category: issue.category as MaintenanceCategory,
+      title: issue.title.trim(),
+      description: issue.description.trim(),
+      urgency: issue.urgency,
+      status: 'pending',
+      photo_url: issue.photoUrl || null,
+    }));
 
-    issues.forEach(issue => {
-      createMaintenanceRequest(
-        user?.id || '',
-        accommodationId,
-        landlordId,
-        issue.category as MaintenanceCategory,
-        issue.title.trim(),
-        issue.description.trim(),
-        issue.urgency,
-        issue.photoUrl || undefined,
-      );
-    });
+    const { error } = await supabase.from('maintenance_requests').insert(rows);
+
+    if (error) {
+      console.error('Maintenance insert error:', error.message);
+      toast.error('Erro ao enviar pedido. Tenta novamente.');
+      setIsSubmitting(false);
+      return;
+    }
 
     toast.success(
       issues.length === 1

@@ -751,12 +751,12 @@ export function NewListing() {
     setSaving(true);
 
     try {
-      const propertyId = `prop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const propertyId = crypto.randomUUID();
       const now = new Date();
 
       const roomIds: string[] = [];
       const roomsToCreate = rooms.map((room, index) => {
-        const roomId = `room-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`;
+        const roomId = crypto.randomUUID();
         roomIds.push(roomId);
 
         const roomStatus =

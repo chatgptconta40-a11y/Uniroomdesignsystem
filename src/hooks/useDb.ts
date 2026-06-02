@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { Application, Notification, ActiveHome, ApplicationStatus } from '../types/accommodation';
+import type { MaintenanceRequest } from '../types/maintenance';
 
 // ============================================================
 // APPLICATIONS
 // ============================================================
-function dbToApplication(row: any): Application {
+export function dbToApplication(row: any): Application {
   return {
     id: row.id,
     userId: row.user_id,
@@ -130,23 +131,6 @@ export function useNotifications() {
 // ============================================================
 // MAINTENANCE
 // ============================================================
-export interface MaintenanceRequest {
-  id: string;
-  userId: string;
-  propertyId?: string;
-  roomId?: string;
-  landlordId: string;
-  category: string;
-  title: string;
-  description: string;
-  urgency: 'low' | 'medium' | 'high';
-  status: 'pending' | 'received' | 'in_progress' | 'resolved' | 'closed';
-  photoUrl?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  resolvedAt?: Date;
-}
-
 function dbToMaintenance(row: any): MaintenanceRequest {
   return {
     id: row.id, userId: row.user_id,
@@ -196,7 +180,7 @@ export function useMaintenance(opts: { scope?: 'student' | 'landlord' | 'all' } 
 
   const updateStatus = async (id: string, status: MaintenanceRequest['status']) => {
     const patch: Record<string, unknown> = { status };
-    if (status === 'resolved') patch.resolved_at = new Date().toISOString();
+    if (status === 'resolved' || status === 'closed') patch.resolved_at = new Date().toISOString();
     const { error } = await supabase.from('maintenance_requests').update(patch).eq('id', id);
     if (error) { console.error('Maintenance status error:', error.message); return; }
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status, updatedAt: new Date() } : r));

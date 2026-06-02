@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Check, Send, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 import { Card } from './Card';
@@ -7,9 +7,10 @@ import { Input } from './Input';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
-import { createUnifiedApplication, getExistingApplicationForRoom } from '../data/unifiedApplications';
-import { getProfile } from '../data/mockProfiles';
-import { mockStudentProfiles } from '../data/mockUsers';
+import { StudentProfile } from '../types/profile';
+import { fetchStudentProfileFromDb } from '../db/profilesDb';
+import { supabase } from '../lib/supabase';
+import { validateApplicationIds } from '../lib/identity';
 import { toast } from 'sonner';
 
 interface ApplicationModalProps {
@@ -49,51 +50,65 @@ export function ApplicationModal({
   const effectivePropertyTitle = propertyTitle || property?.title;
   const isRoomUnavailable = !!room && room.status !== 'available';
 
-  /*
-    Fonte principal do perfil:
-    1) localStorage através de getProfile(user.id), preenchido no onboarding/perfil
-    2) fallback antigo mockStudentProfiles, para contas demo antigas
-  */
-  const localStudentProfile = useMemo(() => {
-    if (!user?.id) return null;
-    return getProfile(user.id);
+  const [dbProfile, setDbProfile] = useState<StudentProfile | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(!!user?.id);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setIsProfileLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setIsProfileLoading(true);
+    fetchStudentProfileFromDb(user.id)
+      .then(p => { if (!cancelled) { setDbProfile(p); setIsProfileLoading(false); } })
+      .catch(err => {
+        console.error('[ApplicationModal] profile fetch error', err);
+        if (!cancelled) setIsProfileLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [user?.id]);
 
-  const legacyStudentProfile = mockStudentProfiles.find(profile => profile.userId === user?.id);
-
-  const profileName =
-    localStudentProfile?.personal.fullName ||
-    user?.name ||
-    'Estudante';
-
+  const profileName = dbProfile?.personal.fullName || user?.name || 'Estudante';
   const profileEmail = user?.email || 'Sessão não iniciada';
-
-  const profileCourse =
-    localStudentProfile?.personal.course ||
-    legacyStudentProfile?.course ||
-    '';
-
-  const profileInstitution =
-    localStudentProfile?.personal.institution ||
-    legacyStudentProfile?.university ||
-    '';
-
-  const profileYear =
-    localStudentProfile?.personal.yearOfStudy ||
-    legacyStudentProfile?.year;
-
-  const profileHometown = localStudentProfile?.personal.hometown || '';
-  const profileBio = localStudentProfile?.personal.bio || '';
-  const profileLanguages = localStudentProfile?.personal.languages || [];
+  const profileCourse = dbProfile?.personal.course || '';
+  const profileInstitution = dbProfile?.personal.institution || '';
+  const profileYear = dbProfile?.personal.yearOfStudy;
+  const profileHometown = dbProfile?.personal.hometown || '';
+  const profileBio = dbProfile?.personal.bio || '';
+  const profileLanguages = dbProfile?.personal.languages || [];
 
   const profileCompleteness =
-    localStudentProfile?.completeness?.overall ??
+    dbProfile?.completeness?.overall ??
     user?.profileCompleteness?.overall ??
-    (profileCourse && profileInstitution && profileYear ? 100 : 0);
+    0;
 
-  const existingApplication = user
-    ? getExistingApplicationForRoom(user.id, effectiveRoomId)
-    : null;
+  const [existingApplication, setExistingApplication] = useState<{ id: string; status: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user?.id || !effectiveRoomId) {
+      setExistingApplication(null);
+      return;
+    }
+    (async () => {
+      const { data, error } = await supabase
+        .from('applications')
+        .select('id,status')
+        .eq('user_id', user.id)
+        .eq('room_id', effectiveRoomId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (cancelled) return;
+      if (error) {
+        console.error('[UniRoom] existingApplication fetch error:', error.message);
+        setExistingApplication(null);
+        return;
+      }
+      setExistingApplication(data && data[0] ? { id: data[0].id, status: data[0].status } : null);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, effectiveRoomId]);
 
   const hasActiveApplication =
     !!existingApplication &&
@@ -134,38 +149,67 @@ export function ApplicationModal({
       return;
     }
 
+    const landlordId = accommodation.landlordId || property?.landlordId || '';
+
+    const validation = validateApplicationIds({
+      userId: user.id,
+      landlordId,
+      propertyId: effectivePropertyId,
+      roomId: effectiveRoomId,
+    });
+
+    if (!validation.ok) {
+      toast.error(validation.reason);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
+      const { data: dup, error: dupError } = await supabase
+        .from('applications')
+        .select('id,status')
+        .eq('user_id', user.id)
+        .eq('room_id', effectiveRoomId)
+        .in('status', ['pending', 'under_review', 'accepted', 'confirmed'])
+        .limit(1);
 
-      createUnifiedApplication({
-        studentId: user.id,
-        studentName: profileName,
-        studentUniversity: profileInstitution || undefined,
-        studentCourse: profileCourse || undefined,
-        studentYear: profileYear,
-        roomId: effectiveRoomId,
-        propertyId: effectivePropertyId,
-        landlordId: accommodation.landlordId || property?.landlordId || '',
-        landlordName: undefined,
+      if (dupError) {
+        toast.error(`Erro ao validar candidatura: ${dupError.message}`);
+        return;
+      }
+      if (dup && dup.length > 0) {
+        toast.error('Já tens uma candidatura ativa para este quarto.');
+        return;
+      }
+
+      const payload = {
+        id: crypto.randomUUID(),
+        user_id: user.id,
+        landlord_id: landlordId,
+        property_id: effectivePropertyId,
+        room_id: effectiveRoomId || null,
+        status: 'pending',
         message,
-        moveInDate: moveInDate ? new Date(moveInDate) : undefined,
-        accommodationId: accommodation.id,
-      });
+        move_in_date: moveInDate ? new Date(moveInDate).toISOString().slice(0, 10) : null,
+      };
+
+      const { error } = await supabase.from('applications').insert(payload);
+      if (error) {
+        toast.error(`Erro ao enviar candidatura: ${error.message}`);
+        return;
+      }
 
       refreshProperties();
       toast.success('Candidatura enviada com sucesso!');
       onSuccess();
       onClose();
     } catch (error) {
-      const message =
+      const msg =
         error instanceof Error
           ? error.message
           : 'Não foi possível enviar a candidatura.';
-
-      toast.error(message);
-      refreshProperties();
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -209,7 +253,7 @@ export function ApplicationModal({
             <div>
               <p className="font-semibold text-red-900">Este quarto já não está disponível</p>
               <p className="text-sm text-red-700 mt-0.5">
-                O estado atual do quarto é “{room?.status}”. Podes procurar outro quarto disponível.
+                O estado atual do quarto é "{room?.status}". Podes procurar outro quarto disponível.
               </p>
             </div>
           </div>
@@ -221,7 +265,7 @@ export function ApplicationModal({
             <div>
               <p className="font-semibold text-amber-900">Já tens uma candidatura ativa para este quarto</p>
               <p className="text-sm text-amber-700 mt-0.5">
-                Estado atual: <strong>{existingApplication?.status}</strong>. Podes acompanhar em “As Minhas Candidaturas”.
+                Estado atual: <strong>{existingApplication?.status}</strong>. Podes acompanhar em "As Minhas Candidaturas".
               </p>
             </div>
           </div>
@@ -292,9 +336,13 @@ export function ApplicationModal({
                     <p className="text-sm text-muted-foreground mb-2">{profileEmail}</p>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant={profileCompleteness >= 80 ? 'success' : 'warning'}>
-                        Perfil {profileCompleteness}% completo
-                      </Badge>
+                      {isProfileLoading ? (
+                        <Badge variant="outline">A carregar perfil...</Badge>
+                      ) : (
+                        <Badge variant={profileCompleteness >= 80 ? 'success' : 'warning'}>
+                          Perfil {profileCompleteness}% completo
+                        </Badge>
+                      )}
 
                       {user?.verified && (
                         <Badge variant="outline">
@@ -354,7 +402,7 @@ export function ApplicationModal({
                   )}
                 </div>
 
-                {profileCompleteness < 80 && (
+                {!isProfileLoading && profileCompleteness < 80 && (
                   <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
                     <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm">
@@ -486,7 +534,7 @@ export function ApplicationModal({
                   {message && (
                     <div className="border-t pt-4">
                       <h4 className="font-medium text-foreground mb-1">Mensagem</h4>
-                      <p className="text-sm text-muted-foreground italic">“{message}”</p>
+                      <p className="text-sm text-muted-foreground italic">"{message}"</p>
                     </div>
                   )}
                 </div>
@@ -500,7 +548,7 @@ export function ApplicationModal({
                     <ul className="space-y-1 text-xs">
                       <li>• O senhorio será notificado da tua candidatura</li>
                       <li>• Receberás atualizações sobre o estado em tempo real</li>
-                      <li>• Se for aceite, confirmas a estadia em “As Minhas Candidaturas”</li>
+                      <li>• Se for aceite, confirmas a estadia em "As Minhas Candidaturas"</li>
                     </ul>
                   </div>
                 </div>

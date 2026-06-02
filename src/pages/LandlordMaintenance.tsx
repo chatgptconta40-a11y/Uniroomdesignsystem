@@ -1,11 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Wrench, AlertCircle, Clock, CheckCircle, ArrowUpCircle } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import {
-  getMaintenanceRequestsForLandlord,
-  updateMaintenanceStatus,
-  getMaintenanceStats,
-} from '../data/mockMaintenance';
+import { useMaintenance } from '../hooks/useDb';
 import {
   MaintenanceStatus,
   maintenanceCategoryLabels,
@@ -22,12 +17,18 @@ const URGENCY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 const STATUS_ORDER: Record<string, number> = { pending: 0, received: 1, in_progress: 2, resolved: 3, closed: 4 };
 
 export function LandlordMaintenance() {
-  const { user } = useAuth();
   const [filter, setFilter] = useState<'all' | MaintenanceStatus | 'high_urgency'>('all');
-  const [_version, setVersion] = useState(0);
+  const { requests: allRequests, updateStatus } = useMaintenance({ scope: 'landlord' });
 
-  const allRequests = getMaintenanceRequestsForLandlord(user?.id || '');
-  const stats = getMaintenanceStats(user?.id || '');
+  const stats = useMemo(() => ({
+    total: allRequests.length,
+    pending: allRequests.filter(r => r.status === 'pending').length,
+    inProgress: allRequests.filter(r => r.status === 'in_progress').length,
+    resolved: allRequests.filter(r => r.status === 'resolved').length,
+    highUrgency: allRequests.filter(
+      r => r.urgency === 'high' && r.status !== 'resolved' && r.status !== 'closed',
+    ).length,
+  }), [allRequests]);
 
   const baseFiltered = filter === 'all'
     ? allRequests
@@ -41,17 +42,16 @@ export function LandlordMaintenance() {
     return (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
   });
 
-  const handleUpdateStatus = (requestId: string, status: MaintenanceStatus, title: string) => {
-    if (updateMaintenanceStatus(requestId, status)) {
-      toast.success(`Estado atualizado: ${title}`, {
-        description: maintenanceStatusLabels[status],
-      });
-      setVersion(v => v + 1);
-    }
+  const handleUpdateStatus = async (requestId: string, status: MaintenanceStatus, title: string) => {
+    await updateStatus(requestId, status);
+    toast.success(`Estado atualizado: ${title}`, {
+      description: maintenanceStatusLabels[status],
+    });
   };
 
-  const getAccommodationTitle = (accommodationId: string) => {
-    const accommodation = mockAccommodations.find(item => item.id === accommodationId);
+  const getAccommodationTitle = (roomId?: string) => {
+    if (!roomId) return 'Alojamento';
+    const accommodation = mockAccommodations.find(item => item.id === roomId);
     return accommodation?.title || 'Alojamento';
   };
 
@@ -188,7 +188,7 @@ export function LandlordMaintenance() {
                             {maintenanceCategoryLabels[request.category]}
                           </Badge>
                           <Badge variant="outline" className="text-xs">
-                            {getAccommodationTitle(request.accommodationId)}
+                            {getAccommodationTitle(request.roomId)}
                           </Badge>
                         </div>
 
