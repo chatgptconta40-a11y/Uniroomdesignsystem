@@ -5,6 +5,7 @@ import type { Application, Notification, ActiveHome, ApplicationStatus } from '.
 import type { MaintenanceRequest } from '../types/maintenance';
 import type { StudentProfile } from '../types/profile';
 import { fetchStudentProfileFromDb } from '../db/profilesDb';
+import { useDataBusRefresh } from '../lib/dataBus';
 
 // ============================================================
 // APPLICATIONS
@@ -51,6 +52,7 @@ export function useApplications(opts: { scope?: 'student' | 'landlord' | 'all' }
   }, [user, scope]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useDataBusRefresh('applications', refresh);
 
   const create = async (input: { propertyId?: string; roomId?: string; landlordId: string; message: string; moveInDate?: Date }) => {
     if (!user) return null;
@@ -111,6 +113,7 @@ export function useNotifications() {
   }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useDataBusRefresh('notifications', refresh);
 
   const markAsRead = async (id: string) => {
     const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
@@ -165,6 +168,7 @@ export function useMaintenance(opts: { scope?: 'student' | 'landlord' | 'all' } 
   }, [user, scope]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useDataBusRefresh('maintenance', refresh);
 
   const create = async (input: Omit<MaintenanceRequest, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'status'>) => {
     if (!user) return null;
@@ -264,6 +268,8 @@ export function useConversations() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  useDataBusRefresh('messages', refresh);
+
   return { conversations, loading, refresh };
 }
 
@@ -287,6 +293,7 @@ export function useMessages(conversationId: string | null) {
   }, [conversationId]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useDataBusRefresh('messages', refresh);
 
   const send = async (content: string) => {
     if (!user || !conversationId) return null;
@@ -411,6 +418,7 @@ export function useActiveHome() {
   }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useDataBusRefresh('activeHome', refresh);
 
   return { home, loading, refresh };
 }
@@ -464,6 +472,7 @@ export function useReports() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useDataBusRefresh('reports', refresh);
 
   const updateStatus = async (
     id: string,
@@ -588,6 +597,7 @@ export function useAdminUsers() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useDataBusRefresh('adminUsers', refresh);
 
   const setStatus = async (id: string, status: AdminUserRow['status']) => {
     const { error } = await supabase.from('profiles').update({ status }).eq('id', id);
@@ -712,6 +722,7 @@ export function useLandlordApplications(landlordId?: string) {
   }, [landlordId]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useDataBusRefresh('applications', refresh);
 
   const accept = async (applicationId: string) => {
     const { error } = await supabase

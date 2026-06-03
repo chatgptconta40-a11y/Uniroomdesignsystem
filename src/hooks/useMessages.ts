@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { Conversation, Message } from '../types/message';
+import { useDataBusRefresh } from '../lib/dataBus';
 
 // ─── DB mappers ───────────────────────────────────────────────
 
@@ -114,6 +115,8 @@ export function useConversations() {
     void refresh();
   }, [refresh]);
 
+  useDataBusRefresh('messages', refresh);
+
   const totalUnreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
   return { conversations, totalUnreadCount, refresh };
@@ -148,6 +151,8 @@ export function useMessages(conversationId: string | null) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useDataBusRefresh('messages', refresh);
 
   const sendMessage = useCallback(async (content: string): Promise<void> => {
     if (!conversationId || !user || !content.trim()) return;

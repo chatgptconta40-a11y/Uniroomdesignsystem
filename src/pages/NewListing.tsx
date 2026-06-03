@@ -545,7 +545,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
 export function NewListing() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { addProperty, addRoom } = useProperties();
+  const { addProperty, addRoom, refreshProperties } = useProperties();
 
   const [step, setStep] = useState<StepNumber>(1);
   const [property, setProperty] = useState<PropertyDraft>(defaultProperty);
@@ -750,6 +750,7 @@ export function NewListing() {
 
     setSaving(true);
 
+    let saveSucceeded = false;
     try {
       const propertyId = crypto.randomUUID();
       const now = new Date();
@@ -842,9 +843,14 @@ export function NewListing() {
         views: 0,
       };
 
-      await addProperty(newProperty);
-      await Promise.all(roomsToCreate.map(room => addRoom(room)));
+      await addProperty(newProperty, { skipRefresh: true });
+      for (const room of roomsToCreate) {
+        await addRoom(room, { skipRefresh: true });
+      }
+      await refreshProperties();
       window.dispatchEvent(new Event('uniroom:properties-updated'));
+
+      saveSucceeded = true;
 
       const publishedCount = roomsToCreate.filter(room => room.status === 'available').length;
 
@@ -861,10 +867,18 @@ export function NewListing() {
           description: `${publishedCount} publicado${publishedCount > 1 ? 's' : ''}, ${rooms.length - publishedCount} em rascunho.`,
         });
       }
-
-      setTimeout(() => navigate('/landlord/listings'), 900);
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : 'Não foi possível guardar o alojamento.';
+      toast.error('Falha ao publicar', { description: message });
     } finally {
       setSaving(false);
+    }
+
+    if (saveSucceeded) {
+      setTimeout(
+        () => navigate('/landlord/listings', { state: { refresh: Date.now() } }),
+        900,
+      );
     }
   };
 

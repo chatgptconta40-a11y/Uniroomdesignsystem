@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { computeVerificationLevel } from '../utils/trustLabels';
+import { useDataBusRefresh } from '../lib/dataBus';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -176,6 +177,7 @@ export function useVerificationStatus(userId: string | undefined) {
   }, [userId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useDataBusRefresh('verifications', refresh);
 
   const upsert = useCallback(async (
     fields: Partial<Omit<VerificationStatus, 'userId' | 'updatedAt'>>,
@@ -246,6 +248,7 @@ export function useAllVerificationStatuses() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useDataBusRefresh('verifications', refresh);
 
   const statusMap: Record<string, VerificationStatus> = {};
   statuses.forEach(s => { statusMap[s.userId] = s; });

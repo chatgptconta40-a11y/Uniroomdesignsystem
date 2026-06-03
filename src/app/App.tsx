@@ -41,6 +41,7 @@ import { AdminReports } from '../pages/admin/AdminReports';
 import { AdminAudit } from '../pages/admin/AdminAudit';
 import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
 import { AdminSettings } from '../pages/admin/AdminSettings';
+import { RouteDataRefresher } from '../components/RouteDataRefresher';
 
 function AppShell() {
   const { compareItems, removeFromCompare } = useCompare();
@@ -48,6 +49,7 @@ function AppShell() {
 
   return (
     <>
+      <RouteDataRefresher />
       <div className="min-h-screen flex flex-col">
         <Routes>
           <Route path="/login" element={<Login />} />

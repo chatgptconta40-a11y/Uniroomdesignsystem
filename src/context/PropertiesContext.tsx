@@ -1,14 +1,15 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { Property, Room, PropertyStatus, RoomStatus } from '../types/property';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { useDataBusRefresh } from '../lib/dataBus';
 import { useAuth } from './AuthContext';
 
 interface PropertiesContextType {
   properties: Property[];
   rooms: Room[];
   loading: boolean;
-  addProperty: (property: Property) => Promise<void>;
-  addRoom: (room: Room) => Promise<void>;
+  addProperty: (property: Property, options?: { skipRefresh?: boolean }) => Promise<void>;
+  addRoom: (room: Room, options?: { skipRefresh?: boolean }) => Promise<void>;
   updatePropertyStatus: (id: string, status: PropertyStatus) => Promise<void>;
   updateProperty: (id: string, updates: Partial<Property>) => Promise<void>;
   deleteProperty: (id: string) => Promise<void>;
@@ -244,29 +245,29 @@ async function fetchRemoteRooms(): Promise<Room[]> {
   }
 }
 
-async function syncPropertyToSupabase(property: Property): Promise<boolean> {
-  if (!isSupabaseConfigured) return false;
-  try {
-    const { error } = await supabase
-      .from('properties')
-      .upsert(propertyToDb(property), { onConflict: 'id' });
-    if (error && !isNetworkError(error.message)) console.warn('[UniRoom] Property sync error:', error.message);
-    return !error;
-  } catch {
-    return false;
+async function syncPropertyToSupabase(property: Property): Promise<void> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase não configurado.');
+  }
+  const { error } = await supabase
+    .from('properties')
+    .upsert(propertyToDb(property), { onConflict: 'id' });
+  if (error) {
+    if (!isNetworkError(error.message)) console.warn('[UniRoom] Property sync error:', error.message);
+    throw new Error(error.message || 'Falha ao gravar a propriedade.');
   }
 }
 
-async function syncRoomToSupabase(room: Room): Promise<boolean> {
-  if (!isSupabaseConfigured) return false;
-  try {
-    const { error } = await supabase
-      .from('rooms')
-      .upsert(roomToDb(room), { onConflict: 'id' });
-    if (error && !isNetworkError(error.message)) console.warn('[UniRoom] Room sync error:', error.message);
-    return !error;
-  } catch {
-    return false;
+async function syncRoomToSupabase(room: Room): Promise<void> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase não configurado.');
+  }
+  const { error } = await supabase
+    .from('rooms')
+    .upsert(roomToDb(room), { onConflict: 'id' });
+  if (error) {
+    if (!isNetworkError(error.message)) console.warn('[UniRoom] Room sync error:', error.message);
+    throw new Error(error.message || 'Falha ao gravar o quarto.');
   }
 }
 
@@ -306,6 +307,8 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     void refreshProperties();
   }, [refreshProperties, user?.id, user?.type]);
 
+  useDataBusRefresh('properties', refreshProperties);
+
   useEffect(() => {
     const handleFocus = () => void refreshProperties();
     const handleVisibility = () => { if (!document.hidden) void refreshProperties(); };
@@ -324,24 +327,24 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshProperties]);
 
-  const addProperty = async (property: Property) => {
+  const addProperty = async (property: Property, options?: { skipRefresh?: boolean }) => {
     const nextProperty = normalizeProperty({
       ...property,
       createdAt: property.createdAt || new Date(),
       updatedAt: new Date(),
     });
     await syncPropertyToSupabase(nextProperty);
-    await refreshProperties();
+    if (!options?.skipRefresh) await refreshProperties();
   };
 
-  const addRoom = async (room: Room) => {
+  const addRoom = async (room: Room, options?: { skipRefresh?: boolean }) => {
     const nextRoom = normalizeRoom({
       ...room,
       createdAt: room.createdAt || new Date(),
       updatedAt: new Date(),
     });
     await syncRoomToSupabase(nextRoom);
-    await refreshProperties();
+    if (!options?.skipRefresh) await refreshProperties();
   };
 
   const updateProperty = async (id: string, updates: Partial<Property>) => {

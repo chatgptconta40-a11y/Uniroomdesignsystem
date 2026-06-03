@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ContractStatus, RentPaymentStatus } from '../utils/housingFinanceLabels';
+import { useDataBusRefresh } from '../lib/dataBus';
 
 export type { ContractStatus, RentPaymentStatus };
 
@@ -253,6 +254,7 @@ export function useRentalContracts(params: { landlordId?: string; activeHomeId?:
   }, [landlordId, activeHomeId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useDataBusRefresh('payments', refresh);
 
   const contract = contracts[0] ?? null;
 
@@ -306,6 +308,7 @@ export function useRentPayments(params: { landlordId?: string; activeHomeId?: st
   }, [landlordId, activeHomeId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useDataBusRefresh('payments', refresh);
 
   const uploadProof = useCallback(async (paymentId: string, proofUrl: string, proofFileName: string) => {
     const { data, error } = await supabase
@@ -359,6 +362,7 @@ export function useLandlordFinanceSummary(landlordId: string) {
   }, [landlordId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useDataBusRefresh('payments', refresh);
 
   const validatePayment = useCallback(async (paymentId: string) => {
     const { data, error } = await supabase

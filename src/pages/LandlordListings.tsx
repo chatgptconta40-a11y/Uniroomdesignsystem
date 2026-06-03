@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import {
   BedDouble,
   Calendar,
@@ -200,7 +200,15 @@ export function LandlordListings() {
     deleteProperty,
     updateRoom,
     updateRoomStatus,
+    refreshProperties,
   } = useProperties();
+
+  const location = useLocation();
+  const refreshSignal = (location.state as { refresh?: number } | null)?.refresh;
+
+  useEffect(() => {
+    void refreshProperties();
+  }, [refreshProperties, refreshSignal]);
 
   const [filter, setFilter] = useState<'all' | PropertyStatus>('all');
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
@@ -235,12 +243,16 @@ export function LandlordListings() {
     propertyRooms: rooms.filter(room => room.propertyId === property.id),
   }));
 
+  const visibleGroups = groupedProperties.filter(
+    group => group.property.status !== 'archived',
+  );
+
   const filteredProperties = filter === 'all'
-    ? groupedProperties
+    ? visibleGroups
     : groupedProperties.filter(group => group.property.status === filter);
 
   const counts = {
-    all: groupedProperties.length,
+    all: visibleGroups.length,
     active: groupedProperties.filter(group => group.property.status === 'active').length,
     paused: groupedProperties.filter(group => group.property.status === 'paused').length,
     draft: groupedProperties.filter(group => group.property.status === 'draft').length,
@@ -315,10 +327,15 @@ export function LandlordListings() {
     );
   };
 
-  const handleArchiveProperty = (propertyId: string) => {
-    deleteProperty(propertyId);
-    toast.success('Alojamento arquivado');
+  const handleArchiveProperty = async (propertyId: string) => {
     setArchivingPropertyId(null);
+    try {
+      await deleteProperty(propertyId);
+      toast.success('Alojamento arquivado');
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : 'Não foi possível arquivar o alojamento.';
+      toast.error('Falha ao arquivar', { description: message });
+    }
   };
 
   const handleEditProperty = (property: Property) => {

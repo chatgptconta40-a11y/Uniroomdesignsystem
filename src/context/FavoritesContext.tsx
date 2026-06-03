@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
+import { useDataBusRefresh } from '../lib/dataBus';
 
 interface FavoritesContextType {
   favoriteIds: string[];
@@ -56,6 +57,8 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshFavorites();
   }, [refreshFavorites]);
+
+  useDataBusRefresh('favorites', refreshFavorites);
 
   const toggleFavorite = (roomId: string, propertyId?: string): boolean => {
     if (!user || !roomId) return false;
