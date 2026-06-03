@@ -22,15 +22,16 @@ import {
 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { useProperties } from '../../context/PropertiesContext';
-import { mockUsers } from '../../data/mockUsers';
-import { getAllApplications } from '../../data/mockLandlordCandidates';
-import { useReports } from '../../hooks/useDb';
-import { getAuditLog } from '../../data/mockAdminAudit';
+import { useReports, useApplications, useAdminUsers } from '../../hooks/useDb';
+import { useAdminAuditLogs } from '../../hooks/useAdminAuditLogs';
 
 export function AdminDashboard() {
   const navigate = useNavigate();
   const { properties, rooms } = useProperties();
   const { reports: allReports, openCount: openReports, criticalCount: criticalReports } = useReports();
+  const { logs: auditLogs } = useAdminAuditLogs({ limit: 5 });
+  const { users: adminUsers } = useAdminUsers();
+  const { applications: allApplications } = useApplications({ scope: 'all' });
 
   const allProperties = properties.filter(property => property.status !== 'archived');
   const activeProperties = allProperties.filter(property => property.status === 'active');
@@ -47,41 +48,22 @@ export function AdminDashboard() {
     ? Math.round(((occupiedRooms + reservedRooms) / totalRooms) * 100)
     : 0;
 
-  const allStudents = mockUsers.filter(user => user.type === 'student');
-  const allLandlords = mockUsers.filter(user => user.type === 'landlord');
-  const verifiedLandlords = allLandlords.filter(user => user.verified);
+  const allStudents = adminUsers.filter(u => u.type === 'student');
+  const allLandlords = adminUsers.filter(u => u.type === 'landlord');
+  const verifiedLandlords = allLandlords.filter(u => u.verified);
 
-  const allApplications = getAllApplications();
   const pendingApplications = allApplications.filter(
     application => application.status === 'pending' || application.status === 'under_review'
   ).length;
   const acceptedApplications = allApplications.filter(application => application.status === 'accepted').length;
 
-  const recentAudit = getAuditLog().slice(0, 5);
+  const recentAudit = auditLogs.slice(0, 5);
 
-  const totalUsers = allStudents.length + allLandlords.length;
   const currentMonthLabel = new Date().toLocaleDateString('pt-PT', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   });
-
-  const growthBase = [
-    { month: 'Jan', multiplier: 0.55 },
-    { month: 'Fev', multiplier: 0.68 },
-    { month: 'Mar', multiplier: 0.79 },
-    { month: 'Abr', multiplier: 0.9 },
-    { month: 'Mai', multiplier: 1 },
-  ];
-
-  const monthlyGrowth = growthBase.map(item => ({
-    month: item.month,
-    users: Math.max(1, Math.round(totalUsers * item.multiplier)),
-    properties: Math.max(1, Math.round(allProperties.length * item.multiplier)),
-    applications: Math.max(1, Math.round(allApplications.length * item.multiplier)),
-  }));
-
-  const maxUsers = Math.max(...monthlyGrowth.map(month => month.users), 1);
 
   const criticalAlerts = allReports.filter(
     report =>
@@ -528,51 +510,28 @@ export function AdminDashboard() {
             <h2 className="text-sm font-semibold text-gray-900">Evolução da plataforma</h2>
           </div>
 
-          <div className="space-y-3">
-            {monthlyGrowth.map(month => (
-              <div key={month.month}>
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="font-medium text-gray-700 w-8">{month.month}</span>
-
-                  <div className="flex items-center gap-4 text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <Users className="w-3 h-3" />
-                      {month.users}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Home className="w-3 h-3" />
-                      {month.properties}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <FileText className="w-3 h-3" />
-                      {month.applications}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
-                    style={{ width: `${(month.users / maxUsers) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+          <div className="py-8 text-center">
+            <Calendar className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-700 mb-1">Dados históricos ainda insuficientes.</p>
+            <p className="text-xs text-gray-500">A evolução mensal aparecerá quando houver dados acumulados.</p>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-gray-100 flex gap-4 text-xs text-gray-500">
-            <span className="flex items-center gap-1">
-              <Users className="w-3 h-3" />
-              Utilizadores
-            </span>
-            <span className="flex items-center gap-1">
-              <Home className="w-3 h-3" />
-              Alojamentos
-            </span>
-            <span className="flex items-center gap-1">
-              <FileText className="w-3 h-3" />
-              Candidaturas
-            </span>
+          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-3 gap-2 text-xs">
+            <div className="rounded-lg bg-gray-50 p-2 text-center">
+              <Users className="w-3 h-3 mx-auto text-gray-500 mb-1" />
+              <p className="font-bold text-gray-900">{allStudents.length + allLandlords.length}</p>
+              <p className="text-[10px] text-gray-500">Utilizadores</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-2 text-center">
+              <Home className="w-3 h-3 mx-auto text-gray-500 mb-1" />
+              <p className="font-bold text-gray-900">{allProperties.length}</p>
+              <p className="text-[10px] text-gray-500">Alojamentos</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-2 text-center">
+              <FileText className="w-3 h-3 mx-auto text-gray-500 mb-1" />
+              <p className="font-bold text-gray-900">{allApplications.length}</p>
+              <p className="text-[10px] text-gray-500">Candidaturas</p>
+            </div>
           </div>
         </Card>
 
@@ -608,7 +567,7 @@ export function AdminDashboard() {
                     <p className="text-xs font-medium text-gray-800">
                       {auditActionLabels[entry.action] || 'Ação registada'}
                     </p>
-                    <p className="text-xs text-gray-500 truncate">{entry.entityName}</p>
+                    <p className="text-xs text-gray-500 truncate">{entry.entityLabel ?? entry.entityId ?? '—'}</p>
 
                     {entry.note && (
                       <p className="text-[10px] text-gray-500 truncate mt-0.5">"{entry.note}"</p>
@@ -616,7 +575,7 @@ export function AdminDashboard() {
                   </div>
 
                   <span className="text-[10px] text-gray-500 whitespace-nowrap">
-                    {new Date(entry.date).toLocaleDateString('pt-PT', {
+                    {entry.createdAt.toLocaleDateString('pt-PT', {
                       day: 'numeric',
                       month: 'short',
                     })}

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Home,
@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { Button } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
 import { Card } from '../components/Card';
@@ -36,8 +37,6 @@ interface OnboardingDraft {
   lifestyleData: Partial<LifestyleProfile>;
   preferencesData: Partial<AccommodationPreferences>;
 }
-
-const getStorageKey = (userId: string) => `uniroom_onboarding_${userId}`;
 
 function isFilled(value: unknown) {
   if (Array.isArray(value)) return value.length > 0;
@@ -91,52 +90,78 @@ function getStepMissingFields(
 export function Onboarding() {
   const { user, saveStudentProfile } = useAuth();
   const navigate = useNavigate();
-  const storageKey = getStorageKey(user?.id || '');
 
-  const loadDraft = (): OnboardingDraft | null => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) return JSON.parse(saved) as OnboardingDraft;
-    } catch {
-      // rascunho corrompido
-    }
-
-    return null;
-  };
-
-  const draft = loadDraft();
-
-  const [currentStep, setCurrentStep] = useState<StepNumber>(draft?.currentStep ?? 1);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [hadDraft, setHadDraft] = useState(false);
+  const [currentStep, setCurrentStep] = useState<StepNumber>(1);
   const [showValidation, setShowValidation] = useState(false);
 
-  const [personalData, setPersonalData] = useState<Partial<PersonalProfile>>(
-    draft?.personalData ?? { userId: user?.id || '', fullName: user?.name || '' },
-  );
+  const [personalData, setPersonalData] = useState<Partial<PersonalProfile>>({
+    userId: user?.id || '',
+    fullName: user?.name || '',
+  });
 
-  const [lifestyleData, setLifestyleData] = useState<Partial<LifestyleProfile>>(
-    draft?.lifestyleData ?? { userId: user?.id || '' },
-  );
+  const [lifestyleData, setLifestyleData] = useState<Partial<LifestyleProfile>>({
+    userId: user?.id || '',
+  });
 
-  const [preferencesData, setPreferencesData] = useState<Partial<AccommodationPreferences>>(
-    draft?.preferencesData ?? {
-      userId: user?.id || '',
-      preferredCities: ['Viseu'],
-      maxDistanceFromUniversity: 3,
-    },
-  );
+  const [preferencesData, setPreferencesData] = useState<Partial<AccommodationPreferences>>({
+    userId: user?.id || '',
+    preferredCities: ['Viseu'],
+    maxDistanceFromUniversity: 3,
+  });
 
+  // Carregar rascunho de profiles.onboarding_draft
   useEffect(() => {
-    if (!user?.id || currentStep === 4) return;
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('onboarding_draft')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.error('[Onboarding] load draft:', error.message);
+        setDraftLoaded(true);
+        return;
+      }
+      const draft = data?.onboarding_draft as OnboardingDraft | null;
+      if (draft && typeof draft === 'object') {
+        if (draft.currentStep) setCurrentStep(draft.currentStep);
+        if (draft.personalData) setPersonalData(draft.personalData);
+        if (draft.lifestyleData) setLifestyleData(draft.lifestyleData);
+        if (draft.preferencesData) setPreferencesData(draft.preferencesData);
+        setHadDraft(true);
+      }
+      setDraftLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
+  // Guardar rascunho no Supabase com debounce ~500ms
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!user?.id || !draftLoaded || currentStep === 4) return;
     const draftToSave: OnboardingDraft = {
       currentStep,
       personalData,
       lifestyleData,
       preferencesData,
     };
-
-    localStorage.setItem(storageKey, JSON.stringify(draftToSave));
-  }, [currentStep, personalData, lifestyleData, preferencesData, storageKey, user?.id]);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarding_draft: draftToSave })
+        .eq('id', user.id);
+      if (error) console.error('[Onboarding] save draft:', error.message);
+    }, 500);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [currentStep, personalData, lifestyleData, preferencesData, draftLoaded, user?.id]);
 
   const steps: StepItem[] = [
     { number: 1, title: 'Perfil pessoal', icon: User },
@@ -198,11 +223,18 @@ export function Onboarding() {
       onboardingCompleted: true,
     };
 
-    localStorage.removeItem(storageKey);
     const result = await saveStudentProfile(profile);
     if (!result.success) {
       toast.error(result.error || 'Erro ao guardar perfil.');
       return;
+    }
+
+    if (user?.id) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarding_draft: null })
+        .eq('id', user.id);
+      if (error) console.error('[Onboarding] clear draft:', error.message);
     }
 
     toast.success('Perfil criado com sucesso.');
@@ -233,7 +265,7 @@ export function Onboarding() {
       </nav>
 
       <main className="max-w-5xl mx-auto px-4 md:px-6 py-8">
-        {draft && currentStep > 1 && (
+        {hadDraft && currentStep > 1 && (
           <div className="mb-4 p-4 rounded-xl border border-primary/20 bg-primary/5 text-primary flex items-center gap-3">
             <CheckCircle className="w-4 h-4 flex-shrink-0" />
             <p className="text-sm font-medium">Retomámos de onde ficaste. Os teus dados estão guardados.</p>

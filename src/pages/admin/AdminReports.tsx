@@ -24,14 +24,10 @@ import {
 import { Card } from '../../components/Card';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { useReports, type ReportRow } from '../../hooks/useDb';
-import { addAuditEntry } from '../../data/mockAdminAudit';
-import {
-  setUserSuspended,
-  setUserBlockedFromPublishing,
-  liftUserSuspension,
-  unblockUserPublishing,
-} from '../../data/mockAdminUsersState';
+import { useAdminAuditLogs, type AuditLogInput } from '../../hooks/useAdminAuditLogs';
 import { useProperties } from '../../context/PropertiesContext';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 // ─── Config maps ──────────────────────────────────────────────────────────────
 
@@ -66,9 +62,6 @@ const SEVERITY_CONFIG: Record<string, { label: string; cls: string }> = {
   medium: { label: 'Média', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   low: { label: 'Baixa', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
 };
-
-const ADMIN_ID = 'admin-1';
-const ADMIN_NAME = 'Admin UniRoom';
 
 function getStatusCfg(status: string) {
   return STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
@@ -124,6 +117,7 @@ function ReportDetailModal({
   onLiftPropertySuspension,
   onLiftLandlordSuspension,
   onUnblockLandlord,
+  createLog,
 }: {
   report: ReportRow;
   onClose: () => void;
@@ -135,6 +129,7 @@ function ReportDetailModal({
   onLiftPropertySuspension: (id: string, name: string) => void;
   onLiftLandlordSuspension: (id: string, name: string) => void;
   onUnblockLandlord: (id: string, name: string) => void;
+  createLog: (input: AuditLogInput) => Promise<unknown>;
 }) {
   const [report, setReport] = useState(initialReport);
   const [noteText, setNoteText] = useState(report.internalNote || '');
@@ -158,13 +153,11 @@ function ReportDetailModal({
     const ok = await onUpdateStatus(report.id, newStatus, noteText || undefined);
     if (!ok) { toast.error('Erro ao atualizar a denúncia.'); return; }
     setReport(prev => ({ ...prev, status: newStatus }));
-    addAuditEntry({
+    void createLog({
       action: newStatus === 'resolved' ? 'report_resolved' : 'report_rejected',
       entityType: 'report',
       entityId: report.id,
-      entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.reason] ?? report.reason} — ${report.targetName ?? report.targetId}`,
-      adminId: ADMIN_ID,
-      adminName: ADMIN_NAME,
+      entityLabel: `Denúncia: ${REPORT_TYPE_LABELS[report.reason] ?? report.reason} — ${report.targetName ?? report.targetId}`,
       note: noteText || undefined,
     });
   };
@@ -174,13 +167,11 @@ function ReportDetailModal({
     if (!ok) { toast.error('Erro ao guardar nota.'); return; }
     setReport(prev => ({ ...prev, internalNote: noteText }));
     setShowNoteInput(false);
-    addAuditEntry({
+    void createLog({
       action: 'note_added',
       entityType: 'report',
       entityId: report.id,
-      entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.reason] ?? report.reason} — ${report.targetName ?? report.targetId}`,
-      adminId: ADMIN_ID,
-      adminName: ADMIN_NAME,
+      entityLabel: `Denúncia: ${REPORT_TYPE_LABELS[report.reason] ?? report.reason} — ${report.targetName ?? report.targetId}`,
       note: noteText,
     });
   };
@@ -196,32 +187,32 @@ function ReportDetailModal({
       case 'suspend_property':
         setSanctions(s => ({ ...s, propertySuspended: true, propertySuspensionLifted: false }));
         onSuspendProperty(report.targetId, name);
-        addAuditEntry({ action: 'property_suspended', entityType: 'property', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspenso por denúncia ${report.id}` });
+        void createLog({ action: 'property_suspended', entityType: 'property', entityId: report.targetId, entityLabel: name, note: `Suspenso por denúncia ${report.id}` });
         break;
       case 'suspend_landlord':
         setSanctions(s => ({ ...s, landlordSuspended: true, landlordSuspensionLifted: false }));
         onSuspendLandlord(report.targetId, name);
-        addAuditEntry({ action: 'landlord_suspended', entityType: 'landlord', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspenso por denúncia ${report.id}` });
+        void createLog({ action: 'landlord_suspended', entityType: 'landlord', entityId: report.targetId, entityLabel: name, note: `Suspenso por denúncia ${report.id}` });
         break;
       case 'block_landlord':
         setSanctions(s => ({ ...s, landlordBlocked: true, landlordSuspended: true, landlordUnblocked: false, landlordSuspensionLifted: false }));
         onBlockLandlord(report.targetId, name);
-        addAuditEntry({ action: 'landlord_blocked', entityType: 'landlord', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Bloqueado por denúncia ${report.id}` });
+        void createLog({ action: 'publishing_blocked', entityType: 'landlord', entityId: report.targetId, entityLabel: name, note: `Bloqueado por denúncia ${report.id}` });
         break;
       case 'lift_property_suspension':
         setSanctions(s => ({ ...s, propertySuspended: false, propertySuspensionLifted: true }));
         onLiftPropertySuspension(report.targetId, name);
-        addAuditEntry({ action: 'property_suspension_lifted', entityType: 'property', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: 'Suspensão levantada manualmente' });
+        void createLog({ action: 'property_suspension_lifted', entityType: 'property', entityId: report.targetId, entityLabel: name, note: 'Suspensão levantada manualmente' });
         break;
       case 'lift_landlord_suspension':
         setSanctions(s => ({ ...s, landlordSuspended: false, landlordSuspensionLifted: true }));
         onLiftLandlordSuspension(report.targetId, name);
-        addAuditEntry({ action: 'landlord_suspension_lifted', entityType: 'landlord', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: 'Suspensão levantada manualmente' });
+        void createLog({ action: 'landlord_suspension_lifted', entityType: 'landlord', entityId: report.targetId, entityLabel: name, note: 'Suspensão levantada manualmente' });
         break;
       case 'unblock_landlord':
         setSanctions(s => ({ ...s, landlordBlocked: false, landlordSuspended: false, landlordUnblocked: true }));
         onUnblockLandlord(report.targetId, name);
-        addAuditEntry({ action: 'landlord_unblocked', entityType: 'landlord', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: 'Bloqueio de publicação removido manualmente' });
+        void createLog({ action: 'user_unblocked', entityType: 'landlord', entityId: report.targetId, entityLabel: name, note: 'Bloqueio de publicação removido manualmente' });
         break;
     }
   };
@@ -543,8 +534,11 @@ function ReportDetailModal({
 // ─── AdminReports ─────────────────────────────────────────────────────────────
 
 export function AdminReports() {
+  const { user } = useAuth();
   const { properties, rooms, updateRoomStatus, adminSuspendProperty, liftAdminSuspension } = useProperties();
   const { reports, loading, updateStatus, addInternalNote } = useReports();
+  const { createLog } = useAdminAuditLogs({ limit: 1 });
+  const adminLabel = user?.name ?? user?.email ?? 'Admin UniRoom';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | ReportRow['status']>('all');
@@ -578,20 +572,37 @@ export function AdminReports() {
 
   // ── Sanction handlers (UI-only, mock side effects) ──────────────────────────
 
+  const updateUserStatus = async (
+    userId: string,
+    patch: { status?: 'active' | 'suspended'; blocked_from_publishing?: boolean; admin_reason?: string | null },
+  ) => {
+    const { error } = await supabase.from('profiles').update(patch).eq('id', userId);
+    if (error) {
+      console.error('[AdminReports] profile update error:', error.message);
+      toast.error('Erro ao atualizar utilizador.');
+      return false;
+    }
+    return true;
+  };
+
   const handleSuspendProperty = (propertyId: string, propertyTitle: string) => {
-    adminSuspendProperty(propertyId, 'Suspenso por denúncia na plataforma UniRoom', ADMIN_NAME);
+    adminSuspendProperty(propertyId, 'Suspenso por denúncia na plataforma UniRoom', adminLabel);
     rooms
       .filter(r => r.propertyId === propertyId && r.status === 'available')
       .forEach(room => updateRoomStatus(room.id, 'paused'));
     toast.success(`Anúncio "${propertyTitle}" suspenso com sucesso.`);
   };
 
-  const handleSuspendLandlord = (landlordId: string, landlordName: string) => {
-    setUserSuspended(landlordId, true, 'Suspenso por moderação admin');
+  const handleSuspendLandlord = async (landlordId: string, landlordName: string) => {
+    const ok = await updateUserStatus(landlordId, {
+      status: 'suspended',
+      admin_reason: 'Suspenso por moderação admin',
+    });
+    if (!ok) return;
     properties
       .filter(p => p.landlordId === landlordId && p.status === 'active')
       .forEach(p => {
-        adminSuspendProperty(p.id, 'Suspenso por suspensão de conta do senhorio', ADMIN_NAME);
+        adminSuspendProperty(p.id, 'Suspenso por suspensão de conta do senhorio', adminLabel);
         rooms
           .filter(r => r.propertyId === p.id && r.status === 'available')
           .forEach(room => updateRoomStatus(room.id, 'paused'));
@@ -599,9 +610,13 @@ export function AdminReports() {
     toast.success(`Utilizador "${landlordName}" suspenso com sucesso.`);
   };
 
-  const handleBlockLandlord = (landlordId: string, landlordName: string) => {
-    setUserBlockedFromPublishing(landlordId, true, 'Bloqueado de publicar novos anúncios');
-    setUserSuspended(landlordId, true, 'Suspenso por moderação admin');
+  const handleBlockLandlord = async (landlordId: string, landlordName: string) => {
+    const ok = await updateUserStatus(landlordId, {
+      status: 'suspended',
+      blocked_from_publishing: true,
+      admin_reason: 'Bloqueado de publicar novos anúncios',
+    });
+    if (!ok) return;
     toast.success(`Publicação bloqueada para "${landlordName}".`);
   };
 
@@ -610,13 +625,22 @@ export function AdminReports() {
     toast.success('Suspensão do anúncio levantada.');
   };
 
-  const handleLiftLandlordSuspension = (landlordId: string, _name: string) => {
-    liftUserSuspension(landlordId);
+  const handleLiftLandlordSuspension = async (landlordId: string, _name: string) => {
+    const ok = await updateUserStatus(landlordId, {
+      status: 'active',
+      admin_reason: null,
+    });
+    if (!ok) return;
     toast.success('Suspensão do utilizador levantada.');
   };
 
-  const handleUnblockLandlord = (landlordId: string, _name: string) => {
-    unblockUserPublishing(landlordId);
+  const handleUnblockLandlord = async (landlordId: string, _name: string) => {
+    const ok = await updateUserStatus(landlordId, {
+      status: 'active',
+      blocked_from_publishing: false,
+      admin_reason: null,
+    });
+    if (!ok) return;
     toast.success('Bloqueio de publicação removido.');
   };
 
@@ -799,6 +823,7 @@ export function AdminReports() {
           onLiftPropertySuspension={handleLiftPropertySuspension}
           onLiftLandlordSuspension={handleLiftLandlordSuspension}
           onUnblockLandlord={handleUnblockLandlord}
+          createLog={createLog}
         />
       )}
     </div>

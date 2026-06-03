@@ -21,6 +21,7 @@ import {
   adminUpsertVerification,
 } from '../../hooks/useTrust';
 import { useAdminUsers } from '../../hooks/useDb';
+import { useAdminAuditLogs } from '../../hooks/useAdminAuditLogs';
 
 function formatDate(value?: string | Date) {
   if (!value) return '—';
@@ -61,6 +62,19 @@ export function AdminUsers() {
 
   const { users, loading: usersLoading, refresh: refreshUsers } = useAdminUsers();
   const { statuses: verifications, statusMap, refresh: refreshVerifications } = useAllVerificationStatuses();
+  const { createLog } = useAdminAuditLogs({ limit: 1 });
+
+  const entityLabelFor = (userId: string): string => {
+    const u = users.find(x => x.id === userId);
+    return u?.fullName || u?.email || userId;
+  };
+
+  const documentInfoFor = (userId: string) => {
+    const v = statusMap[userId];
+    return v
+      ? { documentFileName: v.documentFileName, documentReviewStatus: v.documentReviewStatus }
+      : {};
+  };
 
   const pendingDocuments = verifications.filter(item => item.documentReviewStatus === 'pending').length;
   const verifiedUsers = users.filter(user => {
@@ -79,24 +93,60 @@ export function AdminUsers() {
   });
 
   const handleApprove = (userId: string) => {
+    const label = entityLabelFor(userId);
+    const docInfo = documentInfoFor(userId);
     void adminApproveDocument(userId).then(ok => {
-      if (ok) void refreshVerifications();
+      if (!ok) return;
+      void refreshVerifications();
+      void createLog({
+        action: 'verification_approved',
+        entityType: 'user',
+        entityId: userId,
+        entityLabel: label,
+        note: 'Verificação aprovada pelo administrador',
+        metadata: docInfo,
+      }).catch(err => console.error('[AdminUsers] audit approve:', err));
     });
   };
 
   const handleReject = (userId: string) => {
-    void adminRejectDocument(userId, rejectReason || 'Documento rejeitado pelo administrador.')
-      .then(ok => { if (ok) void refreshVerifications(); });
+    const reason = rejectReason || 'Documento rejeitado pelo administrador.';
+    const label = entityLabelFor(userId);
+    const docInfo = documentInfoFor(userId);
+    void adminRejectDocument(userId, reason).then(ok => {
+      if (!ok) return;
+      void refreshVerifications();
+      void createLog({
+        action: 'verification_rejected',
+        entityType: 'user',
+        entityId: userId,
+        entityLabel: label,
+        note: reason,
+        metadata: docInfo,
+      }).catch(err => console.error('[AdminUsers] audit reject:', err));
+    });
     setRejectingUserId(null);
     setRejectReason('');
   };
 
   const handleForceSilver = (userId: string) => {
+    const label = entityLabelFor(userId);
     void adminUpsertVerification(userId, {
       emailVerified: true,
       universityEmailVerified: true,
       documentVerified: false,
-    }).then(() => void refreshVerifications());
+    }).then(ok => {
+      if (!ok) return;
+      void refreshVerifications();
+      void createLog({
+        action: 'verification_approved',
+        entityType: 'user',
+        entityId: userId,
+        entityLabel: label,
+        note: 'Verificação manual atribuída como Silver',
+        metadata: { level: 'silver', manual: true },
+      }).catch(err => console.error('[AdminUsers] audit force-silver:', err));
+    });
   };
 
   return (

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  Archive,
   Calendar,
   CheckCircle,
   Clock,
@@ -14,6 +13,7 @@ import {
   MapPin,
   Search,
   ShieldCheck,
+  ShieldOff,
   User,
   X as XIcon,
 } from 'lucide-react';
@@ -21,109 +21,107 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
-import { getProperties, getRooms, getRoomsByProperty } from '../../data/mockProperties';
-import { getAllApplications } from '../../data/mockLandlordCandidates';
-import { mockUsers } from '../../data/mockUsers';
+import { useProperties } from '../../context/PropertiesContext';
+import { useApplications, useAdminUsers } from '../../hooks/useDb';
+import { useAdminAuditLogs } from '../../hooks/useAdminAuditLogs';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { Property } from '../../types/property';
 
-type AdminStatus = 'active' | 'pending' | 'draft' | 'suspicious' | 'rejected' | 'archived';
+type AdminFilter = 'all' | 'active' | 'pending' | 'suspended';
 
-interface PropertyWithAdmin extends Property {
-  adminStatus: AdminStatus;
-  applicationsCount: number;
+function getDisplayStatus(property: Property): AdminFilter {
+  if (property.adminSuspended) return 'suspended';
+  if (property.status === 'draft') return 'pending';
+  if (property.status === 'active') return 'active';
+  return 'pending';
 }
 
 export function AdminProperties() {
+  const { user } = useAuth();
+  const { properties, rooms } = useProperties();
+  const { users: adminUsers } = useAdminUsers();
+  const { applications } = useApplications({ scope: 'all' });
+  const { createLog } = useAdminAuditLogs({ limit: 1 });
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | AdminStatus>('all');
+  const [filterStatus, setFilterStatus] = useState<AdminFilter>('all');
   const [filterCity, setFilterCity] = useState<string>('all');
-  const [selectedProperty, setSelectedProperty] = useState<PropertyWithAdmin | null>(null);
-  const [propertyStatuses, setPropertyStatuses] = useState<Record<string, AdminStatus>>({
-    'prop-1': 'pending',
-    'prop-2': 'active',
-  });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const rooms = getRooms();
+  const landlordMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const u of adminUsers) {
+      map.set(u.id, u.fullName || u.email || 'Senhorio não encontrado');
+    }
+    return map;
+  }, [adminUsers]);
 
-  const properties = useMemo(() => {
-    const baseProperties = getProperties();
-    const allRooms = getRooms();
-    const applications = getAllApplications();
+  const getLandlordName = (landlordId: string) =>
+    landlordMap.get(landlordId) ?? 'Senhorio não encontrado';
 
-    return baseProperties.map((property): PropertyWithAdmin => {
-      const propertyRooms = allRooms.filter(room => room.propertyId === property.id);
-      const roomIds = new Set(propertyRooms.map(room => room.id));
-      const applicationsCount = applications.filter(application =>
-        application.propertyId === property.id || roomIds.has(application.roomId),
-      ).length;
-
-      return {
-        ...property,
-        adminStatus: propertyStatuses[property.id] || 'pending',
-        applicationsCount,
-      };
-    });
-  }, [propertyStatuses]);
+  const applicationsByProperty = useMemo(() => {
+    const counts = new Map<string, number>();
+    const roomToProperty = new Map<string, string>();
+    for (const r of rooms) roomToProperty.set(r.id, r.propertyId);
+    for (const app of applications) {
+      let pid = app.propertyId;
+      if (!pid && app.roomId) pid = roomToProperty.get(app.roomId);
+      if (!pid) continue;
+      counts.set(pid, (counts.get(pid) ?? 0) + 1);
+    }
+    return counts;
+  }, [applications, rooms]);
 
   const cities = useMemo(() => {
-    const uniqueCities = new Set(properties.map(property => property.city));
-    return Array.from(uniqueCities).sort();
+    return Array.from(new Set(properties.map((p) => p.city))).sort();
   }, [properties]);
 
   const filteredProperties = useMemo(() => {
-    return properties.filter(property => {
-      const query = searchQuery.toLowerCase();
-
+    return properties.filter((property) => {
+      const q = searchQuery.toLowerCase();
       const matchesSearch =
-        property.title.toLowerCase().includes(query) ||
-        property.address.toLowerCase().includes(query) ||
-        property.city.toLowerCase().includes(query);
-
-      const matchesStatus = filterStatus === 'all' || property.adminStatus === filterStatus;
+        !q ||
+        property.title.toLowerCase().includes(q) ||
+        property.address.toLowerCase().includes(q) ||
+        property.city.toLowerCase().includes(q);
+      const matchesStatus =
+        filterStatus === 'all' || getDisplayStatus(property) === filterStatus;
       const matchesCity = filterCity === 'all' || property.city === filterCity;
-
       return matchesSearch && matchesStatus && matchesCity;
     });
   }, [properties, searchQuery, filterStatus, filterCity]);
 
   const stats = useMemo(() => {
-    const propertyRooms = rooms.filter(room => properties.some(property => property.id === room.propertyId));
-
     return {
       total: properties.length,
-      active: properties.filter(property => property.adminStatus === 'active').length,
-      pending: properties.filter(property => property.adminStatus === 'pending').length,
-      suspicious: properties.filter(property => property.adminStatus === 'suspicious').length,
-      totalRooms: propertyRooms.length,
-      availableRooms: propertyRooms.filter(room => room.status === 'available').length,
-      occupiedRooms: propertyRooms.filter(room => room.status === 'occupied').length,
+      active: properties.filter((p) => getDisplayStatus(p) === 'active').length,
+      pending: properties.filter((p) => getDisplayStatus(p) === 'pending').length,
+      suspended: properties.filter((p) => p.adminSuspended).length,
+      totalRooms: rooms.length,
+      availableRooms: rooms.filter((r) => r.status === 'available').length,
+      occupiedRooms: rooms.filter((r) => r.status === 'occupied').length,
     };
   }, [properties, rooms]);
 
-  const getLandlordName = (landlordId: string) => {
-    const landlord = mockUsers.find(user => user.id === landlordId);
-    return landlord?.name || 'Desconhecido';
-  };
-
   const getRoomStats = (propertyId: string) => {
-    const propertyRooms = rooms.filter(room => room.propertyId === propertyId);
-
+    const propertyRooms = rooms.filter((r) => r.propertyId === propertyId);
     return {
       total: propertyRooms.length,
-      available: propertyRooms.filter(room => room.status === 'available').length,
-      occupied: propertyRooms.filter(room => room.status === 'occupied').length,
+      available: propertyRooms.filter((r) => r.status === 'available').length,
+      occupied: propertyRooms.filter((r) => r.status === 'occupied').length,
     };
   };
 
   const getMinPrice = (propertyId: string) => {
-    const propertyRooms = rooms.filter(room => room.propertyId === propertyId);
-
+    const propertyRooms = rooms.filter((r) => r.propertyId === propertyId);
     if (propertyRooms.length === 0) return 0;
-
-    return Math.min(...propertyRooms.map(room => room.price));
+    return Math.min(...propertyRooms.map((r) => r.price));
   };
 
-  const getStatusBadge = (status: AdminStatus) => {
+  const getStatusBadge = (property: Property) => {
+    const status = getDisplayStatus(property);
     switch (status) {
       case 'active':
         return (
@@ -139,31 +137,11 @@ export function AdminProperties() {
             Pendente
           </Badge>
         );
-      case 'suspicious':
+      case 'suspended':
         return (
           <Badge variant="outline" className="text-red-600 border-red-300">
-            <AlertTriangle className="w-3 h-3 mr-1" />
-            Suspeito
-          </Badge>
-        );
-      case 'rejected':
-        return (
-          <Badge variant="outline" className="text-gray-600 border-gray-300">
-            <XIcon className="w-3 h-3 mr-1" />
-            Rejeitado
-          </Badge>
-        );
-      case 'archived':
-        return (
-          <Badge variant="outline" className="text-gray-600 border-gray-300">
-            <Archive className="w-3 h-3 mr-1" />
-            Arquivado
-          </Badge>
-        );
-      case 'draft':
-        return (
-          <Badge variant="outline" className="text-gray-500 border-gray-300">
-            Rascunho
+            <ShieldOff className="w-3 h-3 mr-1" />
+            Suspenso
           </Badge>
         );
       default:
@@ -171,29 +149,70 @@ export function AdminProperties() {
     }
   };
 
-  const updateSelectedStatus = (propertyId: string, status: AdminStatus) => {
-    setPropertyStatuses(previous => ({ ...previous, [propertyId]: status }));
-
-    if (selectedProperty?.id === propertyId) {
-      setSelectedProperty(previous => previous ? { ...previous, adminStatus: status } : null);
+  const approveOrReactivate = async (property: Property) => {
+    if (!user) return;
+    setBusyId(property.id);
+    const wasSuspended = property.adminSuspended;
+    const { error } = await supabase
+      .from('properties')
+      .update({
+        status: 'active',
+        admin_suspended: false,
+        admin_suspension_reason: null,
+        admin_suspended_at: null,
+        admin_suspended_by: null,
+      })
+      .eq('id', property.id);
+    if (!error) {
+      await createLog({
+        action: wasSuspended ? 'property_reactivated' : 'property_approved',
+        entityType: 'property',
+        entityId: property.id,
+        entityLabel: property.title,
+      });
+    } else {
+      console.error('[AdminProperties] approve error:', error.message);
     }
+    setBusyId(null);
   };
 
-  const handleApprove = (propertyId: string) => {
-    updateSelectedStatus(propertyId, 'active');
+  const suspendProperty = async (property: Property) => {
+    if (!user) return;
+    const reason = window.prompt('Motivo da suspensão:', property.adminSuspensionReason ?? '');
+    if (reason === null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) return;
+    setBusyId(property.id);
+    const { error } = await supabase
+      .from('properties')
+      .update({
+        admin_suspended: true,
+        status: 'paused',
+        admin_suspension_reason: trimmed,
+        admin_suspended_by: user.id,
+        admin_suspended_at: new Date().toISOString(),
+      })
+      .eq('id', property.id);
+    if (!error) {
+      await createLog({
+        action: 'property_suspended',
+        entityType: 'property',
+        entityId: property.id,
+        entityLabel: property.title,
+        note: trimmed,
+      });
+    } else {
+      console.error('[AdminProperties] suspend error:', error.message);
+    }
+    setBusyId(null);
   };
 
-  const handleReject = (propertyId: string) => {
-    updateSelectedStatus(propertyId, 'rejected');
-  };
-
-  const handleSuspend = (propertyId: string) => {
-    updateSelectedStatus(propertyId, 'suspicious');
-  };
-
-  const handleArchive = (propertyId: string) => {
-    updateSelectedStatus(propertyId, 'archived');
-  };
+  const selectedProperty = selectedId
+    ? properties.find((p) => p.id === selectedId) ?? null
+    : null;
+  const selectedRooms = selectedProperty
+    ? rooms.filter((r) => r.propertyId === selectedProperty.id)
+    : [];
 
   return (
     <div className="p-6 space-y-6">
@@ -207,13 +226,12 @@ export function AdminProperties() {
           { label: 'Total', value: stats.total, icon: Home, color: 'bg-blue-100 text-blue-600' },
           { label: 'Ativas', value: stats.active, icon: CheckCircle, color: 'bg-green-100 text-green-600' },
           { label: 'Pendentes', value: stats.pending, icon: Clock, color: 'bg-yellow-100 text-yellow-600' },
-          { label: 'Suspeitas', value: stats.suspicious, icon: AlertTriangle, color: 'bg-red-100 text-red-600' },
+          { label: 'Suspensas', value: stats.suspended, icon: ShieldOff, color: 'bg-red-100 text-red-600' },
           { label: 'Quartos', value: stats.totalRooms, icon: DoorOpen, color: 'bg-purple-100 text-purple-600' },
           { label: 'Disponíveis', value: stats.availableRooms, icon: DoorOpen, color: 'bg-green-100 text-green-600' },
           { label: 'Ocupados', value: stats.occupiedRooms, icon: DoorClosed, color: 'bg-gray-100 text-gray-600' },
-        ].map(stat => {
+        ].map((stat) => {
           const Icon = stat.icon;
-
           return (
             <Card key={stat.label} className="p-4 min-h-[92px]">
               <div className="flex items-center gap-3 h-full">
@@ -247,8 +265,8 @@ export function AdminProperties() {
               { key: 'all', label: 'Todos' },
               { key: 'active', label: 'Ativos' },
               { key: 'pending', label: 'Pendentes' },
-              { key: 'suspicious', label: 'Suspeitos' },
-            ] as const).map(item => (
+              { key: 'suspended', label: 'Suspensos' },
+            ] as const).map((item) => (
               <button
                 key={item.key}
                 onClick={() => setFilterStatus(item.key)}
@@ -270,7 +288,7 @@ export function AdminProperties() {
               className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 border-0 cursor-pointer"
             >
               <option value="all">Todas as cidades</option>
-              {cities.map(city => (
+              {cities.map((city) => (
                 <option key={city} value={city}>{city}</option>
               ))}
             </select>
@@ -293,9 +311,11 @@ export function AdminProperties() {
             </thead>
 
             <tbody>
-              {filteredProperties.map(property => {
+              {filteredProperties.map((property) => {
                 const roomStats = getRoomStats(property.id);
                 const minPrice = getMinPrice(property.id);
+                const appsCount = applicationsByProperty.get(property.id) ?? 0;
+                const displayStatus = getDisplayStatus(property);
 
                 return (
                   <tr key={property.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -333,7 +353,7 @@ export function AdminProperties() {
                     </td>
 
                     <td className="py-4 px-4">
-                      {getStatusBadge(property.adminStatus)}
+                      {getStatusBadge(property)}
                     </td>
 
                     <td className="py-4 px-4">
@@ -362,7 +382,7 @@ export function AdminProperties() {
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-1.5">
                         <FileText className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-900">{property.applicationsCount}</span>
+                        <span className="text-sm font-medium text-gray-900">{appsCount}</span>
                       </div>
                     </td>
 
@@ -371,16 +391,17 @@ export function AdminProperties() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setSelectedProperty(property)}
+                          onClick={() => setSelectedId(property.id)}
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
 
-                        {property.adminStatus === 'pending' && (
+                        {displayStatus === 'pending' && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleApprove(property.id)}
+                            disabled={busyId === property.id}
+                            onClick={() => approveOrReactivate(property)}
                             className="text-green-600 hover:bg-green-50"
                           >
                             <CheckCircle className="w-4 h-4" />
@@ -427,7 +448,7 @@ export function AdminProperties() {
                 </div>
 
                 <button
-                  onClick={() => setSelectedProperty(null)}
+                  onClick={() => setSelectedId(null)}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <XIcon className="w-5 h-5 text-gray-500" />
@@ -440,7 +461,7 @@ export function AdminProperties() {
                     <ShieldCheck className="w-4 h-4 text-gray-600" />
                     <span className="text-sm text-gray-600">Estado</span>
                   </div>
-                  {getStatusBadge(selectedProperty.adminStatus)}
+                  {getStatusBadge(selectedProperty)}
                 </div>
 
                 <div className="p-4 bg-gray-50 rounded-lg">
@@ -448,9 +469,21 @@ export function AdminProperties() {
                     <FileText className="w-4 h-4 text-gray-600" />
                     <span className="text-sm text-gray-600">Candidaturas</span>
                   </div>
-                  <p className="font-bold text-gray-900">{selectedProperty.applicationsCount}</p>
+                  <p className="font-bold text-gray-900">
+                    {applicationsByProperty.get(selectedProperty.id) ?? 0}
+                  </p>
                 </div>
               </div>
+
+              {selectedProperty.adminSuspended && selectedProperty.adminSuspensionReason && (
+                <div className="mb-6 p-4 border border-red-200 bg-red-50 rounded-lg">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="w-4 h-4 text-red-600" />
+                    <span className="text-sm font-semibold text-red-700">Motivo da suspensão</span>
+                  </div>
+                  <p className="text-sm text-red-700">{selectedProperty.adminSuspensionReason}</p>
+                </div>
+              )}
 
               <div className="mb-6">
                 <h3 className="font-bold text-gray-900 mb-3">Descrição</h3>
@@ -465,11 +498,11 @@ export function AdminProperties() {
               <div className="mb-6">
                 <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
                   <DoorOpen className="w-5 h-5" />
-                  Quartos da propriedade ({getRoomStats(selectedProperty.id).total})
+                  Quartos da propriedade ({selectedRooms.length})
                 </h3>
 
                 <div className="space-y-3">
-                  {getRoomsByProperty(selectedProperty.id).map(room => (
+                  {selectedRooms.map((room) => (
                     <div key={room.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
@@ -505,69 +538,51 @@ export function AdminProperties() {
                       </div>
                     </div>
                   ))}
+
+                  {selectedRooms.length === 0 && (
+                    <p className="text-sm text-gray-500 italic">Sem quartos registados.</p>
+                  )}
                 </div>
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-gray-200">
-                {selectedProperty.adminStatus === 'pending' && (
-                  <>
-                    <Button
-                      variant="primary"
-                      className="flex-1"
-                      onClick={() => handleApprove(selectedProperty.id)}
-                    >
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Aprovar anúncio
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
-                      onClick={() => handleReject(selectedProperty.id)}
-                    >
-                      <XIcon className="w-4 h-4 mr-2" />
-                      Rejeitar
-                    </Button>
-                  </>
-                )}
-
-                {selectedProperty.adminStatus === 'active' && (
-                  <>
-                    <Button
-                      variant="outline"
-                      className="flex-1 border-yellow-300 text-yellow-600 hover:bg-yellow-50"
-                      onClick={() => handleSuspend(selectedProperty.id)}
-                    >
-                      <AlertTriangle className="w-4 h-4 mr-2" />
-                      Marcar como suspeito
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="flex-1 border-gray-300 text-gray-600 hover:bg-gray-50"
-                      onClick={() => handleArchive(selectedProperty.id)}
-                    >
-                      <Archive className="w-4 h-4 mr-2" />
-                      Arquivar
-                    </Button>
-                  </>
-                )}
-
-                {(selectedProperty.adminStatus === 'suspicious' || selectedProperty.adminStatus === 'rejected') && (
+                {getDisplayStatus(selectedProperty) === 'pending' && (
                   <Button
-                    variant="outline"
-                    className="flex-1 border-green-300 text-green-600 hover:bg-green-50"
-                    onClick={() => handleApprove(selectedProperty.id)}
+                    variant="primary"
+                    className="flex-1"
+                    disabled={busyId === selectedProperty.id}
+                    onClick={() => approveOrReactivate(selectedProperty)}
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
-                    Reativar como ativo
+                    Aprovar anúncio
                   </Button>
                 )}
 
-                <Button
-                  variant="outline"
-                  onClick={() => setSelectedProperty(null)}
-                >
+                {getDisplayStatus(selectedProperty) === 'active' && (
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
+                    disabled={busyId === selectedProperty.id}
+                    onClick={() => suspendProperty(selectedProperty)}
+                  >
+                    <ShieldOff className="w-4 h-4 mr-2" />
+                    Suspender
+                  </Button>
+                )}
+
+                {selectedProperty.adminSuspended && (
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-green-300 text-green-600 hover:bg-green-50"
+                    disabled={busyId === selectedProperty.id}
+                    onClick={() => approveOrReactivate(selectedProperty)}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Reativar
+                  </Button>
+                )}
+
+                <Button variant="outline" onClick={() => setSelectedId(null)}>
                   Fechar
                 </Button>
               </div>
