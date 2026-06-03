@@ -39,6 +39,7 @@ export function getProfileCompletedStorageKey(userId: string): string {
   return `${PROFILE_COMPLETED_STORAGE_PREFIX}${userId}`;
 }
 
+// DEPRECATED — use fetchStudentProfileFromDb from profilesDb.ts instead
 export function getProfile(userId: string): StudentProfile | null {
   if (!userId) return null;
 
@@ -47,6 +48,7 @@ export function getProfile(userId: string): StudentProfile | null {
   return profiles.find(profile => profile.personal?.userId === userId) || null;
 }
 
+// DEPRECATED — use upsertStudentProfileToDb from profilesDb.ts instead
 export function saveProfile(profile: StudentProfile): void {
   const userId = profile.personal?.userId;
 
@@ -98,16 +100,19 @@ export function saveProfile(profile: StudentProfile): void {
   }
 }
 
+// DEPRECATED
 export function deleteProfile(userId: string): void {
   const profiles = readProfiles().filter(profile => profile.personal?.userId !== userId);
   writeProfiles(profiles);
   localStorage.removeItem(getProfileCompletedStorageKey(userId));
 }
 
+// DEPRECATED
 export function getAllProfiles(): StudentProfile[] {
   return readProfiles();
 }
 
+// DEPRECATED — use user.onboardingCompleted && (user.profileCompleteness?.overall ?? 0) >= 80 instead
 export function hasCompletedCompatibilityProfile(userId?: string | null): boolean {
   if (!userId) return false;
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Users,
   Search,
@@ -15,83 +15,14 @@ import {
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import {
-  approveVerificationDocument,
-  getAllVerificationStatuses,
-  getVerificationStatus,
-  rejectVerificationDocument,
-  updateVerificationStatus,
-} from '../../data/mockTrust';
+  useAllVerificationStatuses,
+  adminApproveDocument,
+  adminRejectDocument,
+  adminUpsertVerification,
+} from '../../hooks/useTrust';
+import { useAdminUsers } from '../../hooks/useDb';
 
-const USERS_STORAGE_KEY = 'uniroom_all_users';
-
-interface PlatformUser {
-  id: string;
-  name: string;
-  email: string;
-  type: 'student' | 'landlord' | 'admin';
-  joined?: string;
-  city?: string;
-  university?: string;
-}
-
-const FALLBACK_USERS: PlatformUser[] = [
-  {
-    id: '1',
-    name: 'João Silva',
-    email: 'estudante@uniroom.pt',
-    type: 'student',
-    joined: '2026-01-15',
-    city: 'Lisboa',
-    university: 'Universidade de Lisboa',
-  },
-  {
-    id: '2',
-    name: 'Maria Santos',
-    email: 'senhorio@uniroom.pt',
-    type: 'landlord',
-    joined: '2026-01-10',
-    city: 'Porto',
-  },
-  {
-    id: '3',
-    name: 'Admin UniRoom',
-    email: 'admin@uniroom.pt',
-    type: 'admin',
-    joined: '2026-01-01',
-    city: 'Lisboa',
-  },
-];
-
-function readUsers(): PlatformUser[] {
-  try {
-    const stored = localStorage.getItem(USERS_STORAGE_KEY);
-    const parsed = stored ? JSON.parse(stored) : [];
-
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const mapped = parsed
-        .filter(user => user?.id && user?.email)
-        .map(user => ({
-          id: user.id,
-          name: user.name || user.email,
-          email: user.email,
-          type: user.type || 'student',
-          joined: user.createdAt || user.joined || new Date().toISOString(),
-          city: user.city,
-          university: user.university,
-        }));
-
-      const byId = new Map<string, PlatformUser>();
-      [...FALLBACK_USERS, ...mapped].forEach(user => byId.set(user.id, user));
-      return Array.from(byId.values());
-    }
-  } catch {
-    // fallback
-  }
-
-  return FALLBACK_USERS;
-}
-
-function formatDate(value?: string) {
+function formatDate(value?: string | Date) {
   if (!value) return '—';
   return new Date(value).toLocaleDateString('pt-PT', {
     day: 'numeric',
@@ -100,7 +31,7 @@ function formatDate(value?: string) {
   });
 }
 
-function getTypeLabel(type: PlatformUser['type']) {
+function getTypeLabel(type: string) {
   if (type === 'student') return 'Estudante';
   if (type === 'landlord') return 'Senhorio';
   return 'Admin';
@@ -124,53 +55,48 @@ function getVerificationClass(level: string, pending: boolean) {
 
 export function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | PlatformUser['type']>('all');
-  const [version, setVersion] = useState(0);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'student' | 'landlord' | 'admin'>('all');
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const users = useMemo(() => readUsers(), [version]);
-  const verifications = useMemo(() => getAllVerificationStatuses(), [version]);
+  const { users, loading: usersLoading, refresh: refreshUsers } = useAdminUsers();
+  const { statuses: verifications, statusMap, refresh: refreshVerifications } = useAllVerificationStatuses();
 
   const pendingDocuments = verifications.filter(item => item.documentReviewStatus === 'pending').length;
   const verifiedUsers = users.filter(user => {
-    const verification = getVerificationStatus(user.id);
-    return verification?.level === 'gold' || verification?.level === 'silver';
+    const vs = statusMap[user.id];
+    return vs?.level === 'gold' || vs?.level === 'silver';
   }).length;
 
   const filteredUsers = users.filter(user => {
     const matchesType = typeFilter === 'all' || user.type === typeFilter;
     const q = searchQuery.trim().toLowerCase();
-
     const matchesSearch =
       !q ||
-      user.name.toLowerCase().includes(q) ||
+      user.fullName.toLowerCase().includes(q) ||
       user.email.toLowerCase().includes(q);
-
     return matchesType && matchesSearch;
   });
 
-  const refresh = () => setVersion(value => value + 1);
-
   const handleApprove = (userId: string) => {
-    approveVerificationDocument(userId);
-    refresh();
+    void adminApproveDocument(userId).then(ok => {
+      if (ok) void refreshVerifications();
+    });
   };
 
   const handleReject = (userId: string) => {
-    rejectVerificationDocument(userId, rejectReason || 'Documento rejeitado pelo administrador.');
+    void adminRejectDocument(userId, rejectReason || 'Documento rejeitado pelo administrador.')
+      .then(ok => { if (ok) void refreshVerifications(); });
     setRejectingUserId(null);
     setRejectReason('');
-    refresh();
   };
 
   const handleForceSilver = (userId: string) => {
-    updateVerificationStatus(userId, {
+    void adminUpsertVerification(userId, {
       emailVerified: true,
       universityEmailVerified: true,
       documentVerified: false,
-    });
-    refresh();
+    }).then(() => void refreshVerifications());
   };
 
   return (
@@ -193,7 +119,7 @@ export function AdminUsers() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card className="p-5">
             <p className="text-sm text-muted-foreground mb-2">Total</p>
-            <p className="text-3xl font-bold text-foreground">{users.length}</p>
+            <p className="text-3xl font-bold text-foreground">{usersLoading ? '—' : users.length}</p>
           </Card>
 
           <Card className="p-5">
@@ -245,10 +171,18 @@ export function AdminUsers() {
         </Card>
 
         <div className="space-y-3">
-          {filteredUsers.map(user => {
-            const verification = getVerificationStatus(user.id);
+          {usersLoading && (
+            <Card className="p-10 text-center">
+              <Clock className="w-10 h-10 text-muted-foreground mx-auto mb-3 animate-spin" />
+              <p className="text-sm text-muted-foreground">A carregar utilizadores…</p>
+            </Card>
+          )}
+
+          {!usersLoading && filteredUsers.map(user => {
+            const verification = statusMap[user.id] ?? null;
             const level = verification?.level || 'none';
             const pending = verification?.documentReviewStatus === 'pending';
+            const rejected = verification?.documentReviewStatus === 'rejected';
 
             return (
               <Card key={user.id} className="p-5">
@@ -266,25 +200,35 @@ export function AdminUsers() {
 
                     <div>
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <h2 className="font-bold text-foreground">{user.name}</h2>
+                        <h2 className="font-bold text-foreground">{user.fullName || user.email}</h2>
                         <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
                           {getTypeLabel(user.type)}
                         </span>
                         <span className={`text-xs px-2 py-1 rounded-full font-semibold ${getVerificationClass(level, pending)}`}>
                           {getVerificationLabel(level, pending)}
                         </span>
+                        {user.status !== 'active' && (
+                          <span className="text-xs px-2 py-1 rounded-full bg-red-50 text-red-700 font-semibold">
+                            {user.status === 'suspended' ? 'Suspenso' : 'Bloqueado'}
+                          </span>
+                        )}
                       </div>
 
                       <p className="text-sm text-muted-foreground">{user.email}</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Entrou em {formatDate(user.joined)}
-                        {user.university ? ` · ${user.university}` : ''}
+                        Entrou em {formatDate(user.createdAt)}
                       </p>
 
                       {verification?.documentFileName && (
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                           <FileText className="w-3 h-3" />
                           {verification.documentFileName}
+                        </p>
+                      )}
+
+                      {rejected && verification?.documentRejectionReason && (
+                        <p className="text-xs text-red-600 mt-1">
+                          Motivo: {verification.documentRejectionReason}
                         </p>
                       )}
                     </div>
@@ -373,7 +317,7 @@ export function AdminUsers() {
             );
           })}
 
-          {filteredUsers.length === 0 && (
+          {!usersLoading && filteredUsers.length === 0 && (
             <Card className="p-10 text-center">
               <Clock className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
               <h2 className="font-bold text-foreground mb-1">Sem utilizadores encontrados</h2>

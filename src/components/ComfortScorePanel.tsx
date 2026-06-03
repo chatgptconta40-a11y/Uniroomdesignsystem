@@ -3,6 +3,7 @@ import { MapPin, Wallet, Sparkles, ShieldCheck, Star } from 'lucide-react';
 import { Room, Property } from '../types/property';
 import { Card } from './Card';
 import { useAuth } from '../context/AuthContext';
+import { useStudentProfile } from '../hooks/useDb';
 import { getPersonalizedCompatibility } from '../utils/profileCompatibility';
 
 interface ComfortScorePanelProps {
@@ -148,14 +149,16 @@ function buildReasons(
 
 export function ComfortScorePanel({ room, property, canUseCompatibility = true }: ComfortScorePanelProps) {
   const { user } = useAuth();
+  const isEligible = user?.type === 'student' || user?.type === 'landlord';
+  const { profile, loading: profileLoading } = useStudentProfile(isEligible ? user?.id : undefined);
 
   const personalized = useMemo(
-    () => getPersonalizedCompatibility((user?.type === 'student' || user?.type === 'landlord') ? user.id : null, room, property),
-    [user?.id, user?.type, room, property],
+    () => profileLoading ? null : getPersonalizedCompatibility(profile ?? null, room, property),
+    [profile, profileLoading, room, property],
   );
 
-  const effectiveCompatibility = personalized?.overall ?? room.compatibilityScore;
-  const canUsePersonalCompatibility = Boolean(canUseCompatibility && (user?.type === 'student' || user?.type === 'landlord') && effectiveCompatibility);
+  const effectiveCompatibility = personalized?.overall ?? (!profileLoading ? room.compatibilityScore : undefined);
+  const canUsePersonalCompatibility = Boolean(canUseCompatibility && isEligible && !profileLoading && effectiveCompatibility);
 
   const { score10, categories } = useMemo(
     () => computeScores(room, property, effectiveCompatibility, canUsePersonalCompatibility),

@@ -29,6 +29,7 @@ import { LocationMap } from '../components/LocationMap';
 import { RoomCard } from '../components/RoomCard';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
+import { useStudentProfile } from '../hooks/useDb';
 import { getPersonalizedCompatibility } from '../utils/profileCompatibility';
 
 function getScoreTone(score: number) {
@@ -92,6 +93,8 @@ export function PropertyDetail() {
   const publicRooms = rooms.filter(room => room.status !== 'draft');
   const availableRooms = publicRooms.filter(room => room.status === 'available');
 
+  const { profile: studentProfile, loading: profileLoading } = useStudentProfile(user?.id);
+
   const priceSummary = useMemo(() => {
     const prices = availableRooms.map(room => room.price);
     if (prices.length === 0) return null;
@@ -103,12 +106,12 @@ export function PropertyDetail() {
   }, [availableRooms]);
 
   const compatibilityItems = useMemo(() => {
-    if (!user?.id || !property) return [];
+    if (profileLoading || !studentProfile || !property) return [];
 
     return availableRooms
-      .map(room => getPersonalizedCompatibility(user.id, room, property))
+      .map(room => getPersonalizedCompatibility(studentProfile, room, property))
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
-  }, [availableRooms, property, user?.id]);
+  }, [availableRooms, property, studentProfile, profileLoading]);
 
   const houseCompatibility = useMemo(() => {
     if (compatibilityItems.length === 0) return null;
@@ -575,6 +578,7 @@ export function PropertyDetail() {
                   key={room.id}
                   room={room}
                   property={property}
+                  studentProfile={profileLoading ? null : studentProfile}
                   variant="public"
                   showFavorite={!!user && (user.type === 'student' || user.type === 'landlord')}
                   showPropertyContext={false}

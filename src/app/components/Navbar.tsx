@@ -2,12 +2,12 @@ import { Home, LogOut, LayoutDashboard, ChevronDown, User, Bell, Heart, FileText
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import { useState } from 'react';
-import { getNotificationsForUser, getUnreadCount, markNotificationAsRead, markAllNotificationsAsRead } from '../../data/mockApplications';
-import { getTotalUnreadCount } from '../../data/mockMessages';
-import { getVerificationStatus } from '../../data/mockTrust';
+import { useNotifications } from '../../hooks/useDb';
+import { useConversations } from '../../hooks/useMessages';
+import { useVerificationStatus } from '../../hooks/useTrust';
 
 function VerificationStatusPill({ userId }: { userId: string }) {
-  const status = getVerificationStatus(userId);
+  const { status } = useVerificationStatus(userId);
   const verified = status?.level === 'gold';
   return (
     <span
@@ -29,9 +29,8 @@ export function Navbar() {
   const [showMenu, setShowMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  const notifications = getNotificationsForUser(user?.id || '');
-  const unreadCount = getUnreadCount(user?.id || '');
-  const unreadMessagesCount = getTotalUnreadCount(user?.id || '');
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { totalUnreadCount: unreadMessagesCount } = useConversations();
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
 
@@ -59,8 +58,8 @@ export function Navbar() {
     navigate('/', { replace: true });
   };
 
-  const handleNotificationClick = (notification: any) => {
-    markNotificationAsRead(notification.id);
+  const handleNotificationClick = async (notification: any) => {
+    await markAsRead(notification.id);
     setShowNotifications(false);
 
     if (notification.link) {
@@ -68,8 +67,8 @@ export function Navbar() {
     }
   };
 
-  const handleMarkAllRead = () => {
-    markAllNotificationsAsRead(user?.id || '');
+  const handleMarkAllRead = async () => {
+    await markAllAsRead();
     setShowNotifications(false);
   };
 

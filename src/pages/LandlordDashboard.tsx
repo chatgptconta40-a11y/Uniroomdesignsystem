@@ -38,19 +38,15 @@ import { Badge } from '../components/Badge';
 import { TrustBadge } from '../components/TrustBadge';
 import { LandlordContractManager } from '../components/LandlordContractManager';
 import { getLandlordMetrics, getDashboardActivity, getPerformanceData } from '../data/mockLandlord';
-import { getPendingCountForLandlord } from '../data/mockLandlordCandidates';
-import { useMaintenance } from '../hooks/useDb';
+import { useMaintenance, useLandlordApplications } from '../hooks/useDb';
 import {
   formatCurrency,
-  getLandlordFinanceSummary,
   getPaymentMethodLabel,
   getPaymentMethodMainValue,
-  upsertDefaultPaymentMethod,
-  refreshHousingFinanceState,
-  markRentPaymentAsPaid,
-} from '../data/mockHousingFinance';
+} from '../utils/housingFinanceLabels';
+import { usePaymentMethod, useLandlordFinanceSummary } from '../hooks/useHousingFinance';
 import { isUserSuspended, isUserBlockedFromPublishing, getUserState } from '../data/mockAdminUsersState';
-import { getTrustScore, getVerificationStatus } from '../data/mockTrust';
+import { useTrustScore, useVerificationStatus } from '../hooks/useTrust';
 import { toast } from 'sonner';
 
 function formatTime(date: Date) {
@@ -103,7 +99,6 @@ export function LandlordDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { properties, rooms } = useProperties();
-  const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
   const [showReceivingSettings, setShowReceivingSettings] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState({
     methodType: 'mbway',
@@ -121,6 +116,7 @@ export function LandlordDashboard() {
   const activities = getDashboardActivity(userId);
   const performanceData = getPerformanceData(userId, 30);
   const { requests: maintenanceRequests } = useMaintenance({ scope: 'landlord' });
+  const { getPendingCount: getPendingApplicationsCount } = useLandlordApplications(userId);
   const maintenanceStats = useMemo(() => ({
     total: maintenanceRequests.length,
     pending: maintenanceRequests.filter(r => r.status === 'pending').length,
@@ -130,8 +126,9 @@ export function LandlordDashboard() {
       r => r.urgency === 'high' && r.status !== 'resolved' && r.status !== 'closed',
     ).length,
   }), [maintenanceRequests]);
-  const financeSummary = getLandlordFinanceSummary(userId);
-  const defaultPaymentMethod = financeSummary.methods.find(method => method.isDefault) || financeSummary.methods[0];
+
+  const financeSummary = useLandlordFinanceSummary(userId);
+  const { method: defaultPaymentMethod, upsert: upsertPaymentMethod } = usePaymentMethod(userId);
 
   useEffect(() => {
     if (!defaultPaymentMethod) return;
@@ -142,20 +139,10 @@ export function LandlordDashboard() {
       mbwayPhone: defaultPaymentMethod.mbwayPhone || '',
       iban: defaultPaymentMethod.iban || '',
       paypalEmail: defaultPaymentMethod.paypalEmail || '',
-      cardProvider: defaultPaymentMethod.cardProvider || 'Stripe Checkout',
+      cardProvider: '',
       instructions: defaultPaymentMethod.instructions || '',
     });
   }, [defaultPaymentMethod?.id, user?.name]);
-
-  useEffect(() => {
-    if (!user) return;
-
-    refreshHousingFinanceState()
-      .then(() => setFinanceRefreshKey(key => key + 1))
-      .catch(error => {
-        console.warn('Erro ao sincronizar dados financeiros:', error);
-      });
-  }, [user?.id]);
 
   const myProperties = useMemo(
     () => properties.filter(property => property.landlordId === userId && property.status !== 'archived'),
@@ -191,17 +178,14 @@ export function LandlordDashboard() {
 
   const draftRooms = myRooms.filter(room => room.status === 'draft');
 
-  const pendingApplicationsCount = getPendingCountForLandlord(
-    userId,
-    myProperties.map(property => property.id),
-  );
+  const pendingApplicationsCount = getPendingApplicationsCount();
 
   const isAccountSuspended = user ? isUserSuspended(user.id) : false;
   const isBlockedFromPublishing = user ? isUserBlockedFromPublishing(user.id) : false;
   const suspensionReason = user ? getUserState(user.id)?.reason : undefined;
 
-  const verificationStatus = user ? getVerificationStatus(user.id) : null;
-  const trustScore = user ? getTrustScore(user.id) : null;
+  const { status: verificationStatus } = useVerificationStatus(userId || undefined);
+  const { score: trustScore } = useTrustScore(userId || undefined);
   const isVerifiedLandlord = verificationStatus?.level === 'gold' || verificationStatus?.documentVerified;
 
   const occupiedOrReservedRooms = roomStats.occupied + roomStats.reserved;
@@ -211,10 +195,12 @@ export function LandlordDashboard() {
 
   const monthlyPotential = myRooms.reduce((total, room) => total + room.price + (room.utilities ?? 0), 0);
 
+  const { pendingPayments, latePayments, proofPayments, activeContracts, expectedThisMonth } = financeSummary;
+
   const financeAlertsCount =
-    financeSummary.pendingPayments.length +
-    financeSummary.latePayments.length +
-    financeSummary.proofPayments.length;
+    pendingPayments.length +
+    latePayments.length +
+    proofPayments.length;
 
   const openWorkCount =
     pendingApplicationsCount +
@@ -239,10 +225,10 @@ export function LandlordDashboard() {
     setShowReceivingSettings(true);
   };
 
-  const handleSaveReceivingDetails = () => {
+  const handleSaveReceivingDetails = async () => {
     if (!user) return;
 
-    const methodType = paymentDraft.methodType as any;
+    const methodType = paymentDraft.methodType;
 
     if (methodType === 'mbway' && !paymentDraft.mbwayPhone.trim()) {
       toast.error('Indica o número MB WAY.');
@@ -259,7 +245,7 @@ export function LandlordDashboard() {
       return;
     }
 
-    upsertDefaultPaymentMethod(user.id, {
+    const updated = await upsertPaymentMethod({
       methodType,
       label:
         methodType === 'mbway'
@@ -273,27 +259,28 @@ export function LandlordDashboard() {
       mbwayPhone: paymentDraft.mbwayPhone,
       iban: paymentDraft.iban,
       paypalEmail: paymentDraft.paypalEmail,
-      cardProvider: undefined,
-      checkoutUrl: undefined,
       instructions:
-        paymentDraft.instructions ||
-        'O estudante deve submeter comprovativo após o pagamento.',
+        methodType === 'paypal'
+          ? paymentDraft.paypalEmail
+          : (paymentDraft.instructions || 'O estudante deve submeter comprovativo após o pagamento.'),
     });
 
-    setShowReceivingSettings(false);
-    setFinanceRefreshKey(key => key + 1);
-    toast.success('Dados de recebimento atualizados.');
+    if (updated) {
+      setShowReceivingSettings(false);
+      toast.success('Dados de recebimento atualizados.');
+    } else {
+      toast.error('Erro ao guardar dados de recebimento. Tenta novamente.');
+    }
   };
 
-  const handleValidatePaymentProof = (paymentId: string) => {
-    const updated = markRentPaymentAsPaid(paymentId);
+  const handleValidatePaymentProof = async (paymentId: string) => {
+    const updated = await financeSummary.validatePayment(paymentId);
 
     if (!updated) {
       toast.error('Não foi possível validar o comprovativo.');
       return;
     }
 
-    setFinanceRefreshKey(key => key + 1);
     toast.success('Comprovativo validado.', {
       description: 'O pagamento passou para estado Pago.',
     });
@@ -315,13 +302,13 @@ export function LandlordDashboard() {
       route: '/landlord/maintenance',
       tone: 'text-red-700 bg-red-50 border-red-100',
     },
-    financeSummary.latePayments.length > 0 && {
-      label: `${financeSummary.latePayments.length} renda${financeSummary.latePayments.length > 1 ? 's' : ''} em atraso`,
+    latePayments.length > 0 && {
+      label: `${latePayments.length} renda${latePayments.length > 1 ? 's' : ''} em atraso`,
       route: '/landlord/dashboard',
       tone: 'text-red-700 bg-red-50 border-red-100',
     },
-    financeSummary.proofPayments.length > 0 && {
-      label: `${financeSummary.proofPayments.length} comprovativo${financeSummary.proofPayments.length > 1 ? 's' : ''} por validar`,
+    proofPayments.length > 0 && {
+      label: `${proofPayments.length} comprovativo${proofPayments.length > 1 ? 's' : ''} por validar`,
       route: '/landlord/dashboard',
       tone: 'text-primary bg-primary/5 border-primary/10',
     },
@@ -559,7 +546,7 @@ export function LandlordDashboard() {
           </Card>
         </div>
 
-        <Card key={`finance-${financeRefreshKey}`} className="p-0 mb-6 overflow-hidden border-primary/10">
+        <Card className="p-0 mb-6 overflow-hidden border-primary/10">
           <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="bg-gradient-to-br from-slate-950 via-primary to-blue-700 p-6 text-white">
               <div className="flex items-start justify-between gap-4 mb-8">
@@ -581,11 +568,11 @@ export function LandlordDashboard() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-white/12 border border-white/15 p-4">
                   <p className="text-xs text-white/70 mb-1">Receita prevista</p>
-                  <p className="text-2xl font-bold">{formatCurrency(financeSummary.expectedThisMonth)}</p>
+                  <p className="text-2xl font-bold">{formatCurrency(expectedThisMonth)}</p>
                 </div>
                 <div className="rounded-2xl bg-white/12 border border-white/15 p-4">
                   <p className="text-xs text-white/70 mb-1">Contratos ativos</p>
-                  <p className="text-2xl font-bold">{financeSummary.activeContracts}</p>
+                  <p className="text-2xl font-bold">{activeContracts}</p>
                 </div>
               </div>
             </div>
@@ -597,7 +584,7 @@ export function LandlordDashboard() {
                     <p className="text-xs text-muted-foreground">Pendentes</p>
                     <ClockIcon />
                   </div>
-                  <p className="text-2xl font-bold text-foreground">{financeSummary.pendingPayments.length}</p>
+                  <p className="text-2xl font-bold text-foreground">{pendingPayments.length}</p>
                   <p className="text-xs text-muted-foreground mt-1">rendas por confirmar</p>
                 </div>
 
@@ -606,7 +593,7 @@ export function LandlordDashboard() {
                     <p className="text-xs text-muted-foreground">Atrasos</p>
                     <AlertCircle className="w-4 h-4 text-red-600" />
                   </div>
-                  <p className="text-2xl font-bold text-foreground">{financeSummary.latePayments.length}</p>
+                  <p className="text-2xl font-bold text-foreground">{latePayments.length}</p>
                   <p className="text-xs text-muted-foreground mt-1">precisam de seguimento</p>
                 </div>
 
@@ -615,7 +602,7 @@ export function LandlordDashboard() {
                     <p className="text-xs text-muted-foreground">Comprovativos</p>
                     <ClipboardCheck className="w-4 h-4 text-primary" />
                   </div>
-                  <p className="text-2xl font-bold text-foreground">{financeSummary.proofPayments.length}</p>
+                  <p className="text-2xl font-bold text-foreground">{proofPayments.length}</p>
                   <p className="text-xs text-muted-foreground mt-1">por validar</p>
                 </div>
               </div>
@@ -674,9 +661,9 @@ export function LandlordDashboard() {
                     <ClipboardCheck className="w-5 h-5 text-primary" />
                   </div>
 
-                  {financeSummary.proofPayments.length > 0 ? (
+                  {proofPayments.length > 0 ? (
                     <div className="space-y-2">
-                      {financeSummary.proofPayments.slice(0, 3).map(payment => (
+                      {proofPayments.slice(0, 3).map(payment => (
                         <div key={payment.id} className="rounded-xl bg-muted/30 border border-border px-3 py-3">
                           <div className="flex items-start justify-between gap-3 mb-3">
                             <div>
@@ -693,7 +680,7 @@ export function LandlordDashboard() {
                           <Button
                             size="sm"
                             className="w-full"
-                            onClick={() => handleValidatePaymentProof(payment.id)}
+                            onClick={() => void handleValidatePaymentProof(payment.id)}
                           >
                             <ClipboardCheck className="w-4 h-4 mr-1.5" />
                             Validar pagamento
@@ -910,7 +897,7 @@ export function LandlordDashboard() {
                 <Button variant="outline" onClick={() => setShowReceivingSettings(false)} className="flex-1">
                   Cancelar
                 </Button>
-                <Button onClick={handleSaveReceivingDetails} className="flex-1">
+                <Button onClick={() => void handleSaveReceivingDetails()} className="flex-1">
                   <Check className="w-4 h-4 mr-1.5" />
                   Guardar dados
                 </Button>
@@ -921,7 +908,7 @@ export function LandlordDashboard() {
 
         <LandlordContractManager
           landlordId={user.id}
-          onUpdated={() => setFinanceRefreshKey(key => key + 1)}
+          onUpdated={() => void financeSummary.refresh()}
         />
 
         <Card className="p-5 md:p-6 mb-8 bg-gradient-to-br from-accent/5 to-accent/10 border-accent/20 cursor-pointer" hover onClick={() => navigate('/landlord/maintenance')}>

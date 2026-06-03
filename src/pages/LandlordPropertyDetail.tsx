@@ -55,16 +55,31 @@ import { toast } from 'sonner';
 import { isUserSuspended, isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
 import { Room, RoomStatus, Property } from '../types/property';
 import { normalizeRoomStatus, getRoomStatusLabel, getRoomStatusBadgeClasses } from '../utils/roomStatus';
-import {
-  LandlordApplication,
-  CandidateStatus,
-  getApplicationsByProperty,
-  updateCandidateStatus,
-  scheduleVisit,
-} from '../data/mockLandlordCandidates';
+import { useLandlordApplications } from '../hooks/useDb';
+import type { ApplicationStatus } from '../types/accommodation';
 
 // Re-export the type alias used internally
-type Candidate = LandlordApplication;
+type CandidateStatus = ApplicationStatus;
+interface Candidate {
+  id: string;
+  propertyId: string;
+  roomId: string;
+  studentId: string;
+  studentName: string;
+  initials: string;
+  avatarColor: string;
+  university: string;
+  course: string;
+  year: number;
+  isStudent: boolean;
+  compatibilityScore: number;
+  message: string;
+  status: CandidateStatus;
+  appliedAt: string;
+  visitDate?: string;
+  visitFormat?: 'presencial' | 'videochamada';
+  visitNote?: string;
+}
 
 // ─── CandidateCard ─────────────────────────────────────────────────────────────
 
@@ -1271,15 +1286,54 @@ export function LandlordPropertyDetail() {
   const [visitCandidate, setVisitCandidate] = useState<Candidate | null>(null);
   const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'rooms' | 'candidates'>('rooms');
-  const [candidates, setCandidates] = useState<Candidate[]>(() =>
-  id ? getApplicationsByProperty(id) : [],
-  );
   const [candidateFilter, setCandidateFilter] = useState<'all' | CandidateStatus>('all');
   const [roomFilter, setRoomFilter] = useState<'all' | string>('all');
 
-  const reloadCandidates = () => {
-    if (id) setCandidates(getApplicationsByProperty(id));
-  };
+  const {
+    applications: landlordApplications,
+    accept: acceptApplication,
+    reject: rejectApplication,
+    scheduleVisit: scheduleApplicationVisit,
+    refresh: refreshApplications,
+  } = useLandlordApplications(user?.id);
+
+  const candidates: Candidate[] = landlordApplications
+    .filter(app => app.propertyId === id)
+    .map(app => {
+      const nameParts = app.studentName.split(' ');
+      const initials = nameParts.length > 1
+        ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`
+        : nameParts[0].slice(0, 2);
+
+      const colors = [
+        'from-blue-500 to-indigo-500',
+        'from-purple-500 to-pink-500',
+        'from-green-500 to-teal-500',
+        'from-orange-500 to-red-500',
+        'from-cyan-500 to-blue-500',
+      ];
+
+      return {
+        id: app.id,
+        propertyId: app.propertyId,
+        roomId: app.roomId,
+        studentId: app.studentId,
+        studentName: app.studentName,
+        initials: initials.toUpperCase(),
+        avatarColor: colors[Math.abs(app.studentId.charCodeAt(0) % colors.length)],
+        university: app.university || 'Universidade não indicada',
+        course: app.course || 'Curso não indicado',
+        year: app.year ?? 0,
+        isStudent: true,
+        compatibilityScore: Math.round(60 + Math.random() * 40),
+        message: app.message,
+        status: app.status,
+        appliedAt: app.appliedAt.toISOString().slice(0, 10),
+        visitDate: app.visitDate,
+        visitFormat: app.visitFormat,
+        visitNote: app.visitNote,
+      };
+    });
 
   const property = getProperty(id || '');
   const rooms = property ? getRoomsByProperty(property.id) : [];
@@ -1361,7 +1415,7 @@ export function LandlordPropertyDetail() {
     toast.success('Quarto reativado com sucesso');
   };
 
-  const handleAcceptCandidate = (candidateId: string) => {
+  const handleAcceptCandidate = async (candidateId: string) => {
     const candidate = candidates.find(c => c.id === candidateId);
     if (!candidate) return;
 
@@ -1376,8 +1430,8 @@ export function LandlordPropertyDetail() {
       }
     }
 
-    const result = updateCandidateStatus(candidateId, 'accepted');
-    if (!result) {
+    const success = await acceptApplication(candidateId);
+    if (!success) {
       toast.error('Não foi possível aceitar a candidatura. Tenta novamente.');
       return;
     }
@@ -1390,23 +1444,21 @@ export function LandlordPropertyDetail() {
       });
     }
 
-    reloadCandidates();
-    toast.success(`${candidate.studentName} aceite! O quarto foi marcado como reservado e os restantes candidatos deste quarto foram recusados.`);
+    toast.success(`${candidate.studentName} aceite! O quarto foi marcado como reservado.`);
   };
 
   const handleRejectCandidate = (candidateId: string) => {
     setConfirmRejectId(candidateId);
   };
 
-  const handleRejectConfirm = () => {
+  const handleRejectConfirm = async () => {
     if (!confirmRejectId) return;
     const candidate = candidates.find(c => c.id === confirmRejectId);
-    const result = updateCandidateStatus(confirmRejectId, 'rejected');
-    if (!result) {
+    const success = await rejectApplication(confirmRejectId);
+    if (!success) {
       toast.error('Não foi possível recusar a candidatura. Tenta novamente.');
       return;
     }
-    reloadCandidates();
     toast.info(`Candidatura de ${candidate?.studentName ?? 'candidato'} recusada.`);
     setConfirmRejectId(null);
   };
@@ -1423,9 +1475,12 @@ export function LandlordPropertyDetail() {
     toast.success('Quarto atualizado com sucesso');
   };
 
-  const handleScheduleVisit = (applicationId: string, visitDate: string, details: { format: 'presencial' | 'videochamada'; note: string }) => {
-    scheduleVisit(applicationId, visitDate, details.format, details.note || undefined);
-    reloadCandidates();
+  const handleScheduleVisit = async (applicationId: string, visitDate: string, details: { format: 'presencial' | 'videochamada'; note: string }) => {
+    const success = await scheduleApplicationVisit(applicationId, visitDate, details.format, details.note || undefined);
+    if (!success) {
+      toast.error('Não foi possível agendar a visita. Tenta novamente.');
+      return;
+    }
     setVisitCandidate(null);
     toast.success(details.format === 'videochamada' ? 'Videochamada agendada com sucesso' : 'Visita presencial agendada com sucesso');
   };

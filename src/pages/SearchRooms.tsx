@@ -27,8 +27,8 @@ import { Card } from '../components/Card';
 import { useProperties } from '../context/PropertiesContext';
 import { useCompare } from '../context/CompareContext';
 import { useAuth } from '../context/AuthContext';
-import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
-import { getVerificationStatus } from '../data/mockTrust';
+import { useStudentProfile } from '../hooks/useDb';
+import { useAllVerificationStatuses } from '../hooks/useTrust';
 import { Room, Property } from '../types/property';
 
 type ViewMode = 'grid' | 'list' | 'map';
@@ -124,10 +124,6 @@ const ENTRY_MONTHS = [
 
 const walkMinutes = (km: number) => Math.round(Number(km || 0) * 13);
 
-const hasVerifiedLandlord = (property: Property) => {
-  const verification = getVerificationStatus(property.landlordId);
-  return verification?.level === 'gold' || verification?.level === 'silver';
-};
 
 const isNearSupermarket = (property: Property) =>
   property.zone.toLowerCase().includes('centro') || property.distanceToUniversity <= 0.5;
@@ -701,7 +697,11 @@ function FilterSidebar({
 export function SearchRooms() {
   const { rooms, properties, refreshProperties } = useProperties();
   const { isInCompare, toggleCompare, canAdd } = useCompare();
+  const { statusMap: verificationStatusMap } = useAllVerificationStatuses();
   const { user } = useAuth();
+  const { profile: studentProfile, loading: profileLoading } = useStudentProfile(
+    (user?.type === 'student' || user?.type === 'landlord') ? user?.id : undefined,
+  );
 
   const [showFilters, setShowFilters] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -710,8 +710,10 @@ export function SearchRooms() {
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
 
   const canShowCompatibility = Boolean(
-    (user?.type === 'student' || user?.type === 'landlord') &&
-    hasCompletedCompatibilityProfile(user.id),
+    user &&
+    (user.type === 'student' || user.type === 'landlord') &&
+    user.onboardingCompleted &&
+    (user.profileCompleteness?.overall ?? 0) >= 80,
   );
 
   const set = (updates: Partial<SearchFilters>) =>
@@ -813,7 +815,7 @@ export function SearchRooms() {
 
         if (!property) return false;
         if (filters.verifiedListing && !property.verified) return false;
-        if (filters.verifiedLandlord && !hasVerifiedLandlord(property)) return false;
+        if (filters.verifiedLandlord && !(verificationStatusMap[property.landlordId]?.level === 'gold' || verificationStatusMap[property.landlordId]?.level === 'silver')) return false;
         if (filters.wifi && !property.amenities.wifi) return false;
         if (filters.laundry && !property.amenities.laundry) return false;
         if (filters.kitchen && !property.amenities.kitchen) return false;
@@ -861,7 +863,7 @@ export function SearchRooms() {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [rooms, properties, filters, canShowCompatibility]);
+  }, [rooms, properties, filters, canShowCompatibility, verificationStatusMap]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -900,7 +902,7 @@ export function SearchRooms() {
     const closestWalk = results.length > 0
       ? Math.min(...results.map(item => walkMinutes(item.property.distanceToUniversity)))
       : 0;
-    const verifiedCount = results.filter(item => item.property.verified || hasVerifiedLandlord(item.property)).length;
+    const verifiedCount = results.filter(item => item.property.verified || verificationStatusMap[item.property.landlordId]?.level === 'gold' || verificationStatusMap[item.property.landlordId]?.level === 'silver').length;
 
     return {
       propertyCount,
@@ -908,7 +910,7 @@ export function SearchRooms() {
       closestWalk,
       verifiedCount,
     };
-  }, [results, filters.includeUtilitiesInPrice]);
+  }, [results, filters.includeUtilitiesInPrice, verificationStatusMap]);
 
   const handleClearFilters = () => setFilters(DEFAULT_FILTERS);
   const sortLabel = getSortLabel(filters.sortBy, canShowCompatibility);
@@ -1166,6 +1168,7 @@ export function SearchRooms() {
                       key={room.id}
                       room={room}
                       property={property}
+                      studentProfile={canShowCompatibility ? (profileLoading ? null : studentProfile) : undefined}
                       variant="public"
                       displayMode={viewMode === 'list' ? 'list' : 'grid'}
                       showFavorite

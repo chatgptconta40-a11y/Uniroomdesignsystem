@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { Application, Notification, ActiveHome, ApplicationStatus } from '../types/accommodation';
 import type { MaintenanceRequest } from '../types/maintenance';
+import type { StudentProfile } from '../types/profile';
+import { fetchStudentProfileFromDb } from '../db/profilesDb';
 
 // ============================================================
 // APPLICATIONS
@@ -418,14 +420,15 @@ export function useActiveHome() {
 // ============================================================
 export interface ReportRow {
   id: string;
-  reporterId: string;
-  targetType: 'accommodation' | 'user' | 'message' | 'review' | 'listing';
+  reporterId?: string;
+  targetType: string;
   targetId: string;
   targetName?: string;
   reason: string;
   description: string;
   status: 'pending' | 'under_review' | 'reviewed' | 'resolved' | 'dismissed';
-  severity: 'low' | 'medium' | 'high';
+  severity?: string;
+  internalNote?: string;
   resolution?: string;
   resolvedBy?: string;
   createdAt: Date;
@@ -441,31 +444,64 @@ export function useReports() {
     const { data, error } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
     if (error) console.error('Reports fetch error:', error.message);
     const list: ReportRow[] = (data ?? []).map(r => ({
-      id: r.id, reporterId: r.reporter_id, targetType: r.target_type,
-      targetId: r.target_id, targetName: r.target_name ?? undefined,
-      reason: r.reason, description: r.description ?? '',
-      status: r.status, severity: r.severity, resolution: r.resolution ?? undefined,
-      resolvedBy: r.resolved_by ?? undefined, createdAt: new Date(r.created_at),
+      id: r.id,
+      reporterId: r.reporter_id ?? undefined,
+      targetType: r.target_type,
+      targetId: r.target_id,
+      targetName: r.target_name ?? undefined,
+      reason: r.reason,
+      description: r.description ?? '',
+      status: r.status,
+      severity: r.severity ?? undefined,
+      internalNote: r.internal_note ?? undefined,
+      resolution: r.resolution ?? undefined,
+      resolvedBy: r.resolved_by ?? undefined,
+      createdAt: new Date(r.created_at),
       resolvedAt: r.resolved_at ? new Date(r.resolved_at) : undefined,
     }));
     setReports(list);
     setLoading(false);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
-  const updateStatus = async (id: string, status: ReportRow['status'], resolution?: string) => {
+  const updateStatus = async (
+    id: string,
+    status: ReportRow['status'],
+    resolution?: string,
+  ): Promise<boolean> => {
+    const { data: { session } } = await supabase.auth.getSession();
     const patch: Record<string, unknown> = { status };
     if (status === 'resolved' || status === 'dismissed') {
       patch.resolved_at = new Date().toISOString();
+      patch.resolved_by = session?.user?.id ?? null;
       if (resolution) patch.resolution = resolution;
     }
     const { error } = await supabase.from('reports').update(patch).eq('id', id);
-    if (error) { console.error('Report status error:', error.message); return; }
+    if (error) { console.error('Report status error:', error.message); return false; }
     await refresh();
+    return true;
   };
 
-  return { reports, loading, refresh, updateStatus };
+  const addInternalNote = async (id: string, note: string): Promise<boolean> => {
+    const { error } = await supabase
+      .from('reports')
+      .update({ internal_note: note })
+      .eq('id', id);
+    if (error) { console.error('Report note error:', error.message); return false; }
+    await refresh();
+    return true;
+  };
+
+  const openCount = reports.filter(
+    r => r.status === 'pending' || r.status === 'under_review',
+  ).length;
+
+  const criticalCount = reports.filter(
+    r => r.severity === 'critical' && r.status !== 'resolved' && r.status !== 'dismissed',
+  ).length;
+
+  return { reports, loading, refresh, updateStatus, addInternalNote, openCount, criticalCount };
 }
 
 // ============================================================
@@ -588,4 +624,261 @@ export function useListingAnalytics(propertyId?: string) {
   useEffect(() => { refresh(); }, [refresh]);
 
   return { data, loading, refresh };
+}
+
+// ============================================================
+// LANDLORD APPLICATIONS (enriched with profiles)
+// ============================================================
+export interface LandlordApplicationRow {
+  id: string;
+  propertyId: string;
+  roomId: string;
+  studentId: string;
+  studentName: string;
+  studentEmail?: string;
+  course?: string;
+  university?: string;
+  year?: number;
+  status: ApplicationStatus;
+  message: string;
+  appliedAt: Date;
+  visitDate?: string;
+  visitFormat?: 'presencial' | 'videochamada';
+  visitNote?: string;
+}
+
+export function useLandlordApplications(landlordId?: string) {
+  const [applications, setApplications] = useState<LandlordApplicationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    if (!landlordId) { setApplications([]); setLoading(false); return; }
+    setLoading(true);
+
+    const { data: apps, error: appsError } = await supabase
+      .from('applications')
+      .select('*')
+      .eq('landlord_id', landlordId)
+      .order('created_at', { ascending: false });
+
+    if (appsError) {
+      console.error('Landlord applications fetch error:', appsError.message);
+      setApplications([]);
+      setLoading(false);
+      return;
+    }
+
+    if (!apps || apps.length === 0) {
+      setApplications([]);
+      setLoading(false);
+      return;
+    }
+
+    const studentIds = [...new Set(apps.map(a => a.user_id))];
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, course, university, year')
+      .in('id', studentIds);
+
+    if (profilesError) {
+      console.error('Profiles fetch error:', profilesError.message);
+    }
+
+    const profileMap = new Map((profiles ?? []).map(p => [p.id, p]));
+
+    const enriched: LandlordApplicationRow[] = apps.map(app => {
+      const profile = profileMap.get(app.user_id);
+      return {
+        id: app.id,
+        propertyId: app.property_id ?? '',
+        roomId: app.room_id ?? '',
+        studentId: app.user_id,
+        studentName: profile?.full_name ?? 'Estudante',
+        studentEmail: profile?.email,
+        course: profile?.course ?? undefined,
+        university: profile?.university ?? undefined,
+        year: profile?.year ?? undefined,
+        status: app.status,
+        message: app.message ?? '',
+        appliedAt: new Date(app.created_at),
+        visitDate: app.visit_date ?? undefined,
+        visitFormat: app.visit_format ?? undefined,
+        visitNote: app.visit_note ?? undefined,
+      };
+    });
+
+    setApplications(enriched);
+    setLoading(false);
+  }, [landlordId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const accept = async (applicationId: string) => {
+    const { error } = await supabase
+      .from('applications')
+      .update({ status: 'accepted', reviewed_at: new Date().toISOString() })
+      .eq('id', applicationId);
+
+    if (error) {
+      console.error('Accept application error:', error.message);
+      return false;
+    }
+
+    const app = applications.find(a => a.id === applicationId);
+    if (app) {
+      await supabase.from('notifications').insert({
+        user_id: app.studentId,
+        type: 'application_accepted',
+        title: 'Candidatura aceite',
+        message: 'O senhorio aceitou a tua candidatura. Confirma a estadia para garantir o quarto.',
+        link: '/applications',
+        read: false,
+      });
+    }
+
+    await refresh();
+    return true;
+  };
+
+  const reject = async (applicationId: string) => {
+    const { error } = await supabase
+      .from('applications')
+      .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
+      .eq('id', applicationId);
+
+    if (error) {
+      console.error('Reject application error:', error.message);
+      return false;
+    }
+
+    const app = applications.find(a => a.id === applicationId);
+    if (app) {
+      await supabase.from('notifications').insert({
+        user_id: app.studentId,
+        type: 'application_rejected',
+        title: 'Candidatura recusada',
+        message: 'O senhorio recusou a tua candidatura.',
+        link: '/applications',
+        read: false,
+      });
+    }
+
+    await refresh();
+    return true;
+  };
+
+  const scheduleVisit = async (applicationId: string, visitDate: string, visitFormat: 'presencial' | 'videochamada', visitNote?: string) => {
+    const { error } = await supabase
+      .from('applications')
+      .update({
+        visit_date: visitDate,
+        visit_format: visitFormat,
+        visit_note: visitNote ?? null,
+        status: 'under_review',
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', applicationId);
+
+    if (error) {
+      console.error('Schedule visit error:', error.message);
+      return false;
+    }
+
+    const app = applications.find(a => a.id === applicationId);
+    if (app) {
+      await supabase.from('notifications').insert({
+        user_id: app.studentId,
+        type: 'visit_scheduled',
+        title: 'Visita agendada',
+        message: `O senhorio agendou uma ${visitFormat === 'videochamada' ? 'videochamada' : 'visita presencial'} para ${new Date(visitDate).toLocaleDateString('pt-PT')}.`,
+        link: '/applications',
+        read: false,
+      });
+    }
+
+    await refresh();
+    return true;
+  };
+
+  const getByProperty = useCallback((propertyId: string) => {
+    return applications.filter(app => app.propertyId === propertyId);
+  }, [applications]);
+
+  const getByRoom = useCallback((propertyId: string, roomId: string) => {
+    return applications.filter(app => app.propertyId === propertyId && app.roomId === roomId);
+  }, [applications]);
+
+  const getPendingCount = useCallback(() => {
+    return applications.filter(app => app.status === 'pending' || app.status === 'under_review').length;
+  }, [applications]);
+
+  return {
+    applications,
+    loading,
+    refresh,
+    accept,
+    reject,
+    scheduleVisit,
+    getByProperty,
+    getByRoom,
+    getPendingCount,
+  };
+}
+
+// ============================================================
+// STUDENT PROFILE
+// ============================================================
+
+// Module-level cache: avoids duplicate Supabase fetches when multiple
+// components (e.g. a list of RoomCards) call this hook with the same userId.
+const studentProfileCache = new Map<string, StudentProfile | null>();
+
+export function useStudentProfile(userId: string | undefined) {
+  const [profile, setProfile] = useState<StudentProfile | null>(
+    () => (userId ? studentProfileCache.get(userId) ?? null : null),
+  );
+  const [loading, setLoading] = useState(() => Boolean(userId && !studentProfileCache.has(userId)));
+
+  useEffect(() => {
+    if (!userId) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+
+    if (studentProfileCache.has(userId)) {
+      setProfile(studentProfileCache.get(userId) ?? null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    fetchStudentProfileFromDb(userId)
+      .then(result => {
+        studentProfileCache.set(userId, result);
+        setProfile(result);
+        setLoading(false);
+      })
+      .catch(() => {
+        setProfile(null);
+        setLoading(false);
+      });
+  }, [userId]);
+
+  const refresh = useCallback(async () => {
+    if (!userId) return;
+    studentProfileCache.delete(userId);
+    setLoading(true);
+    try {
+      const result = await fetchStudentProfileFromDb(userId);
+      studentProfileCache.set(userId, result);
+      setProfile(result);
+    } catch {
+      setProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  return { profile, loading, refresh };
 }

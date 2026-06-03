@@ -13,15 +13,10 @@ import {
 import { Button } from './Button';
 import { Card } from './Card';
 import { Badge } from './Badge';
-import {
-  ContractStatus,
-  RentalContract,
-  formatCurrency,
-  getContractStatusLabel,
-  getOrCreateRentalContract,
-  getRentalContractsForLandlord,
-  updateRentalContract,
-} from '../data/mockHousingFinance';
+import { useRentalContracts, type ContractStatus, type RentalContract } from '../hooks/useHousingFinance';
+import { formatCurrency, getContractStatusLabel, getContractStatusTone } from '../utils/housingFinanceLabels';
+import { useProperties } from '../context/PropertiesContext';
+import { supabase } from '../lib/supabase';
 
 interface LandlordContractManagerProps {
   landlordId: string;
@@ -48,27 +43,10 @@ const STATUS_OPTIONS: { value: ContractStatus; label: string }[] = [
   { value: 'cancelled', label: 'Cancelado' },
 ];
 
-function getContractStatusTone(status: ContractStatus): 'success' | 'warning' | 'outline' | 'default' {
-  if (status === 'active' || status === 'signed') return 'success';
-  if (status === 'draft' || status === 'sent') return 'warning';
-  if (status === 'expired' || status === 'cancelled') return 'outline';
-  return 'default';
-}
-
-function safeParse<T>(value: string | null, fallback: T): T {
-  try {
-    return value ? JSON.parse(value) as T : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 function toDateInput(value?: string) {
   if (!value) return '';
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-
   return date.toISOString().slice(0, 10);
 }
 
@@ -79,47 +57,6 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map(part => part[0]?.toUpperCase())
     .join('') || 'E';
-}
-
-function getContractContext(contract: RentalContract) {
-  const users = safeParse<any[]>(localStorage.getItem('uniroom_all_users'), []);
-  const profiles = safeParse<any[]>(localStorage.getItem('uniroom_student_profiles'), []);
-  const properties = safeParse<any[]>(localStorage.getItem('uniroom_properties'), []);
-  const rooms = safeParse<any[]>(localStorage.getItem('uniroom_rooms'), []);
-
-  const student = users.find(user => String(user.id) === String(contract.studentId));
-  const profile = profiles.find(profile => String(profile?.personal?.userId) === String(contract.studentId));
-  const property = properties.find(property => String(property.id) === String(contract.propertyId));
-  const room = rooms.find(room => String(room.id) === String(contract.roomId));
-
-  const studentName =
-    profile?.personal?.fullName ||
-    student?.name ||
-    student?.email ||
-    'Estudante';
-
-  return {
-    studentName,
-    studentInitials: getInitials(studentName),
-    propertyTitle: property?.title || 'Alojamento',
-    propertyAddress: [property?.address, property?.zone, property?.city].filter(Boolean).join(', '),
-    roomTitle: room?.roomNumber || room?.title || 'Quarto',
-  };
-}
-
-function ensureContractsFromActiveHomes(landlordId: string) {
-  const activeHomes = safeParse<any[]>(localStorage.getItem('uniroom_active_homes'), []);
-  const rooms = safeParse<any[]>(localStorage.getItem('uniroom_rooms'), []);
-
-  activeHomes
-    .filter(home => String(home.landlordId) === String(landlordId))
-    .forEach(home => {
-      const room = rooms.find(item => String(item.id) === String(home.roomId));
-      const rent = Number(home.monthlyRent ?? room?.price ?? 0);
-      const utilities = Number(home.utilities ?? room?.utilities ?? 0);
-
-      getOrCreateRentalContract(home, rent, utilities);
-    });
 }
 
 function contractToForm(contract: RentalContract): ContractFormState {
@@ -136,28 +73,52 @@ function contractToForm(contract: RentalContract): ContractFormState {
 }
 
 export function LandlordContractManager({ landlordId, onUpdated }: LandlordContractManagerProps) {
-  const [contracts, setContracts] = useState<RentalContract[]>([]);
+  const { contracts, update, refresh, loading } = useRentalContracts({ landlordId: landlordId || undefined });
+  const { getProperty, getRoom } = useProperties();
   const [selectedContract, setSelectedContract] = useState<RentalContract | null>(null);
   const [form, setForm] = useState<ContractFormState | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [studentNames, setStudentNames] = useState<Record<string, string>>({});
+
+  const studentIdsKey = useMemo(
+    () => [...new Set(contracts.map(c => c.studentId))].sort().join(','),
+    [contracts],
+  );
+
+  useEffect(() => {
+    const ids = studentIdsKey ? studentIdsKey.split(',') : [];
+    if (ids.length === 0) { setStudentNames({}); return; }
+    supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', ids)
+      .then(({ data }) => {
+        if (data) {
+          const map: Record<string, string> = {};
+          data.forEach(p => { map[String(p.id)] = p.full_name; });
+          setStudentNames(map);
+        }
+      });
+  }, [studentIdsKey]);
+
+  const getContractContext = (contract: RentalContract) => {
+    const studentName = studentNames[contract.studentId] || 'Estudante';
+    const property = getProperty(contract.propertyId);
+    const room = getRoom(contract.roomId);
+    return {
+      studentName,
+      studentInitials: getInitials(studentName),
+      propertyTitle: property?.title || 'Alojamento',
+      propertyAddress: [property?.address, property?.zone, property?.city].filter(Boolean).join(', '),
+      roomTitle: room?.roomNumber || room?.title || 'Quarto',
+    };
+  };
 
   const selectedContext = useMemo(
     () => selectedContract ? getContractContext(selectedContract) : null,
-    [selectedContract],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedContract, studentNames],
   );
-
-  const loadContracts = () => {
-    if (!landlordId) {
-      setContracts([]);
-      return;
-    }
-
-    ensureContractsFromActiveHomes(landlordId);
-    setContracts(getRentalContractsForLandlord(landlordId));
-  };
-
-  useEffect(() => {
-    loadContracts();
-  }, [landlordId]);
 
   const openEditor = (contract: RentalContract) => {
     setSelectedContract(contract);
@@ -169,10 +130,10 @@ export function LandlordContractManager({ landlordId, onUpdated }: LandlordContr
     setForm(null);
   };
 
-  const saveContract = () => {
+  const saveContract = async () => {
     if (!selectedContract || !form) return;
-
-    const updated = updateRentalContract(selectedContract.id, {
+    setSaving(true);
+    const updated = await update(selectedContract.id, {
       title: form.title.trim() || 'Contrato de arrendamento',
       status: form.status,
       startDate: form.startDate,
@@ -182,13 +143,11 @@ export function LandlordContractManager({ landlordId, onUpdated }: LandlordContr
       utilitiesAmount: Number(form.utilitiesAmount) || 0,
       notes: form.notes.trim(),
     });
-
+    setSaving(false);
     if (updated) {
       setSelectedContract(updated);
       setForm(contractToForm(updated));
-      loadContracts();
       onUpdated?.();
-      alert('Contrato atualizado. O estudante já consegue ver a versão atualizada.');
     }
   };
 
@@ -207,12 +166,12 @@ export function LandlordContractManager({ landlordId, onUpdated }: LandlordContr
 
           <p className="text-sm text-muted-foreground max-w-2xl">
             Edita renda, caução, datas, estado e observações. O estudante vê estes dados em
-            “A Minha Casa” ao clicar em “Ver contrato”.
+            "A Minha Casa" ao clicar em "Ver contrato".
           </p>
         </div>
 
-        <Button variant="outline" size="sm" onClick={loadContracts}>
-          <RefreshCw className="w-4 h-4 mr-1.5" />
+        <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+          <RefreshCw className={`w-4 h-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>
       </div>
@@ -262,7 +221,7 @@ export function LandlordContractManager({ landlordId, onUpdated }: LandlordContr
                         </p>
 
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                          N.º {contract.contractNumber}
+                          N.º {contract.contractNumber || '—'}
                         </p>
                       </div>
                     </div>
@@ -270,7 +229,7 @@ export function LandlordContractManager({ landlordId, onUpdated }: LandlordContr
                     <div className="text-left md:text-right flex-shrink-0">
                       <p className="font-bold text-primary">{formatCurrency(contract.monthlyRent)}</p>
                       <p className="text-xs text-muted-foreground">
-                        Caução {formatCurrency(contract.depositAmount)}
+                        Caução {formatCurrency(contract.depositAmount ?? 0)}
                       </p>
                     </div>
                   </div>
@@ -410,13 +369,13 @@ export function LandlordContractManager({ landlordId, onUpdated }: LandlordContr
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3.5 h-3.5" />
-                      <span>N.º {selectedContract.contractNumber}</span>
+                      <span>N.º {selectedContract.contractNumber || '—'}</span>
                     </div>
                   </div>
 
-                  <Button className="w-full" onClick={saveContract}>
+                  <Button className="w-full" onClick={() => void saveContract()} disabled={saving}>
                     <Save className="w-4 h-4 mr-2" />
-                    Guardar contrato
+                    {saving ? 'A guardar…' : 'Guardar contrato'}
                   </Button>
                 </div>
               </div>
@@ -428,7 +387,7 @@ export function LandlordContractManager({ landlordId, onUpdated }: LandlordContr
       {contracts.length > 0 && (
         <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
           <CheckCircle className="w-4 h-4 text-secondary" />
-          Alterações guardadas em localStorage e refletidas no contrato do estudante.
+          Alterações guardadas no Supabase e refletidas no contrato do estudante.
         </div>
       )}
     </Card>

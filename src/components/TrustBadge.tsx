@@ -1,10 +1,6 @@
 import { Shield, Check } from 'lucide-react';
-import {
-  getTrustScore,
-  getVerificationStatus,
-  getVerificationBadge,
-  getTrustBadge,
-} from '../data/mockTrust';
+import { useTrustScore, useVerificationStatus } from '../hooks/useTrust';
+import { getVerificationBadge, getTrustBadge } from '../utils/trustLabels';
 
 interface TrustBadgeProps {
   userId: string;
@@ -13,13 +9,13 @@ interface TrustBadgeProps {
 }
 
 export function TrustBadge({ userId, size = 'md', showLabel = true }: TrustBadgeProps) {
-  const trustScore = getTrustScore(userId);
-  const verification = getVerificationStatus(userId);
+  const { score: trustScore } = useTrustScore(userId);
+  const { status: verification } = useVerificationStatus(userId);
 
-  if (!trustScore || !verification) return null;
+  if (!trustScore && !verification) return null;
 
-  const verificationBadge = getVerificationBadge(verification.level);
-  const trustBadge = getTrustBadge(trustScore.level);
+  const verificationBadge = getVerificationBadge(verification?.level ?? 'none');
+  const trustBadge = getTrustBadge(trustScore?.level ?? 'new');
 
   const sizes = {
     sm: 'text-xs px-2 py-1',
@@ -35,7 +31,7 @@ export function TrustBadge({ userId, size = 'md', showLabel = true }: TrustBadge
 
   return (
     <div className="flex items-center gap-2">
-      {showLabel && (
+      {showLabel && trustScore && (
         <div
           className={`${sizes[size]} rounded-full font-medium flex items-center gap-1.5 ${trustBadge.bgColor} ${trustBadge.color}`}
         >
@@ -44,7 +40,7 @@ export function TrustBadge({ userId, size = 'md', showLabel = true }: TrustBadge
         </div>
       )}
 
-      {verification.level !== 'none' && (
+      {verification && verification.level !== 'none' && (
         <div
           className={`${sizes[size]} rounded-full font-medium flex items-center gap-1 bg-card border-2 ${
             verification.level === 'gold'
@@ -65,7 +61,7 @@ export function TrustBadge({ userId, size = 'md', showLabel = true }: TrustBadge
         </div>
       )}
 
-      {verification.emailVerified && !showLabel && (
+      {verification?.emailVerified && !showLabel && (
         <div
           className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center"
           title="Email verificado"

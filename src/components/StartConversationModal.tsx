@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { X, Send } from 'lucide-react';
 import { Button } from './Button';
 import { useAuth } from '../context/AuthContext';
-import { createConversation, findOrCreateRoomConversation } from '../data/mockMessages';
+import { findOrCreateConversation } from '../hooks/useMessages';
 import { Accommodation } from '../types/accommodation';
 import { toast } from 'sonner';
 
@@ -50,55 +50,38 @@ export function StartConversationModal({
         `Olá! Interessado/a em "${accommodation.title}". É possível agendar uma visita?`,
       ];
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!message.trim()) {
       toast.error('Escreve uma mensagem');
       return;
     }
 
-    let conversation;
+    try {
+      const conversationId = await findOrCreateConversation({
+        studentId: user?.id || '',
+        studentName: user?.name || '',
+        landlordId,
+        landlordName,
+        roomId: roomId || undefined,
+        propertyId: propertyId || undefined,
+        accommodationTitle: accommodation.title,
+        accommodationPrice: accommodation.price,
+        accommodationImage: accommodation.images[0],
+        initialMessage: message.trim(),
+      });
 
-    // If roomId and propertyId are provided, use room-specific conversation
-    if (roomId && propertyId) {
-      conversation = findOrCreateRoomConversation(
-        user?.id || '',
-        user?.name || '',
-        user?.type as 'student' | 'landlord' || 'student',
-        landlordId,
-        landlordName,
-        roomId,
-        propertyId,
-        accommodation.title,
-        accommodation.price,
-        accommodation.images[0],
-        message.trim()
-      );
-    } else {
-      // Legacy: use accommodation-based conversation
-      conversation = createConversation(
-        user?.id || '',
-        user?.name || '',
-        user?.type as 'student' | 'landlord' || 'student',
-        landlordId,
-        landlordName,
-        'landlord',
-        message.trim(),
-        accommodation.id,
-        accommodation.title,
-        accommodation.price,
-        accommodation.images[0],
-      );
+      toast.success('Mensagem enviada!');
+      onClose();
+      navigate(`/messages?conversation=${conversationId}`);
+    } catch {
+      toast.error('Erro ao enviar mensagem. Tenta novamente.');
     }
-
-    toast.success('Mensagem enviada!');
-    onClose();
-    navigate(`/messages?conversation=${conversation.id}`);
   };
 
   const handleKeyPress = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
@@ -204,7 +187,7 @@ export function StartConversationModal({
             Cancelar
           </Button>
 
-          <Button onClick={handleSend} disabled={!message.trim()}>
+          <Button onClick={() => void handleSend()} disabled={!message.trim()}>
             <Send className="w-4 h-4 mr-2" />
             Enviar mensagem
           </Button>

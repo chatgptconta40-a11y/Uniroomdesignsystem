@@ -14,14 +14,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import {
-  getConversationsForUser,
-  getMessagesForConversation,
-  getUnreadCountForConversation,
-  isSameMessageUser,
-  sendMessage,
-  markConversationAsRead,
-} from '../data/mockMessages';
+import { useConversations, useMessages } from '../hooks/useMessages';
 import { Message } from '../types/message';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
@@ -37,13 +30,13 @@ export function Messages() {
     searchParams.get('conversation') || null,
   );
   const [messageInput, setMessageInput] = useState('');
-  const [messagesVersion, setMessagesVersion] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const conversations = getConversationsForUser(user?.id || '');
+  const { conversations } = useConversations();
+  const { messages, sendMessage: sendMsg, markConversationRead } = useMessages(selectedConversationId);
+
   const selectedConversation = conversations.find(conversation => conversation.id === selectedConversationId);
-  const messages = selectedConversationId ? getMessagesForConversation(selectedConversationId) : [];
-  const otherParticipant = selectedConversation?.participants.find(participant => !isSameMessageUser(participant.id, user?.id || ''));
+  const otherParticipant = selectedConversation?.participants.find(participant => participant.id !== user?.id);
   const isGroupChat = selectedConversation?.isGroup || false;
 
   const filteredConversations = useMemo(() => {
@@ -51,9 +44,8 @@ export function Messages() {
 
     if (searchQuery) {
       filtered = filtered.filter(conversation => {
-        const participant = conversation.participants.find(item => !isSameMessageUser(item.id, user?.id || ''));
+        const participant = conversation.participants.find(item => item.id !== user?.id);
         const query = searchQuery.toLowerCase();
-
         return participant?.name.toLowerCase().includes(query)
           || conversation.lastMessage?.content.toLowerCase().includes(query);
       });
@@ -61,42 +53,31 @@ export function Messages() {
 
     if (filter === 'landlords') {
       filtered = filtered.filter(conversation =>
-        conversation.participants.some(participant => !isSameMessageUser(participant.id, user?.id || '') && participant.type === 'landlord'),
+        conversation.participants.some(participant => participant.id !== user?.id && participant.type === 'landlord'),
       );
     } else if (filter === 'students') {
       filtered = filtered.filter(conversation =>
-        conversation.participants.some(participant => !isSameMessageUser(participant.id, user?.id || '') && participant.type === 'student'),
+        conversation.participants.some(participant => participant.id !== user?.id && participant.type === 'student'),
       );
     } else if (filter === 'unread') {
-      filtered = filtered.filter(conversation =>
-        getUnreadCountForConversation(conversation.id, user?.id || '') > 0
-      );
+      filtered = filtered.filter(conversation => conversation.unreadCount > 0);
     }
 
     return filtered;
-  }, [conversations, searchQuery, filter, user?.id, messagesVersion]);
+  }, [conversations, searchQuery, filter, user?.id]);
 
   useEffect(() => {
     if (selectedConversationId) {
-      markConversationAsRead(selectedConversationId, user?.id || '');
-      setMessagesVersion(current => current + 1);
+      void markConversationRead();
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [selectedConversationId, user?.id, messages.length]);
+  }, [selectedConversationId, markConversationRead, messages.length]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageInput.trim() || !selectedConversationId) return;
-
-    sendMessage(
-      selectedConversationId,
-      user?.id || '',
-      user?.name || '',
-      messageInput.trim(),
-    );
-
+    const content = messageInput.trim();
     setMessageInput('');
-    setMessagesVersion(current => current + 1);
-
+    await sendMsg(content);
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
@@ -105,7 +86,7 @@ export function Messages() {
   const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      handleSendMessage();
+      void handleSendMessage();
     }
   };
 
@@ -243,10 +224,10 @@ export function Messages() {
                 ) : (
                   <div className="divide-y divide-border">
                     {filteredConversations.map(conversation => {
-                      const participant = conversation.participants.find(item => !isSameMessageUser(item.id, user?.id || ''));
+                      const participant = conversation.participants.find(item => item.id !== user?.id);
                       const isSelected = conversation.id === selectedConversationId;
                       const isGroup = conversation.isGroup || false;
-                      const unreadCount = getUnreadCountForConversation(conversation.id, user?.id || '');
+                      const unreadCount = conversation.unreadCount;
 
                       return (
                         <button
@@ -454,7 +435,7 @@ export function Messages() {
                             </div>
 
                             {group.messages.map(message => {
-                              const isOwn = isSameMessageUser(message.senderId, user?.id || '');
+                              const isOwn = message.senderId === user?.id;
 
                               return (
                                 <div key={message.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`}>
@@ -516,7 +497,7 @@ export function Messages() {
                       />
 
                       <Button
-                        onClick={handleSendMessage}
+                        onClick={() => void handleSendMessage()}
                         disabled={!messageInput.trim()}
                         size="sm"
                         className="flex-shrink-0"

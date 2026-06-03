@@ -1,4 +1,3 @@
-import { getProfile } from '../data/mockProfiles';
 import type { StudentProfile } from '../types/profile';
 import type { Room, Property } from '../types/property';
 
@@ -54,13 +53,10 @@ function inferRoomLifestyle(room: Room, property: Property) {
 }
 
 export function getPersonalizedCompatibility(
-  userId: string | undefined | null,
+  profile: StudentProfile | null,
   room: Room,
   property: Property,
 ): PersonalizedCompatibility | null {
-  if (!userId) return null;
-
-  const profile: StudentProfile | null = getProfile(userId);
   if (!profile) return null;
 
   const lifestyle = profile.lifestyle || {};
@@ -197,9 +193,9 @@ export function getPersonalizedCompatibility(
 }
 
 export function getRoomCompatibilityScore(
-  userId: string | undefined | null,
+  profile: StudentProfile | null,
   room: Room,
   property: Property,
 ): number | undefined {
-  return getPersonalizedCompatibility(userId, room, property)?.overall;
+  return getPersonalizedCompatibility(profile, room, property)?.overall;
 }

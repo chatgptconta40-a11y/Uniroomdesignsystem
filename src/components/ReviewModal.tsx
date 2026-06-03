@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { X, Star, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { Button } from './Button';
-import { createReview } from '../data/mockTrust';
+import { useReviews } from '../hooks/useTrust';
 import { toast } from 'sonner';
 
 interface ReviewModalProps {
-  accommodationId: string;
+  propertyId: string;
   landlordId: string;
   userId: string;
   userName: string;
@@ -14,13 +14,14 @@ interface ReviewModalProps {
 }
 
 export function ReviewModal({
-  accommodationId,
+  propertyId,
   landlordId,
   userId,
   userName,
   onClose,
   onSuccess,
 }: ReviewModalProps) {
+  const { createReview } = useReviews({ propertyId });
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [criteria, setCriteria] = useState({
@@ -32,6 +33,7 @@ export function ReviewModal({
   });
   const [comment, setComment] = useState('');
   const [recommend, setRecommend] = useState<boolean | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const criteriaLabels = {
     quality: 'Qualidade do alojamento',
@@ -41,7 +43,7 @@ export function ReviewModal({
     valueForMoney: 'Relação qualidade/preço',
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (rating === 0) {
       toast.error('Por favor, seleciona uma classificação geral');
       return;
@@ -62,36 +64,35 @@ export function ReviewModal({
       return;
     }
 
-    createReview(
-      accommodationId,
-      landlordId,
-      userId,
-      userName,
+    setSubmitting(true);
+    const result = await createReview({
+      propertyId,
+      reviewedUserId: landlordId,
       rating,
       criteria,
-      comment.trim(),
+      comment: comment.trim(),
       recommend,
-    );
+      reviewerName: userName,
+    });
+    setSubmitting(false);
 
-    toast.success('Avaliação publicada com sucesso!');
-    onSuccess();
-    onClose();
+    if (result) {
+      toast.success('Avaliação publicada com sucesso!');
+      onSuccess();
+      onClose();
+    } else {
+      toast.error('Erro ao publicar avaliação. Tenta novamente.');
+    }
   };
 
   const getRatingLabel = () => {
     switch (rating) {
-      case 5:
-        return 'Excelente!';
-      case 4:
-        return 'Muito bom';
-      case 3:
-        return 'Bom';
-      case 2:
-        return 'Razoável';
-      case 1:
-        return 'Fraco';
-      default:
-        return '';
+      case 5: return 'Excelente!';
+      case 4: return 'Muito bom';
+      case 3: return 'Bom';
+      case 2: return 'Razoável';
+      case 1: return 'Fraco';
+      default: return '';
     }
   };
 
@@ -219,11 +220,7 @@ export function ReviewModal({
                     recommend === true ? 'text-green-600' : 'text-muted-foreground'
                   }`}
                 />
-                <p
-                  className={`font-medium ${
-                    recommend === true ? 'text-green-600' : 'text-foreground'
-                  }`}
-                >
+                <p className={`font-medium ${recommend === true ? 'text-green-600' : 'text-foreground'}`}>
                   Sim
                 </p>
               </button>
@@ -242,11 +239,7 @@ export function ReviewModal({
                     recommend === false ? 'text-red-600' : 'text-muted-foreground'
                   }`}
                 />
-                <p
-                  className={`font-medium ${
-                    recommend === false ? 'text-red-600' : 'text-foreground'
-                  }`}
-                >
+                <p className={`font-medium ${recommend === false ? 'text-red-600' : 'text-foreground'}`}>
                   Não
                 </p>
               </button>
@@ -262,12 +255,12 @@ export function ReviewModal({
         </div>
 
         <div className="sticky bottom-0 bg-card border-t border-border px-6 py-4 flex items-center justify-between gap-3">
-          <Button onClick={onClose} variant="outline">
+          <Button onClick={onClose} variant="outline" disabled={submitting}>
             Cancelar
           </Button>
 
-          <Button onClick={handleSubmit}>
-            Publicar avaliação
+          <Button onClick={() => void handleSubmit()} disabled={submitting}>
+            {submitting ? 'A publicar…' : 'Publicar avaliação'}
           </Button>
         </div>
       </div>

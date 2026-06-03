@@ -16,26 +16,14 @@ import {
   UserCheck,
   Home,
   MessageSquare,
-  BedDouble,
   FilePen,
   CheckSquare,
   XSquare,
-  PauseCircle,
   Unlock,
 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import {
-  AdminReport,
-  ReportType,
-  ReportStatus,
-  ReportPriority,
-  AdminActionType,
-  getAllReports,
-  updateReportStatus,
-  addInternalNote,
-  applyAdminAction,
-} from '../../data/mockAdminReports';
+import { useReports, type ReportRow } from '../../hooks/useDb';
 import { addAuditEntry } from '../../data/mockAdminAudit';
 import {
   setUserSuspended,
@@ -45,7 +33,9 @@ import {
 } from '../../data/mockAdminUsersState';
 import { useProperties } from '../../context/PropertiesContext';
 
-const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+// ─── Config maps ──────────────────────────────────────────────────────────────
+
+const REPORT_TYPE_LABELS: Record<string, string> = {
   fraude_possivel: 'Possível Fraude',
   localizacao_falsa: 'Localização Falsa',
   pagamento_externo: 'Pagamento Fora da Plataforma',
@@ -54,29 +44,80 @@ const REPORT_TYPE_LABELS: Record<ReportType, string> = {
   comportamento_abusivo: 'Comportamento Abusivo',
 };
 
-const PRIORITY_CONFIG: Record<ReportPriority, { label: string; cls: string }> = {
-  baixa: { label: 'Baixa', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
-  media: { label: 'Média', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  alta: { label: 'Alta', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
-  critica: { label: 'Crítica', cls: 'bg-red-50 text-red-700 border-red-200' },
+const TARGET_TYPE_LABELS: Record<string, string> = {
+  accommodation: 'Alojamento',
+  user: 'Utilizador',
+  message: 'Mensagem',
+  review: 'Avaliação',
+  listing: 'Anúncio',
 };
 
-const STATUS_CONFIG: Record<ReportStatus, { label: string; cls: string; icon: React.ElementType }> = {
-  aberta: { label: 'Aberta', cls: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle },
-  em_analise: { label: 'Em Análise', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: Clock },
-  resolvida: { label: 'Resolvida', cls: 'bg-green-50 text-green-700 border-green-200', icon: CheckCircle },
-  rejeitada: { label: 'Rejeitada', cls: 'bg-gray-100 text-gray-600 border-gray-200', icon: XSquare },
+const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: React.ElementType }> = {
+  pending: { label: 'Aberta', cls: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle },
+  under_review: { label: 'Em Análise', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: Clock },
+  reviewed: { label: 'Em Revisão', cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: Eye },
+  resolved: { label: 'Resolvida', cls: 'bg-green-50 text-green-700 border-green-200', icon: CheckCircle },
+  dismissed: { label: 'Rejeitada', cls: 'bg-gray-100 text-gray-600 border-gray-200', icon: XSquare },
+};
+
+const SEVERITY_CONFIG: Record<string, { label: string; cls: string }> = {
+  critical: { label: 'Crítica', cls: 'bg-red-50 text-red-700 border-red-200' },
+  high: { label: 'Alta', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  medium: { label: 'Média', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  low: { label: 'Baixa', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
 };
 
 const ADMIN_ID = 'admin-1';
 const ADMIN_NAME = 'Admin UniRoom';
 
+function getStatusCfg(status: string) {
+  return STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
+}
+
+function getSeverityCfg(severity: string | undefined) {
+  return SEVERITY_CONFIG[severity ?? ''] ?? SEVERITY_CONFIG.medium;
+}
+
+function formatDate(d: Date | string | undefined) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// ─── Sanctions local state ────────────────────────────────────────────────────
+
+interface SanctionState {
+  propertySuspended: boolean;
+  landlordSuspended: boolean;
+  landlordBlocked: boolean;
+  propertySuspensionLifted: boolean;
+  landlordSuspensionLifted: boolean;
+  landlordUnblocked: boolean;
+}
+
+const INITIAL_SANCTIONS: SanctionState = {
+  propertySuspended: false,
+  landlordSuspended: false,
+  landlordBlocked: false,
+  propertySuspensionLifted: false,
+  landlordSuspensionLifted: false,
+  landlordUnblocked: false,
+};
+
 // ─── ReportDetailModal ────────────────────────────────────────────────────────
+
+type PendingAction = {
+  action: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  variant: 'destructive' | 'positive' | 'neutral';
+};
 
 function ReportDetailModal({
   report: initialReport,
   onClose,
-  onUpdate,
+  onUpdateStatus,
+  onAddNote,
   onSuspendProperty,
   onSuspendLandlord,
   onBlockLandlord,
@@ -84,113 +125,114 @@ function ReportDetailModal({
   onLiftLandlordSuspension,
   onUnblockLandlord,
 }: {
-  report: AdminReport;
+  report: ReportRow;
   onClose: () => void;
-  onUpdate: (report: AdminReport) => void;
-  onSuspendProperty: (propertyId: string, propertyTitle: string) => void;
-  onSuspendLandlord: (landlordId: string, landlordName: string) => void;
-  onBlockLandlord: (landlordId: string, landlordName: string) => void;
-  onLiftPropertySuspension: (propertyId: string, propertyTitle: string) => void;
-  onLiftLandlordSuspension: (landlordId: string, landlordName: string) => void;
-  onUnblockLandlord: (landlordId: string, landlordName: string) => void;
+  onUpdateStatus: (id: string, status: ReportRow['status'], resolution?: string) => Promise<boolean>;
+  onAddNote: (id: string, note: string) => Promise<boolean>;
+  onSuspendProperty: (id: string, name: string) => void;
+  onSuspendLandlord: (id: string, name: string) => void;
+  onBlockLandlord: (id: string, name: string) => void;
+  onLiftPropertySuspension: (id: string, name: string) => void;
+  onLiftLandlordSuspension: (id: string, name: string) => void;
+  onUnblockLandlord: (id: string, name: string) => void;
 }) {
   const [report, setReport] = useState(initialReport);
   const [noteText, setNoteText] = useState(report.internalNote || '');
   const [showNoteInput, setShowNoteInput] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{
-    action: AdminActionType | 'resolve' | 'reject';
-    title: string;
-    description: string;
-    confirmLabel: string;
-    variant: 'destructive' | 'positive' | 'neutral';
-  } | null>(null);
+  const [sanctions, setSanctions] = useState<SanctionState>(INITIAL_SANCTIONS);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
-  const executeAction = (action: AdminActionType | 'resolve' | 'reject') => {
-    if (action === 'resolve') {
-      handleResolve('resolvida');
-      return;
-    }
-    if (action === 'reject') {
-      handleResolve('rejeitada');
-      return;
-    }
-    applyAction(action);
-  };
+  const isAccommodation = report.targetType === 'accommodation' || report.targetType === 'listing';
+  const isUser = report.targetType === 'user';
 
-  const applyAction = (action: AdminActionType) => {
-    const updated = applyAdminAction(report.id, action);
-    if (!updated) return;
-    setReport(updated);
-    onUpdate(updated);
+  const statusCfg = getStatusCfg(report.status);
+  const severityCfg = getSeverityCfg(report.severity);
+  const isActionable = report.status !== 'resolved' && report.status !== 'dismissed';
+  const hasSanctions = sanctions.propertySuspended || sanctions.landlordSuspended || sanctions.landlordBlocked;
+  const hasLiftableActions =
+    (sanctions.propertySuspended && isAccommodation) ||
+    sanctions.landlordSuspended ||
+    sanctions.landlordBlocked;
 
-    switch (action) {
-      case 'suspend_property':
-        if (report.propertyId) {
-          onSuspendProperty(report.propertyId, report.propertyTitle || report.landlordName);
-          addAuditEntry({ action: 'property_suspended', entityType: 'property', entityId: report.propertyId, entityName: report.propertyTitle || report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspenso por denúncia ${report.id}` });
-        }
-        break;
-      case 'suspend_landlord':
-        onSuspendLandlord(report.landlordId, report.landlordName);
-        addAuditEntry({ action: 'landlord_suspended', entityType: 'landlord', entityId: report.landlordId, entityName: report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspenso por denúncia ${report.id}` });
-        break;
-      case 'block_landlord':
-        onBlockLandlord(report.landlordId, report.landlordName);
-        addAuditEntry({ action: 'landlord_blocked', entityType: 'landlord', entityId: report.landlordId, entityName: report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Bloqueado por denúncia ${report.id}` });
-        break;
-      case 'lift_property_suspension':
-        if (report.propertyId) {
-          onLiftPropertySuspension(report.propertyId, report.propertyTitle || report.landlordName);
-          addAuditEntry({ action: 'property_suspension_lifted', entityType: 'property', entityId: report.propertyId, entityName: report.propertyTitle || report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspensão levantada manualmente` });
-        }
-        break;
-      case 'lift_landlord_suspension':
-        onLiftLandlordSuspension(report.landlordId, report.landlordName);
-        addAuditEntry({ action: 'landlord_suspension_lifted', entityType: 'landlord', entityId: report.landlordId, entityName: report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspensão levantada manualmente` });
-        break;
-      case 'unblock_landlord':
-        onUnblockLandlord(report.landlordId, report.landlordName);
-        addAuditEntry({ action: 'landlord_unblocked', entityType: 'landlord', entityId: report.landlordId, entityName: report.landlordName, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Bloqueio de publicação removido manualmente` });
-        break;
-    }
-  };
-
-  const handleResolve = (newStatus: ReportStatus) => {
-    const updated = updateReportStatus(report.id, newStatus, ADMIN_ID, noteText || undefined);
-    if (!updated) return;
-    setReport(updated);
-    onUpdate(updated);
+  const handleResolve = async (newStatus: ReportRow['status']) => {
+    const ok = await onUpdateStatus(report.id, newStatus, noteText || undefined);
+    if (!ok) { toast.error('Erro ao atualizar a denúncia.'); return; }
+    setReport(prev => ({ ...prev, status: newStatus }));
     addAuditEntry({
-      action: newStatus === 'resolvida' ? 'report_resolved' : 'report_rejected',
+      action: newStatus === 'resolved' ? 'report_resolved' : 'report_rejected',
       entityType: 'report',
       entityId: report.id,
-      entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.type]} — ${report.landlordName}`,
+      entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.reason] ?? report.reason} — ${report.targetName ?? report.targetId}`,
       adminId: ADMIN_ID,
       adminName: ADMIN_NAME,
       note: noteText || undefined,
     });
   };
 
-  const handleSaveNote = () => {
-    const updated = addInternalNote(report.id, noteText);
-    if (!updated) return;
-    setReport(updated);
-    onUpdate(updated);
+  const handleSaveNote = async () => {
+    const ok = await onAddNote(report.id, noteText);
+    if (!ok) { toast.error('Erro ao guardar nota.'); return; }
+    setReport(prev => ({ ...prev, internalNote: noteText }));
     setShowNoteInput(false);
-    addAuditEntry({ action: 'note_added', entityType: 'report', entityId: report.id, entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.type]} — ${report.landlordName}`, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: noteText });
+    addAuditEntry({
+      action: 'note_added',
+      entityType: 'report',
+      entityId: report.id,
+      entityName: `Denúncia: ${REPORT_TYPE_LABELS[report.reason] ?? report.reason} — ${report.targetName ?? report.targetId}`,
+      adminId: ADMIN_ID,
+      adminName: ADMIN_NAME,
+      note: noteText,
+    });
   };
 
-  const statusCfg = STATUS_CONFIG[report.status];
-  const priorityCfg = PRIORITY_CONFIG[report.priority];
-  const isActionable = report.status !== 'resolvida' && report.status !== 'rejeitada';
-  const hasSanctions = report.propertySuspended || report.landlordSuspended || report.landlordBlocked;
-  const hasLiftableActions = (report.propertySuspended && report.propertyId) || report.landlordSuspended || report.landlordBlocked;
+  const executeAction = (action: string) => {
+    if (action === 'resolve') { void handleResolve('resolved'); return; }
+    if (action === 'reject') { void handleResolve('dismissed'); return; }
+    if (action === 'under_review') { void handleResolve('under_review'); return; }
+
+    const name = report.targetName ?? report.targetId;
+
+    switch (action) {
+      case 'suspend_property':
+        setSanctions(s => ({ ...s, propertySuspended: true, propertySuspensionLifted: false }));
+        onSuspendProperty(report.targetId, name);
+        addAuditEntry({ action: 'property_suspended', entityType: 'property', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspenso por denúncia ${report.id}` });
+        break;
+      case 'suspend_landlord':
+        setSanctions(s => ({ ...s, landlordSuspended: true, landlordSuspensionLifted: false }));
+        onSuspendLandlord(report.targetId, name);
+        addAuditEntry({ action: 'landlord_suspended', entityType: 'landlord', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Suspenso por denúncia ${report.id}` });
+        break;
+      case 'block_landlord':
+        setSanctions(s => ({ ...s, landlordBlocked: true, landlordSuspended: true, landlordUnblocked: false, landlordSuspensionLifted: false }));
+        onBlockLandlord(report.targetId, name);
+        addAuditEntry({ action: 'landlord_blocked', entityType: 'landlord', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: `Bloqueado por denúncia ${report.id}` });
+        break;
+      case 'lift_property_suspension':
+        setSanctions(s => ({ ...s, propertySuspended: false, propertySuspensionLifted: true }));
+        onLiftPropertySuspension(report.targetId, name);
+        addAuditEntry({ action: 'property_suspension_lifted', entityType: 'property', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: 'Suspensão levantada manualmente' });
+        break;
+      case 'lift_landlord_suspension':
+        setSanctions(s => ({ ...s, landlordSuspended: false, landlordSuspensionLifted: true }));
+        onLiftLandlordSuspension(report.targetId, name);
+        addAuditEntry({ action: 'landlord_suspension_lifted', entityType: 'landlord', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: 'Suspensão levantada manualmente' });
+        break;
+      case 'unblock_landlord':
+        setSanctions(s => ({ ...s, landlordBlocked: false, landlordSuspended: false, landlordUnblocked: true }));
+        onUnblockLandlord(report.targetId, name);
+        addAuditEntry({ action: 'landlord_unblocked', entityType: 'landlord', entityId: report.targetId, entityName: name, adminId: ADMIN_ID, adminName: ADMIN_NAME, note: 'Bloqueio de publicação removido manualmente' });
+        break;
+    }
+  };
 
   return (
     <>
       <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="bg-background rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+
+          {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-border sticky top-0 bg-background rounded-t-2xl z-10">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center">
@@ -207,35 +249,36 @@ function ReportDetailModal({
           </div>
 
           <div className="p-5 flex flex-col gap-5">
-            {/* Header badges */}
+
+            {/* Badges */}
             <div className="flex flex-wrap gap-2">
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusCfg.cls}`}>
                 <statusCfg.icon className="w-3.5 h-3.5" />
                 {statusCfg.label}
               </span>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${priorityCfg.cls}`}>
-                {priorityCfg.label}
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${severityCfg.cls}`}>
+                {severityCfg.label}
               </span>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-border bg-muted">
-                {REPORT_TYPE_LABELS[report.type]}
+                {REPORT_TYPE_LABELS[report.reason] ?? report.reason}
               </span>
             </div>
 
             {/* Active sanctions */}
             {hasSanctions && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1.5">
-                <p className="text-xs font-semibold text-red-800">Sanções ativas</p>
-                {report.propertySuspended && (
+                <p className="text-xs font-semibold text-red-800">Sanções ativas (sessão atual)</p>
+                {sanctions.propertySuspended && (
                   <div className="flex items-center gap-1.5 text-xs text-red-700">
                     <ShieldOff className="w-3.5 h-3.5" /> Anúncio suspenso pelo admin
                   </div>
                 )}
-                {report.landlordSuspended && (
+                {sanctions.landlordSuspended && (
                   <div className="flex items-center gap-1.5 text-xs text-red-700">
-                    <UserX className="w-3.5 h-3.5" /> Conta de senhorio suspensa
+                    <UserX className="w-3.5 h-3.5" /> Conta suspensa
                   </div>
                 )}
-                {report.landlordBlocked && (
+                {sanctions.landlordBlocked && (
                   <div className="flex items-center gap-1.5 text-xs text-red-700">
                     <Ban className="w-3.5 h-3.5" /> Bloqueado de publicar novos anúncios
                   </div>
@@ -243,21 +286,21 @@ function ReportDetailModal({
               </div>
             )}
 
-            {/* Lifted sanctions info */}
-            {(report.propertySuspensionLifted || report.landlordSuspensionLifted || report.landlordUnblocked) && (
+            {/* Lifted sanctions */}
+            {(sanctions.propertySuspensionLifted || sanctions.landlordSuspensionLifted || sanctions.landlordUnblocked) && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 space-y-1.5">
                 <p className="text-xs font-semibold text-green-800">Sanções levantadas</p>
-                {report.propertySuspensionLifted && (
+                {sanctions.propertySuspensionLifted && (
                   <div className="flex items-center gap-1.5 text-xs text-green-700">
                     <ShieldCheck className="w-3.5 h-3.5" /> Suspensão de anúncio levantada
                   </div>
                 )}
-                {report.landlordSuspensionLifted && (
+                {sanctions.landlordSuspensionLifted && (
                   <div className="flex items-center gap-1.5 text-xs text-green-700">
                     <UserCheck className="w-3.5 h-3.5" /> Suspensão de conta levantada
                   </div>
                 )}
-                {report.landlordUnblocked && (
+                {sanctions.landlordUnblocked && (
                   <div className="flex items-center gap-1.5 text-xs text-green-700">
                     <Unlock className="w-3.5 h-3.5" /> Bloqueio de publicação removido
                   </div>
@@ -268,50 +311,49 @@ function ReportDetailModal({
             {/* Parties */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="bg-muted/40 rounded-xl p-3">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">DENUNCIANTE</p>
-                <p className="text-sm font-semibold">{report.reportedByStudentName}</p>
-                <p className="text-xs text-muted-foreground">Estudante · {report.reportedByStudentId}</p>
-              </div>
-              <div className="bg-muted/40 rounded-xl p-3">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">SENHORIO DENUNCIADO</p>
-                <p className="text-sm font-semibold">{report.landlordName}</p>
-                <p className="text-xs text-muted-foreground">{report.landlordId}</p>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">ALVO DA DENÚNCIA</p>
+                <p className="text-sm font-semibold">{report.targetName ?? report.targetId}</p>
+                <p className="text-xs text-muted-foreground">
+                  {TARGET_TYPE_LABELS[report.targetType] ?? report.targetType}
+                  {' · '}
+                  <span className="font-mono">{report.targetId.slice(0, 12)}…</span>
+                </p>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {report.landlordSuspended && (
+                  {sanctions.landlordSuspended && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-semibold">
                       <UserX className="w-2.5 h-2.5" /> Suspenso
                     </span>
                   )}
-                  {report.landlordBlocked && (
+                  {sanctions.landlordBlocked && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-semibold">
                       <Ban className="w-2.5 h-2.5" /> Bloqueado
                     </span>
                   )}
                 </div>
               </div>
+              <div className="bg-muted/40 rounded-xl p-3">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">DENUNCIANTE</p>
+                <p className="text-sm font-semibold">Utilizador autenticado</p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {report.reporterId ? `${report.reporterId.slice(0, 12)}…` : 'ID não disponível'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Submetido em {formatDate(report.createdAt)}
+                </p>
+              </div>
             </div>
 
-            {/* Property/room context */}
-            {(report.propertyTitle || report.roomTitle) && (
+            {/* Anúncio suspenso context */}
+            {sanctions.propertySuspended && isAccommodation && (
               <div className="bg-muted/40 rounded-xl p-3">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">IMÓVEL ASSOCIADO</p>
-                {report.propertyTitle && (
-                  <div className="flex items-center gap-2 text-sm mb-1">
-                    <Home className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium">{report.propertyTitle}</span>
-                    {report.propertySuspended && (
-                      <span className="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-semibold">
-                        <ShieldOff className="w-2.5 h-2.5" /> Suspenso
-                      </span>
-                    )}
-                  </div>
-                )}
-                {report.roomTitle && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <BedDouble className="w-4 h-4 text-muted-foreground" />
-                    <span>{report.roomTitle}</span>
-                  </div>
-                )}
+                <p className="text-xs font-semibold text-muted-foreground mb-2">IMÓVEL</p>
+                <div className="flex items-center gap-2 text-sm">
+                  <Home className="w-4 h-4 text-muted-foreground" />
+                  <span className="font-medium">{report.targetName ?? report.targetId}</span>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-semibold">
+                    <ShieldOff className="w-2.5 h-2.5" /> Suspenso
+                  </span>
+                </div>
               </div>
             )}
 
@@ -323,16 +365,28 @@ function ReportDetailModal({
               </p>
             </div>
 
+            {/* Resolution */}
+            {report.resolution && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">RESOLUÇÃO</p>
+                <p className="text-sm text-foreground bg-green-50 border border-green-100 rounded-xl p-3">
+                  {report.resolution}
+                </p>
+              </div>
+            )}
+
             {/* Internal note */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-muted-foreground">NOTA INTERNA</p>
-                <button
-                  onClick={() => setShowNoteInput(!showNoteInput)}
-                  className="text-xs text-blue-600 hover:underline font-medium"
-                >
-                  {showNoteInput ? 'Cancelar' : 'Editar'}
-                </button>
+                {isActionable && (
+                  <button
+                    onClick={() => setShowNoteInput(!showNoteInput)}
+                    className="text-xs text-blue-600 hover:underline font-medium"
+                  >
+                    {showNoteInput ? 'Cancelar' : 'Editar'}
+                  </button>
+                )}
               </div>
               {showNoteInput ? (
                 <div className="space-y-2">
@@ -344,7 +398,7 @@ function ReportDetailModal({
                     className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                   />
                   <button
-                    onClick={handleSaveNote}
+                    onClick={() => void handleSaveNote()}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
                   >
                     <FilePen className="w-3.5 h-3.5" />
@@ -358,32 +412,43 @@ function ReportDetailModal({
               )}
             </div>
 
-            {/* Admin actions — apply sanctions */}
+            {/* Admin actions */}
             {isActionable && (
               <div className="border-t border-border pt-4">
                 <p className="text-xs font-semibold text-muted-foreground mb-3">AÇÕES DE MODERAÇÃO</p>
+
+                {report.status === 'pending' && (
+                  <button
+                    onClick={() => setPendingAction({ action: 'under_review', title: 'Iniciar análise?', description: 'A denúncia passará para "Em Análise". Podes continuar a adicionar notas internas.', confirmLabel: 'Iniciar análise', variant: 'neutral' })}
+                    className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-xs font-medium hover:bg-amber-100 transition-colors mb-3 w-full sm:w-auto"
+                  >
+                    <Clock className="w-4 h-4" />
+                    Marcar em análise
+                  </button>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-                  {report.propertyId && !report.propertySuspended && (
+                  {isAccommodation && !sanctions.propertySuspended && (
                     <button
-                      onClick={() => setPendingAction({ action: 'suspend_property', title: 'Suspender anúncio?', description: `O anúncio de ${report.propertyTitle || report.landlordName} ficará invisível para estudantes imediatamente.`, confirmLabel: 'Suspender anúncio', variant: 'destructive' })}
+                      onClick={() => setPendingAction({ action: 'suspend_property', title: 'Suspender anúncio?', description: `O anúncio "${report.targetName ?? report.targetId}" ficará invisível para estudantes imediatamente.`, confirmLabel: 'Suspender anúncio', variant: 'destructive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl text-xs font-medium hover:bg-orange-100 transition-colors"
                     >
                       <ShieldOff className="w-4 h-4" />
                       Suspender anúncio
                     </button>
                   )}
-                  {!report.landlordSuspended && (
+                  {isUser && !sanctions.landlordSuspended && (
                     <button
-                      onClick={() => setPendingAction({ action: 'suspend_landlord', title: 'Suspender senhorio?', description: `A conta de ${report.landlordName} será suspensa. O senhorio não poderá publicar ou gerir anúncios.`, confirmLabel: 'Suspender senhorio', variant: 'destructive' })}
+                      onClick={() => setPendingAction({ action: 'suspend_landlord', title: 'Suspender utilizador?', description: `A conta de "${report.targetName ?? report.targetId}" será suspensa.`, confirmLabel: 'Suspender utilizador', variant: 'destructive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium hover:bg-red-100 transition-colors"
                     >
                       <UserX className="w-4 h-4" />
-                      Suspender senhorio
+                      Suspender utilizador
                     </button>
                   )}
-                  {!report.landlordBlocked && (
+                  {isUser && !sanctions.landlordBlocked && (
                     <button
-                      onClick={() => setPendingAction({ action: 'block_landlord', title: 'Bloquear novos anúncios?', description: `${report.landlordName} ficará impedido de publicar novos anúncios. Os anúncios existentes mantêm-se.`, confirmLabel: 'Bloquear publicação', variant: 'destructive' })}
+                      onClick={() => setPendingAction({ action: 'block_landlord', title: 'Bloquear novos anúncios?', description: `"${report.targetName ?? report.targetId}" ficará impedido de publicar novos anúncios.`, confirmLabel: 'Bloquear publicação', variant: 'destructive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 text-red-900 rounded-xl text-xs font-medium hover:bg-red-100 transition-colors"
                     >
                       <Ban className="w-4 h-4" />
@@ -411,32 +476,32 @@ function ReportDetailModal({
               </div>
             )}
 
-            {/* Lift sanctions — always shown when sanctions exist */}
+            {/* Lift sanctions */}
             {hasLiftableActions && (
               <div className="border-t border-border pt-4">
                 <p className="text-xs font-semibold text-muted-foreground mb-3">LEVANTAR SANÇÕES</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {report.propertySuspended && report.propertyId && (
+                  {sanctions.propertySuspended && isAccommodation && (
                     <button
-                      onClick={() => setPendingAction({ action: 'lift_property_suspension', title: 'Levantar suspensão do anúncio?', description: 'A suspensão do anúncio será removida. O anúncio voltará a ficar visível para os estudantes.', confirmLabel: 'Levantar suspensão', variant: 'positive' })}
+                      onClick={() => setPendingAction({ action: 'lift_property_suspension', title: 'Levantar suspensão do anúncio?', description: 'A suspensão do anúncio será removida. Voltará a ficar visível para os estudantes.', confirmLabel: 'Levantar suspensão', variant: 'positive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 text-green-700 rounded-xl text-xs font-medium hover:bg-green-100 transition-colors"
                     >
                       <ShieldCheck className="w-4 h-4" />
                       Levantar suspensão do anúncio
                     </button>
                   )}
-                  {report.landlordSuspended && (
+                  {sanctions.landlordSuspended && (
                     <button
-                      onClick={() => setPendingAction({ action: 'lift_landlord_suspension', title: 'Levantar suspensão do senhorio?', description: 'A suspensão da conta do senhorio será removida. O senhorio voltará a poder gerir os seus anúncios.', confirmLabel: 'Levantar suspensão', variant: 'positive' })}
+                      onClick={() => setPendingAction({ action: 'lift_landlord_suspension', title: 'Levantar suspensão?', description: 'A suspensão da conta será removida. O utilizador voltará a poder gerir os seus anúncios.', confirmLabel: 'Levantar suspensão', variant: 'positive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 text-green-700 rounded-xl text-xs font-medium hover:bg-green-100 transition-colors"
                     >
                       <UserCheck className="w-4 h-4" />
-                      Levantar suspensão do senhorio
+                      Levantar suspensão do utilizador
                     </button>
                   )}
-                  {report.landlordBlocked && (
+                  {sanctions.landlordBlocked && (
                     <button
-                      onClick={() => setPendingAction({ action: 'unblock_landlord', title: 'Permitir publicação novamente?', description: 'O bloqueio de publicação será removido. O senhorio poderá voltar a publicar novos anúncios.', confirmLabel: 'Permitir publicação', variant: 'positive' })}
+                      onClick={() => setPendingAction({ action: 'unblock_landlord', title: 'Permitir publicação novamente?', description: 'O bloqueio de publicação será removido. O utilizador poderá voltar a publicar novos anúncios.', confirmLabel: 'Permitir publicação', variant: 'positive' })}
                       className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl text-xs font-medium hover:bg-blue-100 transition-colors"
                     >
                       <Unlock className="w-4 h-4" />
@@ -450,8 +515,8 @@ function ReportDetailModal({
             {!isActionable && !hasLiftableActions && (
               <div className="border-t border-border pt-4 text-center">
                 <p className="text-xs text-muted-foreground">
-                  Esta denúncia foi {report.status === 'resolvida' ? 'resolvida' : 'rejeitada'}
-                  {report.resolvedAt ? ` em ${report.resolvedAt}` : ''}.
+                  Esta denúncia foi {report.status === 'resolved' ? 'resolvida' : 'rejeitada'}
+                  {report.resolvedAt ? ` em ${formatDate(report.resolvedAt)}` : ''}.
                 </p>
               </div>
             )}
@@ -463,10 +528,7 @@ function ReportDetailModal({
         isOpen={!!pendingAction}
         onClose={() => setPendingAction(null)}
         onConfirm={() => {
-          if (pendingAction) {
-            executeAction(pendingAction.action);
-            setPendingAction(null);
-          }
+          if (pendingAction) { executeAction(pendingAction.action); setPendingAction(null); }
         }}
         title={pendingAction?.title || ''}
         description={pendingAction?.description || ''}
@@ -482,81 +544,80 @@ function ReportDetailModal({
 
 export function AdminReports() {
   const { properties, rooms, updateRoomStatus, adminSuspendProperty, liftAdminSuspension } = useProperties();
-  const [reports, setReports] = useState<AdminReport[]>(() => getAllReports());
+  const { reports, loading, updateStatus, addInternalNote } = useReports();
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | ReportStatus>('all');
-  const [filterPriority, setFilterPriority] = useState<'all' | ReportPriority>('all');
-  const [filterType, setFilterType] = useState<'all' | ReportType>('all');
-  const [selectedReport, setSelectedReport] = useState<AdminReport | null>(null);
+  const [filterStatus, setFilterStatus] = useState<'all' | ReportRow['status']>('all');
+  const [filterSeverity, setFilterSeverity] = useState<'all' | string>('all');
+  const [filterReason, setFilterReason] = useState<'all' | string>('all');
+  const [selectedReport, setSelectedReport] = useState<ReportRow | null>(null);
+
+  const stats = {
+    open: reports.filter(r => r.status === 'pending').length,
+    inReview: reports.filter(r => r.status === 'under_review').length,
+    resolved: reports.filter(r => r.status === 'resolved').length,
+    critical: reports.filter(
+      r => r.severity === 'critical' && r.status !== 'resolved' && r.status !== 'dismissed',
+    ).length,
+  };
 
   const filtered = reports.filter(r => {
     const q = searchQuery.toLowerCase();
-    const matchesSearch = !q ||
-      r.reportedByStudentName.toLowerCase().includes(q) ||
-      r.landlordName.toLowerCase().includes(q) ||
-      (r.propertyTitle?.toLowerCase().includes(q) ?? false) ||
-      r.description.toLowerCase().includes(q);
-    return matchesSearch &&
+    const matchesSearch =
+      !q ||
+      (r.targetName?.toLowerCase().includes(q) ?? false) ||
+      r.description.toLowerCase().includes(q) ||
+      (REPORT_TYPE_LABELS[r.reason] ?? r.reason).toLowerCase().includes(q);
+    return (
+      matchesSearch &&
       (filterStatus === 'all' || r.status === filterStatus) &&
-      (filterPriority === 'all' || r.priority === filterPriority) &&
-      (filterType === 'all' || r.type === filterType);
+      (filterSeverity === 'all' || r.severity === filterSeverity) &&
+      (filterReason === 'all' || r.reason === filterReason)
+    );
   });
 
-  const handleUpdate = (updated: AdminReport) => {
-    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-    if (selectedReport?.id === updated.id) setSelectedReport(updated);
-  };
-
-  // ── Suspend (apply) ──────────────────────────────────────────────────────────
+  // ── Sanction handlers (UI-only, mock side effects) ──────────────────────────
 
   const handleSuspendProperty = (propertyId: string, propertyTitle: string) => {
-    adminSuspendProperty(propertyId, `Suspenso por denúncia na plataforma UniRoom`, ADMIN_NAME);
-    const propertyRooms = rooms.filter(r => r.propertyId === propertyId);
-    propertyRooms.forEach(room => {
-      if (room.status === 'available') updateRoomStatus(room.id, 'paused');
-    });
+    adminSuspendProperty(propertyId, 'Suspenso por denúncia na plataforma UniRoom', ADMIN_NAME);
+    rooms
+      .filter(r => r.propertyId === propertyId && r.status === 'available')
+      .forEach(room => updateRoomStatus(room.id, 'paused'));
     toast.success(`Anúncio "${propertyTitle}" suspenso com sucesso.`);
   };
 
   const handleSuspendLandlord = (landlordId: string, landlordName: string) => {
-    setUserSuspended(landlordId, true, `Suspenso por moderação admin`);
-    const landlordProperties = properties.filter(p => p.landlordId === landlordId && p.status === 'active');
-    landlordProperties.forEach(p => {
-      adminSuspendProperty(p.id, `Suspenso por suspensão de conta do senhorio`, ADMIN_NAME);
-      const propertyRooms = rooms.filter(r => r.propertyId === p.id && r.status === 'available');
-      propertyRooms.forEach(room => updateRoomStatus(room.id, 'paused'));
-    });
-    toast.success(`Senhorio "${landlordName}" suspenso com sucesso.`);
+    setUserSuspended(landlordId, true, 'Suspenso por moderação admin');
+    properties
+      .filter(p => p.landlordId === landlordId && p.status === 'active')
+      .forEach(p => {
+        adminSuspendProperty(p.id, 'Suspenso por suspensão de conta do senhorio', ADMIN_NAME);
+        rooms
+          .filter(r => r.propertyId === p.id && r.status === 'available')
+          .forEach(room => updateRoomStatus(room.id, 'paused'));
+      });
+    toast.success(`Utilizador "${landlordName}" suspenso com sucesso.`);
   };
 
   const handleBlockLandlord = (landlordId: string, landlordName: string) => {
-    setUserBlockedFromPublishing(landlordId, true, `Bloqueado de publicar novos anúncios`);
-    setUserSuspended(landlordId, true, `Suspenso por moderação admin`);
+    setUserBlockedFromPublishing(landlordId, true, 'Bloqueado de publicar novos anúncios');
+    setUserSuspended(landlordId, true, 'Suspenso por moderação admin');
     toast.success(`Publicação bloqueada para "${landlordName}".`);
   };
 
-  // ── Lift (reverse) ───────────────────────────────────────────────────────────
-
-  const handleLiftPropertySuspension = (propertyId: string, _propertyTitle: string) => {
+  const handleLiftPropertySuspension = (propertyId: string, _name: string) => {
     liftAdminSuspension(propertyId);
     toast.success('Suspensão do anúncio levantada.');
   };
 
-  const handleLiftLandlordSuspension = (landlordId: string, _landlordName: string) => {
+  const handleLiftLandlordSuspension = (landlordId: string, _name: string) => {
     liftUserSuspension(landlordId);
-    toast.success('Suspensão do senhorio levantada.');
+    toast.success('Suspensão do utilizador levantada.');
   };
 
-  const handleUnblockLandlord = (landlordId: string, _landlordName: string) => {
+  const handleUnblockLandlord = (landlordId: string, _name: string) => {
     unblockUserPublishing(landlordId);
     toast.success('Bloqueio de publicação removido.');
-  };
-
-  const stats = {
-    open: reports.filter(r => r.status === 'aberta').length,
-    inReview: reports.filter(r => r.status === 'em_analise').length,
-    resolved: reports.filter(r => r.status === 'resolvida').length,
-    critical: reports.filter(r => r.priority === 'critica' && r.status !== 'resolvida' && r.status !== 'rejeitada').length,
   };
 
   return (
@@ -572,10 +633,14 @@ export function AdminReports() {
           { label: 'Abertas', value: stats.open, cls: 'bg-red-50 border-red-200 text-red-700' },
           { label: 'Em Análise', value: stats.inReview, cls: 'bg-amber-50 border-amber-200 text-amber-700' },
           { label: 'Resolvidas', value: stats.resolved, cls: 'bg-green-50 border-green-200 text-green-700' },
-          { label: 'Críticas', value: stats.critical, cls: stats.critical > 0 ? 'bg-red-100 border-red-300 text-red-800' : 'bg-gray-50 border-gray-200 text-gray-600' },
+          {
+            label: 'Críticas',
+            value: stats.critical,
+            cls: stats.critical > 0 ? 'bg-red-100 border-red-300 text-red-800' : 'bg-gray-50 border-gray-200 text-gray-600',
+          },
         ].map(s => (
           <div key={s.label} className={`border rounded-xl p-3 text-center ${s.cls}`}>
-            <p className="text-2xl font-bold">{s.value}</p>
+            <p className="text-2xl font-bold">{loading ? '—' : s.value}</p>
             <p className="text-xs font-medium mt-0.5">{s.label}</p>
           </div>
         ))}
@@ -589,7 +654,7 @@ export function AdminReports() {
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Pesquisar por nome, senhorio, imóvel..."
+              placeholder="Pesquisar por alvo, descrição ou tipo..."
               className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
@@ -599,42 +664,48 @@ export function AdminReports() {
             className="px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="all">Todos os estados</option>
-            <option value="aberta">Aberta</option>
-            <option value="em_analise">Em Análise</option>
-            <option value="resolvida">Resolvida</option>
-            <option value="rejeitada">Rejeitada</option>
+            <option value="pending">Aberta</option>
+            <option value="under_review">Em Análise</option>
+            <option value="reviewed">Em Revisão</option>
+            <option value="resolved">Resolvida</option>
+            <option value="dismissed">Rejeitada</option>
           </select>
           <select
-            value={filterPriority}
-            onChange={e => setFilterPriority(e.target.value as typeof filterPriority)}
+            value={filterSeverity}
+            onChange={e => setFilterSeverity(e.target.value)}
             className="px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="all">Todas as prioridades</option>
-            <option value="critica">Crítica</option>
-            <option value="alta">Alta</option>
-            <option value="media">Média</option>
-            <option value="baixa">Baixa</option>
+            <option value="critical">Crítica</option>
+            <option value="high">Alta</option>
+            <option value="medium">Média</option>
+            <option value="low">Baixa</option>
           </select>
           <select
-            value={filterType}
-            onChange={e => setFilterType(e.target.value as typeof filterType)}
+            value={filterReason}
+            onChange={e => setFilterReason(e.target.value)}
             className="px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="all">Todos os tipos</option>
-            {(Object.entries(REPORT_TYPE_LABELS) as [ReportType, string][]).map(([k, v]) => (
+            {Object.entries(REPORT_TYPE_LABELS).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
         </div>
       </Card>
 
-      {/* Reports list */}
-      {filtered.length === 0 ? (
+      {/* List */}
+      {loading ? (
+        <Card className="p-12 text-center">
+          <Clock className="w-10 h-10 text-gray-300 mx-auto mb-3 animate-spin" />
+          <p className="text-sm text-gray-500">A carregar denúncias…</p>
+        </Card>
+      ) : filtered.length === 0 ? (
         <Card className="p-12 text-center">
           <Flag className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <p className="font-medium text-gray-700 mb-1">Sem denúncias</p>
           <p className="text-sm text-gray-500">
-            {searchQuery || filterStatus !== 'all' || filterPriority !== 'all' || filterType !== 'all'
+            {searchQuery || filterStatus !== 'all' || filterSeverity !== 'all' || filterReason !== 'all'
               ? 'Nenhuma denúncia corresponde aos filtros aplicados.'
               : 'Não existem denúncias na plataforma.'}
           </p>
@@ -642,16 +713,17 @@ export function AdminReports() {
       ) : (
         <div className="space-y-3">
           {filtered.map(report => {
-            const statusCfg = STATUS_CONFIG[report.status];
-            const priorityCfg = PRIORITY_CONFIG[report.priority];
+            const statusCfg = getStatusCfg(report.status);
+            const severityCfg = getSeverityCfg(report.severity);
             const StatusIcon = statusCfg.icon;
-            const isActive = report.status !== 'resolvida' && report.status !== 'rejeitada';
+            const isCritical = report.severity === 'critical';
+            const isActive = report.status !== 'resolved' && report.status !== 'dismissed';
 
             return (
               <div
                 key={report.id}
                 className={`border rounded-xl p-4 cursor-pointer hover:shadow-sm transition-all ${
-                  report.priority === 'critica' && isActive
+                  isCritical && isActive
                     ? 'border-red-200 bg-red-50/30'
                     : 'border-border bg-card hover:border-primary/20'
                 }`}
@@ -659,9 +731,9 @@ export function AdminReports() {
               >
                 <div className="flex items-start gap-3">
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                    report.priority === 'critica' ? 'bg-red-100' : 'bg-amber-100'
+                    isCritical ? 'bg-red-100' : 'bg-amber-100'
                   }`}>
-                    {report.priority === 'critica'
+                    {isCritical
                       ? <ShieldAlert className="w-5 h-5 text-red-600" />
                       : <Flag className="w-5 h-5 text-amber-600" />
                     }
@@ -669,26 +741,16 @@ export function AdminReports() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-2 mb-1">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${priorityCfg.cls}`}>
-                        {priorityCfg.label}
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${severityCfg.cls}`}>
+                        {severityCfg.label}
                       </span>
                       <span className="text-xs font-semibold text-foreground">
-                        {REPORT_TYPE_LABELS[report.type]}
+                        {REPORT_TYPE_LABELS[report.reason] ?? report.reason}
                       </span>
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${statusCfg.cls}`}>
                         <StatusIcon className="w-2.5 h-2.5" />
                         {statusCfg.label}
                       </span>
-                      {report.landlordSuspended && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border bg-red-50 text-red-700 border-red-200">
-                          <UserX className="w-2.5 h-2.5" /> Senhorio suspenso
-                        </span>
-                      )}
-                      {report.propertySuspended && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border bg-orange-50 text-orange-700 border-orange-200">
-                          <ShieldOff className="w-2.5 h-2.5" /> Anúncio suspenso
-                        </span>
-                      )}
                     </div>
 
                     <p className="text-sm text-foreground leading-snug line-clamp-2 mb-2">
@@ -696,15 +758,11 @@ export function AdminReports() {
                     </p>
 
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span>Denunciante: <span className="font-medium text-foreground">{report.reportedByStudentName}</span></span>
-                      <span>Senhorio: <span className="font-medium text-foreground">{report.landlordName}</span></span>
-                      {report.propertyTitle && (
-                        <span className="flex items-center gap-1">
-                          <Home className="w-3 h-3" />
-                          {report.propertyTitle}
-                        </span>
-                      )}
-                      <span className="ml-auto">{report.date}</span>
+                      <span>
+                        Alvo: <span className="font-medium text-foreground">{report.targetName ?? report.targetId}</span>
+                      </span>
+                      <span>{TARGET_TYPE_LABELS[report.targetType] ?? report.targetType}</span>
+                      <span className="ml-auto">{formatDate(report.createdAt)}</span>
                     </div>
                   </div>
 
@@ -733,7 +791,8 @@ export function AdminReports() {
         <ReportDetailModal
           report={selectedReport}
           onClose={() => setSelectedReport(null)}
-          onUpdate={handleUpdate}
+          onUpdateStatus={updateStatus}
+          onAddNote={addInternalNote}
           onSuspendProperty={handleSuspendProperty}
           onSuspendLandlord={handleSuspendLandlord}
           onBlockLandlord={handleBlockLandlord}

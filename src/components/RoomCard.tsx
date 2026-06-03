@@ -23,12 +23,13 @@ import {
   Wifi,
 } from 'lucide-react';
 import { Room, Property } from '../types/property';
+import type { StudentProfile } from '../types/profile';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { Card } from './Card';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
-import { getAverageRatingBreakdown, getVerificationStatus } from '../data/mockTrust';
+import { useTrustScore } from '../hooks/useTrust';
 import { getRoomCompatibilityScore } from '../utils/profileCompatibility';
 
 function getAvailabilityLabel(date: Date): { text: string; cls: string } {
@@ -58,6 +59,7 @@ interface CompareProps {
 interface RoomCardProps {
   room: Room;
   property: Property;
+  studentProfile?: StudentProfile | null;
   variant?: 'default' | 'public' | 'management' | 'compact';
   displayMode?: 'grid' | 'list';
   showFavorite?: boolean;
@@ -84,6 +86,7 @@ interface RoomCardProps {
 export function RoomCard({
   room,
   property,
+  studentProfile,
   variant = 'default',
   displayMode = 'grid',
   showFavorite = true,
@@ -100,11 +103,15 @@ export function RoomCard({
   const isFav = isFavorite(room.id);
   const isManagement = variant === 'management';
 
-  const personalizedCompatibility = (user?.type === 'student' || user?.type === 'landlord')
-    ? getRoomCompatibilityScore(user.id, room, property)
+  // 3 states:
+  // studentProfile = undefined  → prop not passed, fall back to static room score
+  // studentProfile = null       → profile was requested but is loading/not found, show nothing
+  // studentProfile = object     → use personalized score
+  const profileRequested = studentProfile !== undefined;
+  const personalizedCompatibility = studentProfile
+    ? getRoomCompatibilityScore(studentProfile, room, property)
     : undefined;
-
-  const displayCompatibility = personalizedCompatibility ?? room.compatibilityScore;
+  const displayCompatibility = personalizedCompatibility ?? (profileRequested ? undefined : room.compatibilityScore);
 
   const canShowCompatibility = Boolean(
     !isManagement &&
@@ -141,15 +148,16 @@ export function RoomCard({
     return types[room.roomType];
   })();
 
-  const roomRating = getAverageRatingBreakdown(room.id);
+  const { score: landlordScore } = useTrustScore(property.landlordId);
+  const roomRating = {
+    total: landlordScore?.reviewsCount ?? 0,
+    average: landlordScore?.averageRating ?? 0,
+  };
   const availability = getAvailabilityLabel(room.availableFrom);
   const walk = walkMinutes(property.distanceToUniversity);
   const totalPrice = room.price + (room.utilities || 0);
 
-  const isVerifiedLandlord = (() => {
-    const verification = getVerificationStatus(property.landlordId);
-    return verification?.level === 'gold' || verification?.level === 'silver';
-  })();
+  const isVerifiedLandlord = landlordScore?.verificationLevel === 'gold' || landlordScore?.verificationLevel === 'silver';
 
   const compatibilityTone =
     (displayCompatibility || 0) >= 80

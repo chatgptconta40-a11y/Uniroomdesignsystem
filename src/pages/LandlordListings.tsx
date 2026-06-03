@@ -32,7 +32,7 @@ import { Badge } from '../components/Badge';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from 'sonner';
 import { mockUsers } from '../data/mockUsers';
-import { getApplicationsByProperty } from '../data/mockLandlordCandidates';
+import { useLandlordApplications } from '../hooks/useDb';
 import { isUserSuspended, isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
 
 interface EditRoomModalProps {
@@ -225,6 +225,8 @@ export function LandlordListings() {
 
   const isAccountSuspended = isUserSuspended(user.id);
   const isBlockedFromPublishing = isUserBlockedFromPublishing(user.id);
+
+  const { applications: landlordApplications } = useLandlordApplications(user.id);
 
   const landlordProperties = properties.filter(property => property.landlordId === user.id);
 
@@ -480,7 +482,7 @@ export function LandlordListings() {
               const minPrice = propertyRooms.length > 0
                 ? Math.min(...propertyRooms.map(room => room.price))
                 : null;
-              const propertyApps = getApplicationsByProperty(property.id);
+              const propertyApps = landlordApplications.filter(app => app.propertyId === property.id);
               const pendingCount = propertyApps.filter(a => a.status === 'pending').length;
               const underReviewCount = propertyApps.filter(a => a.status === 'under_review').length;
               const acceptedCount = propertyApps.filter(a => a.status === 'accepted').length;

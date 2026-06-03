@@ -1,5 +1,6 @@
-// Landlord-side application data — localStorage only.
-// No demo seed. Candidates only appear when a real student submits an application.
+// DEPRECATED: Este ficheiro está deprecated para uso geral.
+// Apenas usado por AdminProperties.tsx e AdminDashboard.tsx para visualização admin.
+// Para candidaturas do senhorio, usar useLandlordApplications de hooks/useDb.ts
 
 import { updateApplicationStatus, syncVisitData } from './mockApplications';
 

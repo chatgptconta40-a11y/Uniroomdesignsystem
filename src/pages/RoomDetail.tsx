@@ -14,8 +14,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
-import { getReviewsForAccommodation, getAverageRatingBreakdown } from '../data/mockTrust';
-import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
+import { useReviews } from '../hooks/useTrust';
 import { supabase } from '../lib/supabase';
 import { mockUsers } from '../data/mockUsers';
 import { toast } from 'sonner';
@@ -34,7 +33,6 @@ export function RoomDetail() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [, setReviewsVersion] = useState(0);
   const [existingApplication, setExistingApplication] = useState<{ id: string; status: string } | null>(null);
   const [appRefreshKey, setAppRefreshKey] = useState(0);
 
@@ -72,14 +70,14 @@ export function RoomDetail() {
   const galleryImages = room && property
     ? Array.from(new Set([...room.images, ...property.images]))
     : [];
-  const reviews = room ? getReviewsForAccommodation(room.id) : [];
-  const ratingBreakdown = room ? getAverageRatingBreakdown(room.id) : null;
+  const { reviews, averageRating: reviewAvg, total: reviewTotal } = useReviews({ propertyId: property?.id });
 
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
   const canActAsApplicant = (user?.type === 'student' || user?.type === 'landlord') && !isLandlordOwner;
   const canShowCompatibility = Boolean(
     canActAsApplicant &&
-    hasCompletedCompatibilityProfile(user!.id) &&
+    user?.onboardingCompleted &&
+    (user.profileCompleteness?.overall ?? 0) >= 80 &&
     room?.compatibilityScore
   );
   const shouldInviteProfileCompletion = !user;
@@ -462,8 +460,8 @@ export function RoomDetail() {
                 <h2 className="text-xl font-bold">Avaliações</h2>
                 <div className="flex items-center gap-1 text-sm font-semibold text-amber-600">
                   <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                  {ratingBreakdown && ratingBreakdown.total > 0
-                    ? `${ratingBreakdown.average.toFixed(1)} média`
+                  {reviewTotal > 0
+                    ? `${reviewAvg.toFixed(1)} média`
                     : 'Sem avaliações'}
                 </div>
               </div>
@@ -755,12 +753,12 @@ export function RoomDetail() {
 
       {showReviewModal && (
         <ReviewModal
-          accommodationId={room.id}
+          propertyId={property.id}
           landlordId={room.landlordId}
           userId={user?.id || ''}
           userName={user?.name || ''}
           onClose={() => setShowReviewModal(false)}
-          onSuccess={() => setReviewsVersion(version => version + 1)}
+          onSuccess={() => setShowReviewModal(false)}
         />
       )}
 

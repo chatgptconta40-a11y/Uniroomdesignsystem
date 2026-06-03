@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+
 import { useNavigate } from 'react-router';
 import {
   Shield,
@@ -13,12 +14,9 @@ import {
   Building2,
   XCircle,
 } from 'lucide-react';
+import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import {
-  getVerificationStatus,
-  updateVerificationStatus,
-  submitVerificationDocument,
-} from '../data/mockTrust';
+import { useVerificationStatus } from '../hooks/useTrust';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
@@ -69,25 +67,24 @@ export function Verification() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [version, setVersion] = useState(0);
-  const verification = useMemo(
-    () => getVerificationStatus(user?.id || ''),
-    [user?.id, version],
-  );
+  const { status: verification, upsert, submitDocument } = useVerificationStatus(user?.id);
 
   const isLandlord = user?.type === 'landlord';
 
-  const initialStep = !verification?.emailVerified
-    ? 1
-    : !verification?.universityEmailVerified
-      ? 2
-      : 3;
-
-  const [currentStep, setCurrentStep] = useState<number>(initialStep);
-  const [email, setEmail] = useState(user?.email || verification?.personalEmail || '');
+  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [email, setEmail] = useState(user?.email || '');
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [uniEmail, setUniEmail] = useState(verification?.universityEmail || '');
+  const [uniEmail, setUniEmail] = useState('');
   const [uniEmailError, setUniEmailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!verification) return;
+    const step = !verification.emailVerified ? 1 : !verification.universityEmailVerified ? 2 : 3;
+    setCurrentStep(step);
+    setEmail(prev => prev || verification.personalEmail || user?.email || '');
+    setUniEmail(prev => prev || verification.universityEmail || '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verification?.emailVerified, verification?.universityEmailVerified]);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [confirmOwnership, setConfirmOwnership] = useState(false);
@@ -156,12 +153,8 @@ export function Verification() {
     setIsProcessing(true);
     await new Promise(resolve => setTimeout(resolve, 700));
 
-    updateVerificationStatus(user.id, {
-      emailVerified: true,
-      personalEmail: value,
-    });
+    await upsert({ emailVerified: true, personalEmail: value });
 
-    setVersion(value => value + 1);
     toast.success('Email pessoal confirmado.');
     setIsProcessing(false);
     setCurrentStep(2);
@@ -194,12 +187,8 @@ export function Verification() {
     setIsProcessing(true);
     await new Promise(resolve => setTimeout(resolve, 700));
 
-    updateVerificationStatus(user.id, {
-      universityEmailVerified: true,
-      universityEmail: value,
-    });
+    await upsert({ universityEmailVerified: true, universityEmail: value });
 
-    setVersion(value => value + 1);
     toast.success(isLandlord ? 'Email profissional confirmado.' : 'Email universitário confirmado.');
     setIsProcessing(false);
     setCurrentStep(3);
@@ -244,9 +233,8 @@ export function Verification() {
     setIsProcessing(true);
     await new Promise(resolve => setTimeout(resolve, 900));
 
-    submitVerificationDocument(user.id, documentFile.name);
+    await submitDocument(documentFile.name);
 
-    setVersion(value => value + 1);
     setIsProcessing(false);
     toast.success('Documento enviado para análise do administrador.');
   };

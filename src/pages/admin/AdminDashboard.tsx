@@ -24,16 +24,13 @@ import { Card } from '../../components/Card';
 import { useProperties } from '../../context/PropertiesContext';
 import { mockUsers } from '../../data/mockUsers';
 import { getAllApplications } from '../../data/mockLandlordCandidates';
-import {
-  getAllReports,
-  getCriticalReportsCount,
-  getOpenReportsCount,
-} from '../../data/mockAdminReports';
+import { useReports } from '../../hooks/useDb';
 import { getAuditLog } from '../../data/mockAdminAudit';
 
 export function AdminDashboard() {
   const navigate = useNavigate();
   const { properties, rooms } = useProperties();
+  const { reports: allReports, openCount: openReports, criticalCount: criticalReports } = useReports();
 
   const allProperties = properties.filter(property => property.status !== 'archived');
   const activeProperties = allProperties.filter(property => property.status === 'active');
@@ -60,9 +57,6 @@ export function AdminDashboard() {
   ).length;
   const acceptedApplications = allApplications.filter(application => application.status === 'accepted').length;
 
-  const openReports = getOpenReportsCount();
-  const criticalReports = getCriticalReportsCount();
-  const allReports = getAllReports();
   const recentAudit = getAuditLog().slice(0, 5);
 
   const totalUsers = allStudents.length + allLandlords.length;
@@ -91,9 +85,9 @@ export function AdminDashboard() {
 
   const criticalAlerts = allReports.filter(
     report =>
-      report.priority === 'critica' &&
-      report.status !== 'resolvida' &&
-      report.status !== 'rejeitada'
+      report.severity === 'critical' &&
+      report.status !== 'resolved' &&
+      report.status !== 'dismissed',
   );
   const suspendedProperties = allProperties.filter(property => property.adminSuspended);
   const verificationRate = allLandlords.length > 0
@@ -342,7 +336,7 @@ export function AdminDashboard() {
               {criticalAlerts.length} denúncia{criticalAlerts.length > 1 ? 's' : ''} crítica{criticalAlerts.length > 1 ? 's' : ''} pendente{criticalAlerts.length > 1 ? 's' : ''}
             </p>
             <p className="text-xs text-red-700 mt-0.5">
-              {criticalAlerts.map(report => report.landlordName).join(', ')} requerem ação imediata
+              {criticalAlerts.map(report => report.targetName ?? report.targetId).join(', ')} requerem ação imediata
             </p>
           </div>
 
@@ -494,10 +488,10 @@ export function AdminDashboard() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Abertas', value: allReports.filter(report => report.status === 'aberta').length, cls: 'bg-red-50 border-red-200 text-red-700' },
-            { label: 'Em análise', value: allReports.filter(report => report.status === 'em_analise').length, cls: 'bg-amber-50 border-amber-200 text-amber-700' },
-            { label: 'Resolvidas', value: allReports.filter(report => report.status === 'resolvida').length, cls: 'bg-green-50 border-green-200 text-green-700' },
-            { label: 'Rejeitadas', value: allReports.filter(report => report.status === 'rejeitada').length, cls: 'bg-gray-50 border-gray-200 text-gray-600' },
+            { label: 'Abertas', value: allReports.filter(report => report.status === 'pending').length, cls: 'bg-red-50 border-red-200 text-red-700' },
+            { label: 'Em análise', value: allReports.filter(report => report.status === 'under_review').length, cls: 'bg-amber-50 border-amber-200 text-amber-700' },
+            { label: 'Resolvidas', value: allReports.filter(report => report.status === 'resolved').length, cls: 'bg-green-50 border-green-200 text-green-700' },
+            { label: 'Rejeitadas', value: allReports.filter(report => report.status === 'dismissed').length, cls: 'bg-gray-50 border-gray-200 text-gray-600' },
           ].map(item => (
             <div key={item.label} className={`border rounded-xl p-3 text-center ${item.cls}`}>
               <p className="text-2xl font-bold">{item.value}</p>
@@ -515,9 +509,11 @@ export function AdminDashboard() {
                 <div key={report.id} className="flex items-center gap-2 text-xs">
                   <ShieldAlert className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
                   <span className="text-gray-700 flex-1 truncate">
-                    {report.reportedByStudentName} → {report.landlordName}
+                    {report.targetName ?? report.targetId}
                   </span>
-                  <span className="text-gray-500 whitespace-nowrap">{report.date}</span>
+                  <span className="text-gray-500 whitespace-nowrap">
+                    {new Date(report.createdAt).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
+                  </span>
                 </div>
               ))}
             </div>

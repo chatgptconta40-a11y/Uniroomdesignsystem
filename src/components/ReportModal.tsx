@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { AlertTriangle, Flag, ShieldAlert, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './Button';
-import { createReport } from '../data/mockTrust';
-import { addReport } from '../data/mockAdminReports';
-import type { Report } from '../types/trust';
-import type { ReportReason } from '../types/trust';
-import type { ReportPriority, ReportType } from '../data/mockAdminReports';
+import { useReport } from '../hooks/useTrust';
+
+type ReportedType = 'accommodation' | 'user' | 'message' | 'review';
+type ReportType = 'fraude_possivel' | 'localizacao_falsa' | 'pagamento_externo' | 'fotos_enganosas' | 'identidade_nao_verificada' | 'comportamento_abusivo';
+type ReportPriority = 'baixa' | 'media' | 'alta' | 'critica';
 
 interface ReportModalProps {
-  reportedType: Report['reportedType'];
+  reportedType: ReportedType;
   reportedId: string;
   reportedName: string;
   userId: string;
@@ -28,7 +28,6 @@ interface ReasonOption {
   label: string;
   description: string;
   priority: ReportPriority;
-  legacyReason: ReportReason;
 }
 
 const REASON_OPTIONS: ReasonOption[] = [
@@ -37,42 +36,36 @@ const REASON_OPTIONS: ReasonOption[] = [
     label: 'Possível fraude',
     description: 'Conta suspeita, pedido de caução sem contrato, perfil falso ou tentativa de burla.',
     priority: 'critica',
-    legacyReason: 'scam',
   },
   {
     value: 'pagamento_externo',
     label: 'Pedido de pagamento fora da plataforma',
     description: 'Pedido de transferência bancária, MB Way ou outro método externo sem garantias.',
     priority: 'critica',
-    legacyReason: 'scam',
   },
   {
     value: 'comportamento_abusivo',
     label: 'Comportamento abusivo',
     description: 'Ameaças, assédio, pressão indevida ou comunicação intimidatória.',
     priority: 'alta',
-    legacyReason: 'harassment',
   },
   {
     value: 'fotos_enganosas',
     label: 'Fotos enganosas',
     description: 'O alojamento real não corresponde às fotografias ou às condições apresentadas.',
     priority: 'alta',
-    legacyReason: 'inappropriate_content',
   },
   {
     value: 'localizacao_falsa',
     label: 'Localização falsa',
     description: 'A morada, zona ou distância à universidade está incorreta.',
     priority: 'media',
-    legacyReason: 'fake_listing',
   },
   {
     value: 'identidade_nao_verificada',
     label: 'Identidade do senhorio não verificada',
     description: 'Não foi possível confirmar a identidade real do senhorio ou há dados contraditórios.',
     priority: 'media',
-    legacyReason: 'other',
   },
 ];
 
@@ -83,7 +76,7 @@ const PRIORITY_BADGE: Record<ReportPriority, { label: string; cls: string }> = {
   baixa: { label: 'Baixa', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
 };
 
-const TYPE_LABELS: Record<Report['reportedType'], string> = {
+const TYPE_LABELS: Record<ReportedType, string> = {
   accommodation: 'alojamento',
   user: 'utilizador',
   message: 'mensagem',
@@ -104,6 +97,7 @@ export function ReportModal({
   landlordId,
   landlordName,
 }: ReportModalProps) {
+  const { createReport } = useReport();
   const [reason, setReason] = useState<ReportType | ''>('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -125,33 +119,14 @@ export function ReportModal({
 
     setIsSubmitting(true);
 
-    createReport(
-      userId,
-      reportedType,
-      reportedId,
-      selectedOption.legacyReason,
-      trimmedDescription,
-    );
-
-    if (landlordId) {
-      addReport({
-        type: selectedOption.value,
-        propertyId,
-        propertyTitle,
-        roomId,
-        roomTitle,
-        landlordId,
-        landlordName: landlordName ?? 'Senhorio',
-        reportedByStudentId: userId,
-        reportedByStudentName: userName ?? 'Estudante',
-        description: trimmedDescription,
-        date: new Date().toISOString().split('T')[0],
-        priority: selectedOption.priority,
-        status: 'aberta',
-      });
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 400));
+    await createReport({
+      targetType: reportedType,
+      targetId: reportedId,
+      targetName: reportedName,
+      reason: selectedOption.value,
+      description: trimmedDescription,
+      severity: selectedOption.priority,
+    });
 
     toast.success('Denúncia enviada com sucesso!', {
       description: 'A equipa UniRoom vai analisar o caso. A tua identidade será mantida em confidencialidade.',
@@ -265,12 +240,8 @@ export function ReportModal({
             />
 
             <div className="flex items-center justify-between mt-1">
-              <p className="text-xs text-muted-foreground">
-                Mínimo recomendado: 20 caracteres.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {description.length}/1000
-              </p>
+              <p className="text-xs text-muted-foreground">Mínimo recomendado: 20 caracteres.</p>
+              <p className="text-xs text-muted-foreground">{description.length}/1000</p>
             </div>
           </div>
 
@@ -302,7 +273,7 @@ export function ReportModal({
             Cancelar
           </Button>
 
-          <Button onClick={handleSubmit} disabled={!canSubmit}>
+          <Button onClick={() => void handleSubmit()} disabled={!canSubmit}>
             {isSubmitting ? 'A enviar...' : 'Enviar denúncia'}
           </Button>
         </div>

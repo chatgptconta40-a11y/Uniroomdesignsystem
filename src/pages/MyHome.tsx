@@ -35,7 +35,9 @@ import {
   getPaymentMethodLabel,
   getPaymentMethodMainValue,
   getPaymentStatusLabel,
-} from '../data/mockHousingFinance';
+} from '../utils/housingFinanceLabels';
+import { usePaymentMethod, useRentalContracts, useRentPayments } from '../hooks/useHousingFinance';
+import type { ContractStatus } from '../utils/housingFinanceLabels';
 import { supabase } from '../lib/supabase';
 import { Accommodation, ActiveHome } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
@@ -110,9 +112,13 @@ export function MyHome() {
   const [selectedProofFileName, setSelectedProofFileName] = useState('');
   const { requests: maintenanceRequests, refresh: refreshMaintenanceRequests } = useMaintenance({ scope: 'student' });
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
-  const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
 
   const [activeHomeRow, setActiveHomeRow] = useState<ActiveHome | null>(null);
+
+  const { contract: realContract } = useRentalContracts({ activeHomeId: activeHomeRow?.id });
+  const { payments: realPayments, uploadProof } = useRentPayments({ activeHomeId: activeHomeRow?.id });
+  const { method: realPaymentMethod } = usePaymentMethod(activeHomeRow?.landlordId ?? '');
+
   const [acceptedAppRow, setAcceptedAppRow] = useState<{
     id: string;
     userId: string;
@@ -393,46 +399,41 @@ export function MyHome() {
   const utilitiesAmount = activeHomeData.utilities ?? room.utilities ?? 0;
   const monthlyTotal = monthlyRent + utilitiesAmount;
 
-  // FASE 2: pagamentos/contratos ainda não migrados para Supabase.
-  // Mostramos placeholders read-only. Nenhuma escrita em localStorage.
-  const paymentMethod: any = {
-    id: 'placeholder',
+  const paymentMethod = realPaymentMethod ?? {
+    id: 'none',
     landlordId: activeHomeData.landlordId,
-    landlordName: '',
-    type: 'iban',
+    methodType: 'other',
     label: 'Por definir',
     holderName: '',
-    iban: '',
     isDefault: true,
     active: true,
+    createdAt: '',
+    updatedAt: '',
   };
-  const nowIso = new Date().toISOString();
-  const startDateIso = new Date(activeHomeData.moveInDate).toISOString();
-  const contract: any = {
-    id: 'placeholder',
+
+  const startDateIso = new Date(activeHomeData.moveInDate).toISOString().slice(0, 10);
+  const contract = realContract ?? {
+    id: 'pending',
     activeHomeId: activeHomeData.id,
-    applicationId: activeHomeData.applicationId,
     propertyId: activeHomeData.propertyId,
     roomId: activeHomeData.roomId,
     landlordId: activeHomeData.landlordId,
-    studentId: activeHomeData.studentId,
+    studentId: user?.id ?? '',
     title: 'Contrato de arrendamento',
     contractNumber: '—',
-    status: 'draft',
+    status: 'draft' as ContractStatus,
     startDate: startDateIso,
-    endDate: undefined,
     monthlyRent,
     depositAmount: monthlyRent,
     utilitiesAmount,
-    signedAt: undefined,
-    notes: '',
-    createdAt: nowIso,
-    updatedAt: nowIso,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
-  const rentPayments: any[] = [];
-  const nextPayment = undefined;
-  const paidPayments: any[] = [];
-  const paymentsWithProof: any[] = [];
+
+  const rentPayments = realPayments;
+  const nextPayment = rentPayments.find(p => p.status !== 'paid');
+  const paidPayments = rentPayments.filter(p => p.status === 'paid');
+  const paymentsWithProof = rentPayments.filter(p => p.proofUrl);
 
   const visibleMaintenanceRequests = maintenanceRequests.filter(request =>
     request.roomId === room.id ||
@@ -461,10 +462,20 @@ export function MyHome() {
     }
   };
 
-  const handleUploadPaymentProof = (_paymentId: string) => {
-    toast.info('Pagamentos ainda não estão disponíveis nesta versão.', {
-      description: 'A área financeira será ativada numa próxima atualização.',
-    });
+  const handleUploadPaymentProof = async (paymentId: string) => {
+    if (!selectedProofFileName) return;
+    const updated = await uploadProof(
+      paymentId,
+      selectedProofFileName,
+      selectedProofFileName,
+    );
+    if (updated) {
+      toast.success('Comprovativo submetido. O senhorio irá validar em breve.');
+      setShowPaymentModal(false);
+      setSelectedProofFileName('');
+    } else {
+      toast.error('Erro ao submeter comprovativo. Tenta novamente.');
+    }
   };
 
   const amenities = [
@@ -797,7 +808,7 @@ export function MyHome() {
               </Button>
             </Card>
 
-            <Card key={`payment-${financeRefreshKey}`} className="p-0 overflow-hidden border-primary/10">
+            <Card className="p-0 overflow-hidden border-primary/10">
               <div className="bg-gradient-to-br from-primary to-blue-700 p-5 text-white">
                 <div className="flex items-start justify-between gap-3 mb-5">
                   <div>
@@ -1130,7 +1141,7 @@ export function MyHome() {
                 Cancelar
               </Button>
               <Button
-                onClick={() => handleUploadPaymentProof(nextPayment.id)}
+                onClick={() => void handleUploadPaymentProof(nextPayment.id)}
                 disabled={!selectedProofFileName}
               >
                 <Upload className="w-4 h-4 mr-2" />

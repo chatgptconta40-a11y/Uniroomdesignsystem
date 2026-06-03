@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
-import { findOrCreateRoomConversation } from '../data/mockMessages';
+import { findOrCreateConversation } from '../hooks/useMessages';
 import { supabase } from '../lib/supabase';
 import { dbToApplication } from '../hooks/useDb';
 import { Application, ApplicationStatus } from '../types/accommodation';
@@ -350,7 +350,7 @@ export function Applications() {
     setTimeout(() => navigate('/my-home'), 900);
   };
 
-  const handleContactLandlord = (app: Application) => {
+  const handleContactLandlord = async (app: Application) => {
     const room = app.roomId ? getRoom(app.roomId) : undefined;
     const property = app.propertyId ? getProperty(app.propertyId) : undefined;
 
@@ -365,21 +365,23 @@ export function Applications() {
         ? `Olá! A minha candidatura para ${room.title} foi aceite. Queria confirmar os próximos passos e a data de entrada.`
         : `Olá! Tenho uma candidatura ativa para ${room.title} e gostaria de esclarecer algumas dúvidas.`;
 
-    const conversation = findOrCreateRoomConversation(
-      user?.id || '',
-      user?.name || 'Estudante',
-      'student',
-      app.landlordId,
-      app.landlordName || 'Senhorio',
-      room.id,
-      property.id,
-      room.title,
-      room.price,
-      room.images[0] || property.images[0] || '',
-      contextMsg,
-    );
-
-    navigate(`/messages?conversation=${conversation.id}`);
+    try {
+      const conversationId = await findOrCreateConversation({
+        studentId: user?.id || '',
+        studentName: user?.name || 'Estudante',
+        landlordId: app.landlordId,
+        landlordName: app.landlordName || 'Senhorio',
+        roomId: room.id,
+        propertyId: property.id,
+        accommodationTitle: room.title,
+        accommodationPrice: room.price,
+        accommodationImage: room.images[0] || property.images[0] || '',
+        initialMessage: contextMsg,
+      });
+      navigate(`/messages?conversation=${conversationId}`);
+    } catch {
+      toast.error('Erro ao abrir conversa. Tenta novamente.');
+    }
   };
 
   const handleViewTarget = (app: Application) => {
@@ -755,7 +757,7 @@ export function Applications() {
 
                             {!isCancelled && !isConfirmed && (
                               <Button
-                                onClick={() => handleContactLandlord(application)}
+                                onClick={() => void handleContactLandlord(application)}
                                 variant="outline"
                                 size="sm"
                               >

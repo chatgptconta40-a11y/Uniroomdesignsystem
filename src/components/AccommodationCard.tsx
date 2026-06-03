@@ -14,7 +14,6 @@ import { Accommodation } from '../types/accommodation';
 import { Badge } from './Badge';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
-import { hasCompletedCompatibilityProfile } from '../data/mockProfiles';
 import { toast } from 'sonner';
 
 interface AccommodationCardProps {
@@ -30,8 +29,10 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
   const isFav = isFavorite(accommodation.id);
 
   const canShowCompatibility = Boolean(
-    (user?.type === 'student' || user?.type === 'landlord') &&
-      hasCompletedCompatibilityProfile(user.id) &&
+    user &&
+      (user.type === 'student' || user.type === 'landlord') &&
+      user.onboardingCompleted &&
+      (user.profileCompleteness?.overall ?? 0) >= 80 &&
       accommodation.compatibilityScore,
   );
 

@@ -15,7 +15,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { useMaintenance } from '../hooks/useDb';
-import { getTotalUnreadCount } from '../data/mockMessages';
+import { useConversations } from '../hooks/useMessages';
 import { useState, useEffect } from 'react';
 import { useProperties } from '../context/PropertiesContext';
 import { useFavorites } from '../context/FavoritesContext';
@@ -30,7 +30,7 @@ export function Dashboard() {
 
   const [suggestions, setSuggestions] = useState<{ room: Room; property: Property; availableRooms: number }[]>([]);
   const [applicationsCount, setApplicationsCount] = useState(0);
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const { totalUnreadCount: unreadMessagesCount } = useConversations();
   const { requests: allMaintenanceRequests } = useMaintenance({ scope: 'student' });
   const maintenanceRequests = allMaintenanceRequests.slice(0, 3);
   const [activeHome, setActiveHome] = useState<{ property: Property; room: Room; activeHomeData: { moveInDate: Date } } | null>(null);
@@ -94,9 +94,6 @@ export function Dashboard() {
         .in('status', ['pending', 'under_review', 'accepted']);
       if (!cancelled && !error && data) {
         setApplicationsCount(data.length);
-      }
-      if (!cancelled) {
-        setUnreadMessagesCount(getTotalUnreadCount(user.id));
       }
     };
 
