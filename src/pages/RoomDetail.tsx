@@ -36,6 +36,14 @@ export function RoomDetail() {
   const [existingApplication, setExistingApplication] = useState<{ id: string; status: string } | null>(null);
   const [appRefreshKey, setAppRefreshKey] = useState(0);
 
+  const room = getRoom(id || '');
+  const property = room ? getProperty(room.propertyId) : null;
+  const otherRooms = room ? getRoomsByProperty(room.propertyId).filter(r => r.id !== room.id) : [];
+  const galleryImages = room && property
+    ? Array.from(new Set([...room.images, ...property.images]))
+    : [];
+  const { reviews, averageRating: reviewAvg, total: reviewTotal } = useReviews({ propertyId: property?.id });
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [id]);
@@ -63,14 +71,6 @@ export function RoomDetail() {
     })();
     return () => { cancelled = true; };
   }, [user?.id, user?.type, room?.id, room?.landlordId, appRefreshKey]);
-
-  const room = getRoom(id || '');
-  const property = room ? getProperty(room.propertyId) : null;
-  const otherRooms = room ? getRoomsByProperty(room.propertyId).filter(r => r.id !== room.id) : [];
-  const galleryImages = room && property
-    ? Array.from(new Set([...room.images, ...property.images]))
-    : [];
-  const { reviews, averageRating: reviewAvg, total: reviewTotal } = useReviews({ propertyId: property?.id });
 
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
   const canActAsApplicant = (user?.type === 'student' || user?.type === 'landlord') && !isLandlordOwner;
