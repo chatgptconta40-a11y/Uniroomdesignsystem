@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { Property, Room, PropertyStatus, RoomStatus } from '../types/property';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { useDataBusRefresh } from '../lib/dataBus';
@@ -278,6 +278,11 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Snapshot estável da lista atual de rooms, para os callbacks do canal
+  // Realtime poderem recalcular roomIds sem reanexar o listener.
+  const roomsRef = useRef<Room[]>([]);
+  useEffect(() => { roomsRef.current = rooms; }, [rooms]);
+
   const applyToState = useCallback((nextProperties: Property[], nextRooms: Room[]) => {
     const normalizedRooms = nextRooms.map(normalizeRoom);
     const normalizedProperties = attachRoomIds(nextProperties.map(normalizeProperty), normalizedRooms);
@@ -308,6 +313,79 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
   }, [refreshProperties, user?.id, user?.type]);
 
   useDataBusRefresh('properties', refreshProperties);
+
+  // ─── Realtime: properties + rooms ──────────────────────────────────────
+  // Mutamos diretamente o state com a row recebida (sem refetch completo),
+  // recalculando depois roomIds/totalRooms para manter consistência.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    const channel = supabase
+      .channel(`uniroom:properties-rooms:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'properties' },
+        payload => {
+          if (payload.eventType === 'DELETE') {
+            const removedId = String((payload.old as { id?: string }).id ?? '');
+            if (!removedId) return;
+            setProperties(prev => {
+              if (!prev.some(p => p.id === removedId)) return prev;
+              return prev.filter(p => p.id !== removedId);
+            });
+            return;
+          }
+
+          const incoming = normalizeProperty(payload.new);
+
+          setProperties(prev => {
+            const idx = prev.findIndex(p => p.id === incoming.id);
+            const nextList = idx === -1
+              ? [incoming, ...prev]
+              : prev.map(p => (p.id === incoming.id ? incoming : p));
+            // attachRoomIds depende dos rooms — recalcula usando o snapshot
+            // mais recente via setRooms abaixo. Aqui mantemos a lista crua,
+            // o recompute corre em useMemo derivado? Não, fazemos imediato:
+            return attachRoomIds(nextList, roomsRef.current);
+          });
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms' },
+        payload => {
+          if (payload.eventType === 'DELETE') {
+            const removedId = String((payload.old as { id?: string }).id ?? '');
+            if (!removedId) return;
+            setRooms(prev => {
+              if (!prev.some(r => r.id === removedId)) return prev;
+              const next = prev.filter(r => r.id !== removedId);
+              roomsRef.current = next;
+              setProperties(props => attachRoomIds(props, next));
+              return next;
+            });
+            return;
+          }
+
+          const incoming = normalizeRoom(payload.new);
+
+          setRooms(prev => {
+            const idx = prev.findIndex(r => r.id === incoming.id);
+            const next = idx === -1
+              ? [incoming, ...prev]
+              : prev.map(r => (r.id === incoming.id ? incoming : r));
+            roomsRef.current = next;
+            setProperties(props => attachRoomIds(props, next));
+            return next;
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     const handleFocus = () => void refreshProperties();

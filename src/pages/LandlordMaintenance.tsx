@@ -10,7 +10,7 @@ import {
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
-import { mockAccommodations } from '../data/mockAccommodations';
+import { useProperties } from '../context/PropertiesContext';
 import { toast } from 'sonner';
 
 const URGENCY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -19,6 +19,7 @@ const STATUS_ORDER: Record<string, number> = { pending: 0, received: 1, in_progr
 export function LandlordMaintenance() {
   const [filter, setFilter] = useState<'all' | MaintenanceStatus | 'high_urgency'>('all');
   const { requests: allRequests, updateStatus } = useMaintenance({ scope: 'landlord' });
+  const { getRoom, getProperty } = useProperties();
 
   const stats = useMemo(() => ({
     total: allRequests.length,
@@ -51,8 +52,12 @@ export function LandlordMaintenance() {
 
   const getAccommodationTitle = (roomId?: string) => {
     if (!roomId) return 'Alojamento';
-    const accommodation = mockAccommodations.find(item => item.id === roomId);
-    return accommodation?.title || 'Alojamento';
+    const room = getRoom(roomId);
+    if (room) {
+      const property = getProperty(room.propertyId);
+      return property ? `${room.title} · ${property.title}` : room.title;
+    }
+    return 'Alojamento';
   };
 
   const getUrgencyColor = (urgency: string) => {

@@ -117,6 +117,17 @@ export function useConversations() {
 
   useDataBusRefresh('messages', refresh);
 
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime:conversations-list:${user.id}:${Math.random().toString(36).slice(2, 9)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+        void refresh();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [user, refresh]);
+
   const totalUnreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
   return { conversations, totalUnreadCount, refresh };
@@ -153,6 +164,32 @@ export function useMessages(conversationId: string | null) {
   }, [refresh]);
 
   useDataBusRefresh('messages', refresh);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = supabase
+      .channel(`realtime:messages-thread:${conversationId}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
+        payload => {
+          if (payload.eventType === 'DELETE') {
+            const id = String((payload.old as { id?: string }).id ?? '');
+            if (!id) return;
+            setMessages(prev => prev.some(m => m.id === id) ? prev.filter(m => m.id !== id) : prev);
+            return;
+          }
+          const incoming = dbToMessage(payload.new);
+          setMessages(prev => {
+            const idx = prev.findIndex(m => m.id === incoming.id);
+            if (idx === -1) return [...prev, incoming];
+            return prev.map(m => m.id === incoming.id ? incoming : m);
+          });
+        },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [conversationId]);
 
   const sendMessage = useCallback(async (content: string): Promise<void> => {
     if (!conversationId || !user || !content.trim()) return;

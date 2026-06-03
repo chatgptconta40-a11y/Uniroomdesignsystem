@@ -347,53 +347,6 @@ export function Navbar() {
                             <div className="border-t border-border my-1" />
 
                             <Link
-                              to="/dashboard"
-                              className={navLinkClass('/dashboard')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <LayoutDashboard className="w-4 h-4" />
-                              <span className="text-sm">Dashboard</span>
-                            </Link>
-
-                            <Link
-                              to="/my-home"
-                              className={navLinkClass('/my-home')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <Home className="w-4 h-4" />
-                              <span className="text-sm">A Minha Casa</span>
-                            </Link>
-
-                            <Link
-                              to="/profile"
-                              className={navLinkClass('/profile')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <User className="w-4 h-4" />
-                              <span className="text-sm">O Meu Perfil</span>
-                            </Link>
-
-                            <Link
-                              to="/applications"
-                              className={navLinkClass('/applications')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <FileText className="w-4 h-4" />
-                              <span className="text-sm">As Minhas Candidaturas</span>
-                            </Link>
-
-                            <Link
-                              to="/favorites"
-                              className={navLinkClass('/favorites')}
-                              onClick={() => setShowMenu(false)}
-                            >
-                              <Heart className="w-4 h-4" />
-                              <span className="text-sm">Os Meus Favoritos</span>
-                            </Link>
-
-                            <div className="border-t border-border my-1" />
-
-                            <Link
                               to="/messages"
                               className={navLinkClass('/messages')}
                               onClick={() => setShowMenu(false)}

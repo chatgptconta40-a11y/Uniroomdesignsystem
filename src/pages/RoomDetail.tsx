@@ -16,7 +16,7 @@ import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
 import { useReviews } from '../hooks/useTrust';
 import { supabase } from '../lib/supabase';
-import { mockUsers } from '../data/mockUsers';
+import { useProfile } from '../hooks/useProfile';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
 import { TrustSignals } from '../components/TrustSignals';
@@ -43,6 +43,7 @@ export function RoomDetail() {
     ? Array.from(new Set([...room.images, ...property.images]))
     : [];
   const { reviews, averageRating: reviewAvg, total: reviewTotal } = useReviews({ propertyId: property?.id });
+  const { profile: landlordProfile } = useProfile(room?.landlordId);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -762,28 +763,24 @@ export function RoomDetail() {
         />
       )}
 
-      {showReportModal && (() => {
-        const landlord = mockUsers.find(u => u.id === room.landlordId);
-        return (
-          <ReportModal
-            reportedType="accommodation"
-            reportedId={room.id}
-            reportedName={room.title}
-            userId={user?.id || ''}
-            userName={user?.name}
-            onClose={() => setShowReportModal(false)}
-            propertyId={property.id}
-            propertyTitle={property.title}
-            roomId={room.id}
-            roomTitle={room.title}
-            landlordId={room.landlordId}
-            landlordName={landlord?.name}
-          />
-        );
-      })()}
+      {showReportModal && (
+        <ReportModal
+          reportedType="accommodation"
+          reportedId={room.id}
+          reportedName={room.title}
+          userId={user?.id || ''}
+          userName={user?.name}
+          onClose={() => setShowReportModal(false)}
+          propertyId={property.id}
+          propertyTitle={property.title}
+          roomId={room.id}
+          roomTitle={room.title}
+          landlordId={room.landlordId}
+          landlordName={landlordProfile?.name}
+        />
+      )}
 
       {showContactModal && (() => {
-        const landlord = mockUsers.find(u => u.id === room.landlordId);
         const contactAccommodation: Accommodation = {
           id: room.id,
           title: room.title,
@@ -827,7 +824,7 @@ export function RoomDetail() {
           <StartConversationModal
             accommodation={contactAccommodation}
             landlordId={room.landlordId}
-            landlordName={landlord?.name}
+            landlordName={landlordProfile?.name}
             roomId={room.id}
             propertyId={property.id}
             defaultMessage={`Olá, vi este quarto no UniRoom e tenho interesse. Gostava de confirmar se ainda está disponível, quais são as condições de entrada e se seria possível agendar uma visita. Obrigado.`}

@@ -39,7 +39,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
-import { isUserBlockedFromPublishing, isUserSuspended } from '../data/mockAdminUsersState';
+import { useUserRestrictions } from '../hooks/useUserRestrictions';
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -558,8 +558,10 @@ export function NewListing() {
   const [selectedPropertyPhoto, setSelectedPropertyPhoto] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  const isSuspended = !!user && isUserSuspended(user.id);
-  const isBlocked = !!user && isUserBlockedFromPublishing(user.id);
+  const {
+    isSuspended,
+    isBlockedFromPublishing: isBlocked,
+  } = useUserRestrictions(user?.id);
 
   const setP = (updates: Partial<PropertyDraft>) => {
     setProperty(prev => ({ ...prev, ...updates }));
@@ -710,12 +712,12 @@ export function NewListing() {
 
     if (saving) return;
 
-    if (isUserSuspended(user.id)) {
+    if (isSuspended) {
       toast.error('A tua conta está suspensa. Não é possível criar ou guardar anúncios.');
       return;
     }
 
-    if (mode !== 'draft' && isUserBlockedFromPublishing(user.id)) {
+    if (mode !== 'draft' && isBlocked) {
       toast.error('A tua conta está bloqueada de publicar. Guarda como rascunho.');
       return;
     }

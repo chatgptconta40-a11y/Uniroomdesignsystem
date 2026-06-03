@@ -31,9 +31,9 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from 'sonner';
-import { mockUsers } from '../data/mockUsers';
 import { useLandlordApplications } from '../hooks/useDb';
-import { isUserSuspended, isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
+import { useProfileNames } from '../hooks/useProfile';
+import { useUserRestrictions } from '../hooks/useUserRestrictions';
 
 interface EditRoomModalProps {
   room: Room;
@@ -182,12 +182,6 @@ function getRoomStatusBadge(room: Room, property: Property) {
   return configs[room.status];
 }
 
-function getStudentName(studentId: string | undefined): string | null {
-  if (!studentId) return null;
-  const student = mockUsers.find(u => u.id === studentId);
-  return student?.name || null;
-}
-
 export function LandlordListings() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -215,6 +209,22 @@ export function LandlordListings() {
   const [pausingPropertyId, setPausingPropertyId] = useState<string | null>(null);
   const [archivingPropertyId, setArchivingPropertyId] = useState<string | null>(null);
 
+  const {
+    isSuspended: isAccountSuspended,
+    isBlockedFromPublishing,
+  } = useUserRestrictions(user?.id);
+
+  const landlordRooms = user?.id
+    ? rooms.filter(r => {
+        const prop = properties.find(p => p.id === r.propertyId);
+        return prop?.landlordId === user.id;
+      })
+    : [];
+  const occupantIds = Array.from(new Set(
+    landlordRooms.flatMap(r => [r.reservedBy, r.occupiedBy]).filter(Boolean) as string[],
+  ));
+  const studentNames = useProfileNames(occupantIds);
+
   if (user?.type !== 'landlord') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -230,9 +240,6 @@ export function LandlordListings() {
       </div>
     );
   }
-
-  const isAccountSuspended = isUserSuspended(user.id);
-  const isBlockedFromPublishing = isUserBlockedFromPublishing(user.id);
 
   const { applications: landlordApplications } = useLandlordApplications(user.id);
 
@@ -729,7 +736,7 @@ export function LandlordListings() {
                             const canPauseRoom = room.status === 'available' && property.status === 'active' && !property.adminSuspended;
                             const canReactivateRoom = room.status === 'paused' && property.status === 'active' && !property.adminSuspended && !isAccountSuspended;
                             const studentId = room.status === 'reserved' ? room.reservedBy : room.status === 'occupied' ? room.occupiedBy : undefined;
-                            const studentName = getStudentName(studentId);
+                            const studentName = studentId ? (studentNames.get(studentId) ?? null) : null;
 
                             const rowBg =
                               room.status === 'available' ? 'bg-green-50/40 hover:bg-green-50/70' :

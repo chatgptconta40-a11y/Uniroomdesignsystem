@@ -4,7 +4,7 @@ import { Card } from './Card';
 import { TrustPill } from './TrustPill';
 import { useTrustScore, useReviews } from '../hooks/useTrust';
 import { parseResponseTimeHours, responseTimeLabel, memberSinceLabel } from '../utils/trustLabels';
-import { mockUsers } from '../data/mockUsers';
+import { useProfile } from '../hooks/useProfile';
 
 interface TrustSignalsProps {
   room: Room;
@@ -16,9 +16,9 @@ export function TrustSignals({ room, property, onReport }: TrustSignalsProps) {
   const landlordId = room.landlordId;
   const { score: landlordTrust } = useTrustScore(landlordId);
   const { averageRating: roomAvgRating, total: reviewTotal } = useReviews({ propertyId: property.id });
+  const { profile: landlordProfile } = useProfile(landlordId);
 
-  const landlord = mockUsers.find(u => u.id === landlordId);
-  const landlordName = landlord?.name ?? 'Senhorio';
+  const landlordName = landlordProfile?.name ?? 'Senhorio';
   const landlordInitial = landlordName.charAt(0).toUpperCase();
 
   const isVerifiedLandlord = landlordTrust?.verificationLevel === 'gold' || landlordTrust?.verificationLevel === 'silver';

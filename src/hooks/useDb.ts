@@ -54,6 +54,30 @@ export function useApplications(opts: { scope?: 'student' | 'landlord' | 'all' }
   useEffect(() => { refresh(); }, [refresh]);
   useDataBusRefresh('applications', refresh);
 
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime:applications:${scope}:${user.id}:${Math.random().toString(36).slice(2, 9)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, payload => {
+        if (payload.eventType === 'DELETE') {
+          const id = String((payload.old as { id?: string }).id ?? '');
+          if (!id) return;
+          setApplications(prev => prev.some(a => a.id === id) ? prev.filter(a => a.id !== id) : prev);
+          return;
+        }
+        const row = payload.new as { user_id?: string; landlord_id?: string };
+        if (scope === 'student' && row.user_id !== user.id) return;
+        if (scope === 'landlord' && row.landlord_id !== user.id) return;
+        const incoming = dbToApplication(payload.new);
+        setApplications(prev => {
+          const idx = prev.findIndex(a => a.id === incoming.id);
+          return idx === -1 ? [incoming, ...prev] : prev.map(a => a.id === incoming.id ? incoming : a);
+        });
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [user, scope]);
+
   const create = async (input: { propertyId?: string; roomId?: string; landlordId: string; message: string; moveInDate?: Date }) => {
     if (!user) return null;
     const id = `app-${Date.now()}`;
@@ -115,6 +139,31 @@ export function useNotifications() {
   useEffect(() => { refresh(); }, [refresh]);
   useDataBusRefresh('notifications', refresh);
 
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime:notifications:${user.id}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        payload => {
+          if (payload.eventType === 'DELETE') {
+            const id = String((payload.old as { id?: string }).id ?? '');
+            if (!id) return;
+            setNotifications(prev => prev.some(n => n.id === id) ? prev.filter(n => n.id !== id) : prev);
+            return;
+          }
+          const incoming = dbToNotification(payload.new);
+          setNotifications(prev => {
+            const idx = prev.findIndex(n => n.id === incoming.id);
+            return idx === -1 ? [incoming, ...prev] : prev.map(n => n.id === incoming.id ? incoming : n);
+          });
+        },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [user]);
+
   const markAsRead = async (id: string) => {
     const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
     if (error) { console.error('Notif read error:', error.message); return; }
@@ -169,6 +218,30 @@ export function useMaintenance(opts: { scope?: 'student' | 'landlord' | 'all' } 
 
   useEffect(() => { refresh(); }, [refresh]);
   useDataBusRefresh('maintenance', refresh);
+
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime:maintenance:${scope}:${user.id}:${Math.random().toString(36).slice(2, 9)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_requests' }, payload => {
+        if (payload.eventType === 'DELETE') {
+          const id = String((payload.old as { id?: string }).id ?? '');
+          if (!id) return;
+          setRequests(prev => prev.some(r => r.id === id) ? prev.filter(r => r.id !== id) : prev);
+          return;
+        }
+        const row = payload.new as { user_id?: string; landlord_id?: string };
+        if (scope === 'student' && row.user_id !== user.id) return;
+        if (scope === 'landlord' && row.landlord_id !== user.id) return;
+        const incoming = dbToMaintenance(payload.new);
+        setRequests(prev => {
+          const idx = prev.findIndex(r => r.id === incoming.id);
+          return idx === -1 ? [incoming, ...prev] : prev.map(r => r.id === incoming.id ? incoming : r);
+        });
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [user, scope]);
 
   const create = async (input: Omit<MaintenanceRequest, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'status'>) => {
     if (!user) return null;
@@ -270,6 +343,19 @@ export function useConversations() {
 
   useDataBusRefresh('messages', refresh);
 
+  useEffect(() => {
+    if (!user) return;
+    // Qualquer message nova/alterada pode mexer em last_message ou unread.
+    // O refresh enriquece com participants/profiles, por isso refazemos.
+    const channel = supabase
+      .channel(`realtime:conversations:${user.id}:${Math.random().toString(36).slice(2, 9)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+        void refresh();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [user, refresh]);
+
   return { conversations, loading, refresh };
 }
 
@@ -294,6 +380,43 @@ export function useMessages(conversationId: string | null) {
 
   useEffect(() => { refresh(); }, [refresh]);
   useDataBusRefresh('messages', refresh);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = supabase
+      .channel(`realtime:messages:${conversationId}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
+        payload => {
+          if (payload.eventType === 'DELETE') {
+            const id = String((payload.old as { id?: string }).id ?? '');
+            if (!id) return;
+            setMessages(prev => prev.some(m => m.id === id) ? prev.filter(m => m.id !== id) : prev);
+            return;
+          }
+          const m = payload.new as {
+            id: string; conversation_id: string; sender_id: string; content: string;
+            type: 'text' | 'image'; image_url?: string | null; read: boolean; created_at: string;
+          };
+          const incoming: MessageRow = {
+            id: m.id, conversationId: m.conversation_id, senderId: m.sender_id,
+            content: m.content, type: m.type, imageUrl: m.image_url ?? undefined,
+            read: !!m.read, createdAt: new Date(m.created_at),
+          };
+          setMessages(prev => {
+            const idx = prev.findIndex(x => x.id === incoming.id);
+            if (idx === -1) {
+              // Manter ordem cronológica (ascending) usada por este hook.
+              return [...prev, incoming];
+            }
+            return prev.map(x => x.id === incoming.id ? incoming : x);
+          });
+        },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [conversationId]);
 
   const send = async (content: string) => {
     if (!user || !conversationId) return null;
@@ -420,6 +543,19 @@ export function useActiveHome() {
   useEffect(() => { refresh(); }, [refresh]);
   useDataBusRefresh('activeHome', refresh);
 
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime:active-home:${user.id}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'active_homes', filter: `student_id=eq.${user.id}` },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [user, refresh]);
+
   return { home, loading, refresh };
 }
 
@@ -473,6 +609,16 @@ export function useReports() {
 
   useEffect(() => { void refresh(); }, [refresh]);
   useDataBusRefresh('reports', refresh);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`realtime:reports:list:${Math.random().toString(36).slice(2, 9)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => {
+        void refresh();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [refresh]);
 
   const updateStatus = async (
     id: string,
@@ -599,6 +745,16 @@ export function useAdminUsers() {
   useEffect(() => { refresh(); }, [refresh]);
   useDataBusRefresh('adminUsers', refresh);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`realtime:admin-users:profiles:${Math.random().toString(36).slice(2, 9)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        void refresh();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [refresh]);
+
   const setStatus = async (id: string, status: AdminUserRow['status']) => {
     const { error } = await supabase.from('profiles').update({ status }).eq('id', id);
     if (error) { console.error('User status error:', error.message); return; }
@@ -723,6 +879,22 @@ export function useLandlordApplications(landlordId?: string) {
 
   useEffect(() => { refresh(); }, [refresh]);
   useDataBusRefresh('applications', refresh);
+
+  useEffect(() => {
+    if (!landlordId) return;
+    // Esta lista é enriquecida com profiles (join); um upsert local não
+    // teria os campos do estudante. Disparamos refresh apenas quando a row
+    // pertence a este senhorio.
+    const channel = supabase
+      .channel(`realtime:landlord-applications:${landlordId}:${Math.random().toString(36).slice(2, 9)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, payload => {
+        const row = (payload.new ?? payload.old) as { landlord_id?: string };
+        if (row?.landlord_id !== landlordId) return;
+        void refresh();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [landlordId, refresh]);
 
   const accept = async (applicationId: string) => {
     const { error } = await supabase
@@ -890,6 +1062,19 @@ export function useStudentProfile(userId: string | undefined) {
       setLoading(false);
     }
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`realtime:student-profile:${userId}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'personal_profiles', filter: `user_id=eq.${userId}` },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId, refresh]);
 
   return { profile, loading, refresh };
 }

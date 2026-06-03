@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { StudentProfile } from '../types/profile';
-import { calculateCompleteness } from '../data/mockProfiles';
+import { calculateCompleteness } from '../utils/profileCompleteness';
 
 // ── DB row shapes (snake_case) ────────────────────────────────────────────────
 

@@ -6,7 +6,7 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
 import { TrustBadge } from '../components/TrustBadge';
-import { calculateCompleteness } from '../data/mockProfiles';
+import { calculateCompleteness } from '../utils/profileCompleteness';
 import { fetchStudentProfileFromDb, upsertStudentProfileToDb } from '../db/profilesDb';
 import {
   StudentProfile,

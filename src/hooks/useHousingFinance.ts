@@ -177,6 +177,20 @@ export function usePaymentMethod(landlordId: string) {
   }, [landlordId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useDataBusRefresh('payments', refresh);
+
+  useEffect(() => {
+    if (!landlordId) return;
+    const channel = supabase
+      .channel(`realtime:payment-methods:${landlordId}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_methods', filter: `landlord_id=eq.${landlordId}` },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [landlordId, refresh]);
 
   const method = methods.find(m => m.isDefault) ?? methods[0] ?? null;
 
@@ -256,6 +270,23 @@ export function useRentalContracts(params: { landlordId?: string; activeHomeId?:
   useEffect(() => { void refresh(); }, [refresh]);
   useDataBusRefresh('payments', refresh);
 
+  useEffect(() => {
+    if (!landlordId && !activeHomeId) return;
+    const scope = activeHomeId ? `home:${activeHomeId}` : `landlord:${landlordId}`;
+    const filter = activeHomeId
+      ? `active_home_id=eq.${activeHomeId}`
+      : `landlord_id=eq.${landlordId}`;
+    const channel = supabase
+      .channel(`realtime:rental-contracts:${scope}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rental_contracts', filter },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [landlordId, activeHomeId, refresh]);
+
   const contract = contracts[0] ?? null;
 
   const update = useCallback(async (contractId: string, input: ContractUpdateInput) => {
@@ -310,6 +341,23 @@ export function useRentPayments(params: { landlordId?: string; activeHomeId?: st
   useEffect(() => { void refresh(); }, [refresh]);
   useDataBusRefresh('payments', refresh);
 
+  useEffect(() => {
+    if (!landlordId && !activeHomeId) return;
+    const scope = activeHomeId ? `home:${activeHomeId}` : `landlord:${landlordId}`;
+    const filter = activeHomeId
+      ? `active_home_id=eq.${activeHomeId}`
+      : `landlord_id=eq.${landlordId}`;
+    const channel = supabase
+      .channel(`realtime:rent-payments:${scope}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rent_payments', filter },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [landlordId, activeHomeId, refresh]);
+
   const uploadProof = useCallback(async (paymentId: string, proofUrl: string, proofFileName: string) => {
     const { data, error } = await supabase
       .from('rent_payments')
@@ -363,6 +411,24 @@ export function useLandlordFinanceSummary(landlordId: string) {
 
   useEffect(() => { void refresh(); }, [refresh]);
   useDataBusRefresh('payments', refresh);
+
+  useEffect(() => {
+    if (!landlordId) return;
+    const channel = supabase
+      .channel(`realtime:finance-summary:${landlordId}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rent_payments', filter: `landlord_id=eq.${landlordId}` },
+        () => { void refresh(); },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rental_contracts', filter: `landlord_id=eq.${landlordId}` },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [landlordId, refresh]);
 
   const validatePayment = useCallback(async (paymentId: string) => {
     const { data, error } = await supabase

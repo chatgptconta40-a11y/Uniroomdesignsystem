@@ -19,7 +19,7 @@ import { OnboardingLifestyle } from '../components/onboarding/OnboardingLifestyl
 import { OnboardingPreferences } from '../components/onboarding/OnboardingPreferences';
 import { OnboardingWelcome } from '../components/onboarding/OnboardingWelcome';
 import { StudentProfile, PersonalProfile, LifestyleProfile, AccommodationPreferences } from '../types/profile';
-import { calculateCompleteness } from '../data/mockProfiles';
+import { calculateCompleteness } from '../utils/profileCompleteness';
 import { toast } from 'sonner';
 
 type StepNumber = 1 | 2 | 3 | 4;

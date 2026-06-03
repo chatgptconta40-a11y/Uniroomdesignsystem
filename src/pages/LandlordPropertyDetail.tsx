@@ -52,7 +52,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from 'sonner';
-import { isUserSuspended, isUserBlockedFromPublishing } from '../data/mockAdminUsersState';
+import { useUserRestrictions } from '../hooks/useUserRestrictions';
 import { Room, RoomStatus, Property } from '../types/property';
 import { normalizeRoomStatus, getRoomStatusLabel, getRoomStatusBadgeClasses } from '../utils/roomStatus';
 import { useLandlordApplications } from '../hooks/useDb';
@@ -1276,8 +1276,10 @@ export function LandlordPropertyDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { getProperty, getRoomsByProperty, updateRoomStatus, updateRoom, updateProperty, addRoom } = useProperties();
-  const isAccountSuspended = user ? isUserSuspended(user.id) : false;
-  const isBlockedFromPublishing = user ? isUserBlockedFromPublishing(user.id) : false;
+  const {
+    isSuspended: isAccountSuspended,
+    isBlockedFromPublishing,
+  } = useUserRestrictions(user?.id);
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [showEditModal, setShowEditModal] = useState(false);

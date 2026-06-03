@@ -37,15 +37,15 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { TrustBadge } from '../components/TrustBadge';
 import { LandlordContractManager } from '../components/LandlordContractManager';
-import { getLandlordMetrics, getDashboardActivity, getPerformanceData } from '../data/mockLandlord';
 import { useMaintenance, useLandlordApplications } from '../hooks/useDb';
+import { useLandlordAnalytics } from '../hooks/useLandlordAnalytics';
 import {
   formatCurrency,
   getPaymentMethodLabel,
   getPaymentMethodMainValue,
 } from '../utils/housingFinanceLabels';
 import { usePaymentMethod, useLandlordFinanceSummary } from '../hooks/useHousingFinance';
-import { isUserSuspended, isUserBlockedFromPublishing, getUserState } from '../data/mockAdminUsersState';
+import { useUserRestrictions } from '../hooks/useUserRestrictions';
 import { useTrustScore, useVerificationStatus } from '../hooks/useTrust';
 import { toast } from 'sonner';
 
@@ -112,9 +112,8 @@ export function LandlordDashboard() {
 
   const userId = user?.id || '';
 
-  const mockMetrics = getLandlordMetrics(userId);
-  const activities = getDashboardActivity(userId);
-  const performanceData = getPerformanceData(userId, 30);
+  const { overview: analyticsOverview, recentActivity: analyticsActivity } = useLandlordAnalytics(userId);
+  const unreadMessages = analyticsOverview.unreadMessages;
   const { requests: maintenanceRequests } = useMaintenance({ scope: 'landlord' });
   const { getPendingCount: getPendingApplicationsCount } = useLandlordApplications(userId);
   const maintenanceStats = useMemo(() => ({
@@ -162,8 +161,8 @@ export function LandlordDashboard() {
   const activeProperties = myProperties.filter(property => property.status === 'active');
   const pausedProperties = myProperties.filter(property => property.status === 'paused');
   const draftProperties = myProperties.filter(property => property.status === 'draft');
-  const lowViewProperties = myProperties.filter(property => property.status === 'active' && property.views < 50);
-  const noImageProperties = myProperties.filter(property => property.status !== 'draft' && property.images.length === 0);
+  const hasPhotos = myProperties.length > 0 && myProperties.some(p => Array.isArray(p.images) && p.images.length > 0);
+  const hasGoodVisibility = myProperties.length > 0 && totalViews > 0;
 
   const totalViews = myProperties.reduce((acc, property) => acc + property.views, 0);
 
@@ -180,9 +179,11 @@ export function LandlordDashboard() {
 
   const pendingApplicationsCount = getPendingApplicationsCount();
 
-  const isAccountSuspended = user ? isUserSuspended(user.id) : false;
-  const isBlockedFromPublishing = user ? isUserBlockedFromPublishing(user.id) : false;
-  const suspensionReason = user ? getUserState(user.id)?.reason : undefined;
+  const {
+    isSuspended: isAccountSuspended,
+    isBlockedFromPublishing,
+    reason: suspensionReason,
+  } = useUserRestrictions(user?.id);
 
   const { status: verificationStatus } = useVerificationStatus(userId || undefined);
   const { score: trustScore } = useTrustScore(userId || undefined);
@@ -204,7 +205,7 @@ export function LandlordDashboard() {
 
   const openWorkCount =
     pendingApplicationsCount +
-    (mockMetrics?.unreadMessages ?? 0) +
+    (unreadMessages) +
     maintenanceStats.pending +
     maintenanceStats.highUrgency +
     draftRooms.length +
@@ -214,8 +215,8 @@ export function LandlordDashboard() {
   const portfolioScore = [
     activeProperties.length > 0,
     roomStats.available > 0 || roomStats.occupied > 0 || roomStats.reserved > 0,
-    noImageProperties.length === 0,
-    lowViewProperties.length === 0,
+    hasPhotos,
+    hasGoodVisibility,
     isVerifiedLandlord,
   ].filter(Boolean).length;
 
@@ -292,8 +293,8 @@ export function LandlordDashboard() {
       route: '/landlord/applications',
       tone: 'text-blue-700 bg-blue-50 border-blue-100',
     },
-    (mockMetrics?.unreadMessages ?? 0) > 0 && {
-      label: `${mockMetrics?.unreadMessages ?? 0} mensagem${(mockMetrics?.unreadMessages ?? 0) > 1 ? 'ns' : ''} não lida${(mockMetrics?.unreadMessages ?? 0) > 1 ? 's' : ''}`,
+    (unreadMessages) > 0 && {
+      label: `${unreadMessages} mensagem${(unreadMessages) > 1 ? 'ns' : ''} não lida${(unreadMessages) > 1 ? 's' : ''}`,
       route: '/messages',
       tone: 'text-emerald-700 bg-emerald-50 border-emerald-100',
     },
@@ -324,9 +325,7 @@ export function LandlordDashboard() {
     },
   ].filter(Boolean) as { label: string; route: string; tone: string }[];
 
-  const recentActivities = activities.slice(0, 5);
-  const chartData = performanceData.slice(-7);
-  const maxViews = Math.max(1, ...chartData.map(item => item.views));
+  const recentActivities = analyticsActivity.slice(0, 5);
 
   if (!user) {
     return (
@@ -455,9 +454,9 @@ export function LandlordDashboard() {
               <div className="w-14 h-14 bg-accent/10 rounded-xl flex items-center justify-center">
                 <MessageCircle className="w-7 h-7 text-accent-foreground" />
               </div>
-              {(mockMetrics?.unreadMessages ?? 0) > 0 && <Badge variant="warning">{mockMetrics!.unreadMessages}</Badge>}
+              {unreadMessages > 0 && <Badge variant="warning">{unreadMessages}</Badge>}
             </div>
-            <h3 className="text-4xl font-bold text-foreground mb-3">{mockMetrics?.unreadMessages ?? 0}</h3>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{unreadMessages}</h3>
             <p className="text-sm font-medium text-gray-600">Mensagens novas</p>
           </Card>
         </div>
@@ -496,20 +495,14 @@ export function LandlordDashboard() {
               </div>
             </div>
 
-            <div className="h-40 flex items-end gap-2 border-t border-border pt-5">
-              {chartData.map((item, index) => {
-                const height = Math.max(10, Math.round((item.views / maxViews) * 100));
-                return (
-                  <div key={index} className="flex-1 flex flex-col items-center gap-2">
-                    <div
-                      className="w-full rounded-t-lg bg-primary/70"
-                      style={{ height: `${height}%` }}
-                      title={`${item.views} visualizações`}
-                    />
-                    <span className="text-[10px] text-muted-foreground">{index + 1}</span>
-                  </div>
-                );
-              })}
+            <div className="border-t border-border pt-5">
+              <div className="rounded-xl bg-muted/30 border border-border p-6 text-center">
+                <BarChart2 className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm font-semibold text-foreground">Dados históricos ainda insuficientes</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  À medida que houver mais visualizações e candidaturas, surgirão tendências aqui.
+                </p>
+              </div>
             </div>
           </Card>
 
@@ -1037,8 +1030,8 @@ export function LandlordDashboard() {
                 {[
                   { label: 'Tem alojamentos ativos', done: activeProperties.length > 0 },
                   { label: 'Tem quartos publicados', done: roomStats.available > 0 || roomStats.occupied > 0 || roomStats.reserved > 0 },
-                  { label: 'Fotos adicionadas', done: noImageProperties.length === 0 },
-                  { label: 'Boa visibilidade', done: lowViewProperties.length === 0 },
+                  { label: 'Fotos adicionadas', done: hasPhotos },
+                  { label: 'Boa visibilidade', done: hasGoodVisibility },
                   { label: 'Senhorio verificado', done: Boolean(isVerifiedLandlord) },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3">

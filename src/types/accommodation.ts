@@ -3,6 +3,7 @@ export type AccommodationStatus = 'active' | 'paused' | 'draft' | 'archived';
 
 export interface Accommodation {
   id: string;
+  propertyId?: string;
   title: string;
   description: string;
   city: string;

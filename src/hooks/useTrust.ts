@@ -153,6 +153,19 @@ export function useTrustScore(userId: string | undefined) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`realtime:trust-score:${userId}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'trust_scores', filter: `user_id=eq.${userId}` },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId, refresh]);
+
   return { score, loading, refresh };
 }
 
@@ -178,6 +191,19 @@ export function useVerificationStatus(userId: string | undefined) {
 
   useEffect(() => { void refresh(); }, [refresh]);
   useDataBusRefresh('verifications', refresh);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`realtime:verification:${userId}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'verification_status', filter: `user_id=eq.${userId}` },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId, refresh]);
 
   const upsert = useCallback(async (
     fields: Partial<Omit<VerificationStatus, 'userId' | 'updatedAt'>>,
@@ -249,6 +275,16 @@ export function useAllVerificationStatuses() {
 
   useEffect(() => { void refresh(); }, [refresh]);
   useDataBusRefresh('verifications', refresh);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`realtime:verification:all:${Math.random().toString(36).slice(2, 9)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'verification_status' }, () => {
+        void refresh();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [refresh]);
 
   const statusMap: Record<string, VerificationStatus> = {};
   statuses.forEach(s => { statusMap[s.userId] = s; });

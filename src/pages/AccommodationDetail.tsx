@@ -31,13 +31,9 @@ import { Card } from '../components/Card';
 import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAccommodations } from '../context/AccommodationsContext';
-import {
-  getRoommatesForAccommodation,
-  getReviewsForAccommodation,
-  getHouseRules,
-  getAverageRating,
-} from '../data/mockRoommates';
-import { calculateCompatibility, calculateComfortScore, getCategoryColor } from '../utils/compatibility';
+import { usePropertyExtras } from '../hooks/usePropertyExtras';
+import { useReviews } from '../hooks/useTrust';
+import { calculateComfortScore } from '../utils/compatibility';
 import { toast } from 'sonner';
 
 const getLocationInfo = (accommodationId: string) => {
@@ -74,10 +70,9 @@ export function AccommodationDetail() {
 
   const accommodation = accommodations.find(item => item.id === id);
   const isLandlordOwner = user?.type === 'landlord' && accommodation?.landlordId === user?.id;
-  const roommates = getRoommatesForAccommodation(id || '');
-  const reviews = getReviewsForAccommodation(id || '');
-  const houseRules = getHouseRules(id || '');
-  const averageRating = getAverageRating(id || '');
+  const propertyId = accommodation?.propertyId ?? accommodation?.id;
+  const { roommates, houseRules } = usePropertyExtras(propertyId);
+  const { reviews, averageRating: averageRating } = useReviews({ propertyId });
   const locationInfo = getLocationInfo(id || '');
 
   if (!accommodation) {
@@ -91,24 +86,11 @@ export function AccommodationDetail() {
     );
   }
 
-  const compatibility = studentProfile?.lifestyle
-    ? calculateCompatibility(studentProfile.lifestyle, roommates)
-    : null;
-
   const comfortScore = calculateComfortScore(
     accommodation,
-    compatibility?.overall || 0,
+    0,
     averageRating,
   );
-
-  const categoryLabels = {
-    schedule: 'Horários',
-    cleanliness: 'Limpeza',
-    noise: 'Ruído',
-    habits: 'Hábitos',
-    guests: 'Visitas',
-    social: 'Socialização',
-  };
 
   const handleApply = () => {
     if (!user) {
@@ -207,51 +189,6 @@ export function AccommodationDetail() {
               </div>
             </section>
 
-            {compatibility && (
-              <section>
-                <h2 className="text-2xl font-bold mb-4">Compatibilidade com moradores</h2>
-
-                <Card hover className="p-6 bg-gradient-to-br from-blue-50 to-white border-2 border-blue-100">
-                  <div className="text-center mb-6">
-                    <div className="inline-flex items-center justify-center w-32 h-32 rounded-full bg-gradient-to-br from-primary to-blue-600 text-white mb-4">
-                      <span className="text-5xl font-bold">{compatibility.overall}%</span>
-                    </div>
-
-                    <p className="text-lg font-medium text-foreground">{compatibility.summary}</p>
-                  </div>
-
-                  <div className="space-y-3">
-                    {Object.entries(compatibility.categories).map(([key, value]) => {
-                      const color = getCategoryColor(value);
-                      const colorClasses = {
-                        success: 'bg-green-500',
-                        warning: 'bg-yellow-500',
-                        default: 'bg-gray-400',
-                      };
-
-                      return (
-                        <div key={key}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium text-foreground">
-                              {categoryLabels[key as keyof typeof categoryLabels]}
-                            </span>
-                            <span className="text-sm font-semibold text-foreground">{value}%</span>
-                          </div>
-
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full transition-all ${colorClasses[color]}`}
-                              style={{ width: `${value}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-              </section>
-            )}
-
             {roommates.length > 0 && (
               <section>
                 <h2 className="text-2xl font-bold mb-4">Moradores atuais</h2>
@@ -265,21 +202,12 @@ export function AccommodationDetail() {
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold text-foreground">{roommate.name}</h3>
-                            {roommate.verified && (
-                              <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
-                            )}
-                          </div>
-
-                          <p className="text-sm text-muted-foreground mb-1">
-                            {roommate.age} anos · {roommate.course}
-                          </p>
-
-                          <p className="text-xs text-muted-foreground">{roommate.university}</p>
-
-                          {roommate.bio && (
-                            <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{roommate.bio}</p>
+                          <h3 className="font-semibold text-foreground mb-1">{roommate.name}</h3>
+                          {roommate.course && (
+                            <p className="text-sm text-muted-foreground mb-1">{roommate.course}</p>
+                          )}
+                          {roommate.institution && (
+                            <p className="text-xs text-muted-foreground">{roommate.institution}</p>
                           )}
                         </div>
                       </div>
@@ -298,9 +226,7 @@ export function AccommodationDetail() {
                     <div>
                       <h3 className="font-semibold text-foreground mb-3">Fumar</h3>
                       <p className="text-muted-foreground">
-                        {houseRules.smokingAllowed
-                          ? houseRules.smokingLocation || 'Permitido'
-                          : 'Não permitido'}
+                        {houseRules.smokingAllowed ? 'Permitido' : 'Não permitido'}
                       </p>
                     </div>
 
@@ -312,9 +238,18 @@ export function AccommodationDetail() {
                     </div>
 
                     <div>
-                      <h3 className="font-semibold text-foreground mb-3">Visitas</h3>
-                      <p className="text-muted-foreground">{houseRules.guestsPolicy}</p>
+                      <h3 className="font-semibold text-foreground mb-3">Festas</h3>
+                      <p className="text-muted-foreground">
+                        {houseRules.partiesAllowed ? 'Permitido' : 'Não permitido'}
+                      </p>
                     </div>
+
+                    {houseRules.visitorsPolicy && (
+                      <div>
+                        <h3 className="font-semibold text-foreground mb-3">Visitas</h3>
+                        <p className="text-muted-foreground">{houseRules.visitorsPolicy}</p>
+                      </div>
+                    )}
 
                     {houseRules.quietHours && (
                       <div>
@@ -323,32 +258,19 @@ export function AccommodationDetail() {
                       </div>
                     )}
 
-                    {houseRules.cleaningSchedule && (
+                    {houseRules.cleaningPolicy && (
                       <div className="md:col-span-2">
                         <h3 className="font-semibold text-foreground mb-3">Limpeza</h3>
-                        <p className="text-muted-foreground">{houseRules.cleaningSchedule}</p>
+                        <p className="text-muted-foreground">{houseRules.cleaningPolicy}</p>
                       </div>
                     )}
 
-                    {houseRules.sharedSpaces && houseRules.sharedSpaces.length > 0 && (
+                    {houseRules.studentsOnly && (
                       <div className="md:col-span-2">
-                        <h3 className="font-semibold text-foreground mb-3">Espaços partilhados</h3>
-                        <div className="flex flex-wrap gap-2">
-                          {houseRules.sharedSpaces.map((space, index) => (
-                            <Badge key={index} variant="outline">{space}</Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {houseRules.other && houseRules.other.length > 0 && (
-                      <div className="md:col-span-2">
-                        <h3 className="font-semibold text-foreground mb-3">Outras regras</h3>
-                        <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                          {houseRules.other.map((rule, index) => (
-                            <li key={index}>{rule}</li>
-                          ))}
-                        </ul>
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          Exclusivo para estudantes
+                        </p>
                       </div>
                     )}
                   </div>
@@ -521,7 +443,7 @@ export function AccommodationDetail() {
                     <Card key={review.id} className="p-6">
                       <div className="flex items-start justify-between gap-4 mb-3">
                         <div>
-                          <h3 className="font-semibold text-foreground">{review.userName}</h3>
+                          <h3 className="font-semibold text-foreground">{review.reviewerName ?? 'Estudante'}</h3>
                           <p className="text-sm text-muted-foreground">
                             {new Date(review.createdAt).toLocaleDateString('pt-PT', {
                               year: 'numeric',

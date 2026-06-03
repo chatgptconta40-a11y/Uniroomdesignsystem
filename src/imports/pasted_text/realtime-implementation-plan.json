@@ -1,0 +1,333 @@
+Quero terminar o Realtime da aplicação toda.
+
+Já está feito:
+- Fase 1: properties + rooms
+- Fase 2: applications + maintenance_requests + messages/conversations
+
+Agora quero avançar com as fases restantes, mantendo o mesmo padrão:
+- Supabase channel por domínio/scope;
+- INSERT/UPDATE/DELETE;
+- upsert local por id;
+- remover no DELETE;
+- filtrar por userId/landlordId/studentId quando aplicável;
+- cleanup com supabase.removeChannel(channel);
+- RouteDataRefresher continua como fallback;
+- sem mexer em design;
+- sem mexer em schema SQL, exceto se alguma tabela ainda não estiver na publication supabase_realtime;
+- sem refetch completo desnecessário, exceto quando o hook depende de joins/enriquecimento.
+
+Antes de implementar, confirmar que as tabelas estão na publication supabase_realtime.
+Se faltarem, dizer-me quais para eu adicionar via SQL.
+
+────────────────────────────────
+FASE 3 — Favorites
+────────────────────────────────
+
+Adicionar realtime para favoritos.
+
+Tabelas prováveis:
+- public.favorites
+
+Objetivo:
+- se o estudante adiciona/remove favorito numa janela, noutra janela o coração/lista atualiza sem F5;
+- favoritos do utilizador atual apenas.
+
+Implementar em FavoritesContext:
+- canal: realtime:favorites:<userId>
+- postgres_changes em public.favorites
+- filtrar client-side por user_id === user.id, ou server-side se possível;
+- INSERT: adicionar room_id/property_id ao state se não existir;
+- DELETE: remover favorite do state;
+- UPDATE: reconciliar se existir;
+- evitar duplicados;
+- compatível com optimistic update atual;
+- se payload não tiver room_id/property_id suficiente, usar refreshFavorites como fallback leve.
+
+Testes:
+1. Janela A estudante adiciona favorito.
+2. Janela B mesmo estudante vê coração ativo sem F5.
+3. Janela A remove favorito.
+4. Janela B vê coração desligado sem F5.
+
+────────────────────────────────
+FASE 4 — Payments / Finance / Contracts
+────────────────────────────────
+
+Adicionar realtime aos fluxos financeiros.
+
+Tabelas possíveis:
+- public.rent_payments
+- public.rental_contracts
+- public.landlord_payment_methods
+- public.payment_proofs
+- public.housing_finance
+ou as tabelas reais usadas nos hooks atuais.
+
+Objetivo:
+- estudante submete comprovativo e senhorio vê sem F5;
+- senhorio valida/rejeita pagamento e estudante vê sem F5;
+- contratos criados/editados aparecem sem F5;
+- resumo financeiro atualiza automaticamente.
+
+Hooks prováveis:
+- useRentalContracts
+- useRentPayments
+- useLandlordFinanceSummary
+- hooks/contexts ligados ao mockHousingFinance/Supabase finance
+
+Implementação:
+- canais por userId/landlordId quando possível;
+- INSERT/UPDATE/DELETE atualizam estado local;
+- quando o hook depende de resumo agregado, pode chamar refresh() no evento;
+- não duplicar pagamentos;
+- preservar optimistic updates;
+- se o payload realtime não tiver dados suficientes para cards/resumos, usar refresh() apenas nesse domínio.
+
+Testes:
+1. Estudante envia comprovativo.
+2. Senhorio vê comprovativo sem F5.
+3. Senhorio aprova/rejeita.
+4. Estudante vê estado atualizado sem F5.
+5. Contrato editado pelo senhorio aparece atualizado no estudante sem F5.
+6. Resumo financeiro do senhorio recalcula.
+
+────────────────────────────────
+FASE 5 — Reports / Admin moderation
+────────────────────────────────
+
+Adicionar realtime aos reports e moderação.
+
+Tabelas possíveis:
+- public.reports
+- public.admin_reports
+- public.verification_reports
+ou a tabela real usada pelo hook useReports.
+
+Objetivo:
+- estudante/senhorio cria report;
+- admin vê report novo sem F5;
+- admin altera estado do report;
+- utilizador vê estado atualizado sem F5, se existir página desse report.
+
+Implementar em useReports:
+- canal: realtime:reports:<scope>:<userId/admin>
+- INSERT/UPDATE/DELETE;
+- admin pode receber todos;
+- utilizador normal recebe só reports próprios;
+- se houver joins com profiles/properties/rooms, usar refresh() no evento em vez de tentar montar tudo só com payload.
+
+Testes:
+1. Estudante cria report.
+2. Admin vê report aparecer sem F5.
+3. Admin muda status/internal note.
+4. Lista admin atualiza sem F5.
+
+────────────────────────────────
+FASE 6 — Verifications / Trust / Admin docs
+────────────────────────────────
+
+Adicionar realtime para verificações.
+
+Tabelas possíveis:
+- public.verification_status
+- public.verification_documents
+- public.trust_scores
+- public.user_verifications
+ou as tabelas reais usadas por:
+- useVerificationStatus
+- useAllVerificationStatuses
+
+Objetivo:
+- utilizador submete documentos;
+- admin vê pendente sem F5;
+- admin aprova/rejeita;
+- utilizador vê novo estado sem F5;
+- trust score/verification badge atualiza.
+
+Implementação:
+- useVerificationStatus(userId): filtrar por user_id;
+- useAllVerificationStatuses/admin: receber todos ou refresh() em eventos;
+- se houver joins com profiles/documents, usar refresh() quando necessário;
+- não expor documentos de outros utilizadores fora do admin.
+
+Testes:
+1. Estudante/senhorio envia verificação.
+2. Admin vê sem F5.
+3. Admin aprova/rejeita.
+4. Utilizador vê estado atualizado sem F5.
+
+────────────────────────────────
+FASE 7 — Active Home / MyHome / Housemates
+────────────────────────────────
+
+Adicionar realtime para casa ativa do estudante.
+
+Tabelas possíveis:
+- public.active_homes
+- public.housemates
+- public.profiles
+- public.personal_profiles
+- public.rooms
+- public.properties
+
+Objetivo:
+- quando candidatura é aceite e active_home é criado, estudante vê MyHome atualizado sem F5;
+- colegas de casa atualizam sem F5;
+- se alguém sai/entra, a lista atualiza;
+- alterações no quarto/casa aparecem no MyHome.
+
+Implementar em useActiveHome / MyHome:
+- subscription para active_homes filtrada por student_id = user.id;
+- se chegar INSERT/UPDATE/DELETE, fazer refreshActiveHome();
+- para colegas de casa, escutar active_homes da mesma property_id quando já existe activeHome;
+- como envolve joins profiles + personal_profiles, usar refresh em vez de montar manualmente;
+- manter properties/rooms realtime da Fase 1 como complemento.
+
+Testes:
+1. Senhorio aceita candidatura.
+2. Estudante vê MyHome ativo sem F5.
+3. Colegas de casa aparecem sem F5.
+4. Se active_home mudar, MyHome atualiza.
+
+────────────────────────────────
+FASE 8 — Notifications
+────────────────────────────────
+
+Adicionar realtime para notificações.
+
+Tabelas possíveis:
+- public.notifications
+
+Objetivo:
+- novo evento gera notificação;
+- ícone/badge atualiza sem F5;
+- marcar como lida atualiza noutra janela.
+
+Implementar em useNotifications:
+- canal: realtime:notifications:<userId>
+- filtrar por user_id;
+- INSERT: adicionar notificação no topo;
+- UPDATE: atualizar read/unread;
+- DELETE: remover;
+- evitar duplicados por id.
+
+Testes:
+1. Uma ação gera notificação.
+2. Outra janela vê badge aumentar sem F5.
+3. Marcar como lida numa janela.
+4. Outra janela atualiza badge sem F5.
+
+────────────────────────────────
+FASE 9 — Admin Users / Profiles / Suspensions
+────────────────────────────────
+
+Adicionar realtime para perfis/admin users.
+
+Tabelas possíveis:
+- public.profiles
+- public.admin_users
+- public.user_status
+ou tabela real usada em useAdminUsers.
+
+Objetivo:
+- admin suspende/desbloqueia utilizador;
+- utilizador afetado vê restrição sem F5 ou ao menos ao próximo evento/rota;
+- listas admin atualizam sem F5.
+
+Implementação:
+- useAdminUsers/admin escuta profiles/admin table;
+- AuthContext ou user/profile context escuta alterações do próprio profile user.id;
+- se status/type/blocked/suspended mudar, atualizar user local;
+- evitar logout forçado se não for necessário, mas aplicar restrições visualmente.
+
+Testes:
+1. Admin suspende senhorio.
+2. Senhorio vê bloqueio sem F5.
+3. Admin desbloqueia.
+4. Senhorio recupera acesso sem F5 ou ao navegar.
+
+────────────────────────────────
+FASE 10 — Compatibility / Student Profile
+────────────────────────────────
+
+Adicionar realtime para perfil de compatibilidade.
+
+Tabelas possíveis:
+- public.personal_profiles
+- public.student_profiles
+- public.profile_compatibility
+ou as tabelas reais usadas por useStudentProfile/useProfileCompatibility.
+
+Objetivo:
+- estudante edita perfil;
+- cards/quartos recalculam badges se necessário;
+- perfil fica sincronizado entre janelas.
+
+Implementação:
+- useStudentProfile escuta personal_profiles/student profile do próprio user;
+- UPDATE/INSERT atualiza estado local;
+- se a compatibilidade é calculada no frontend, recalcular quando profile mudar;
+- se usa função SQL/RPC, chamar refreshCompatibility no evento.
+
+Testes:
+1. Editar perfil numa janela.
+2. Outra janela vê dados atualizados sem F5.
+3. Compatibility score nos quartos atualiza.
+
+────────────────────────────────
+FASE 11 — Audit final de Realtime
+────────────────────────────────
+
+Depois de implementar todas as fases, fazer auditoria:
+
+1. Confirmar que não existem canais duplicados infinitos.
+2. Confirmar cleanup removeChannel em todos os useEffect.
+3. Confirmar que channels têm nomes únicos por user/scope/conversation.
+4. Confirmar que events filtram por userId/landlordId/studentId quando necessário.
+5. Confirmar que dados sensíveis não aparecem para utilizadores errados.
+6. Confirmar que não há loops entre:
+   - RouteDataRefresher
+   - dataBus
+   - realtime subscriptions
+   - optimistic updates
+7. Confirmar que não há duplicados nas listas após o eco Realtime.
+8. Confirmar que quando um evento depende de joins, usa refresh() e não payload incompleto.
+9. Confirmar que loading não bloqueia a UI toda.
+10. Confirmar console sem warnings/erros.
+
+────────────────────────────────
+TESTE FINAL GLOBAL
+────────────────────────────────
+
+Testar com 3 janelas:
+- Janela A: estudante
+- Janela B: senhorio
+- Janela C: admin
+
+Fluxos:
+1. Senhorio cria casa/quarto → estudante vê em Search sem F5.
+2. Senhorio muda preço/pausa quarto → estudante vê alteração sem F5.
+3. Estudante favorita quarto → outra janela do estudante atualiza favorito sem F5.
+4. Estudante candidata-se → senhorio vê candidatura sem F5.
+5. Senhorio aceita/rejeita → estudante vê estado sem F5.
+6. Se aceite, MyHome/activeHome atualiza sem F5.
+7. Estudante envia mensagem → senhorio vê sem F5.
+8. Senhorio responde → estudante vê sem F5.
+9. Estudante cria manutenção → senhorio vê sem F5.
+10. Senhorio atualiza manutenção → estudante vê sem F5.
+11. Estudante envia comprovativo → senhorio vê sem F5.
+12. Senhorio aprova/rejeita pagamento → estudante vê sem F5.
+13. Utilizador envia verificação → admin vê sem F5.
+14. Admin aprova/rejeita → utilizador vê estado sem F5.
+15. Utilizador cria report → admin vê sem F5.
+16. Admin atualiza report → lista atualiza sem F5.
+17. Admin suspende utilizador → utilizador vê restrição sem F5 ou ao navegar.
+18. Notificações aparecem/atualizam sem F5.
+19. Sem duplicados.
+20. Sem dados de outro utilizador a aparecer indevidamente.
+
+Implementar por fases, mas podes fazer todas agora. No fim, dar resumo por fase e indicar:
+- ficheiros alterados;
+- tabelas usadas;
+- se houve alguma tabela que não estava na publication;
+- limitações restantes.

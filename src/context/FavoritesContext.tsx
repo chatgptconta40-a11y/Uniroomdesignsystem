@@ -60,6 +60,31 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
 
   useDataBusRefresh('favorites', refreshFavorites);
 
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime:favorites:${user.id}:${Math.random().toString(36).slice(2, 9)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'favorites', filter: `user_id=eq.${user.id}` },
+        payload => {
+          if (payload.eventType === 'DELETE') {
+            const old = payload.old as { room_id?: string; property_id?: string };
+            const id = old.room_id || old.property_id;
+            if (!id) { void refreshFavorites(); return; }
+            setFavoriteIds(prev => prev.filter(x => x !== id));
+            return;
+          }
+          const row = payload.new as { room_id?: string; property_id?: string };
+          const id = row.room_id || row.property_id;
+          if (!id) return;
+          setFavoriteIds(prev => prev.includes(id) ? prev : [...prev, id]);
+        },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [user, refreshFavorites]);
+
   const toggleFavorite = (roomId: string, propertyId?: string): boolean => {
     if (!user || !roomId) return false;
 
