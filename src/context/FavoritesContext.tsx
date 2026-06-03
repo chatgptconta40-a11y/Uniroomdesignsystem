@@ -58,7 +58,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
   }, [refreshFavorites]);
 
   const toggleFavorite = (roomId: string, propertyId?: string): boolean => {
-    if (!user) return false;
+    if (!user || !roomId) return false;
 
     const exists = favoriteIds.includes(roomId);
     const previousIds = favoriteIds;
@@ -82,17 +82,25 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
+    const favoriteId = `fav-${user.id}-${roomId}`;
     void supabase
       .from('favorites')
       .insert({
+        id: favoriteId,
         user_id: user.id,
         room_id: roomId,
         property_id: propertyId ?? null,
       })
       .then(({ error }) => {
         if (error) {
+          if (error.code === '23505') {
+            // Duplicate key — already favorited, keep optimistic state
+            return;
+          }
           console.error('Favorite add error:', error.message);
           setFavoriteIds(previousIds);
+        } else {
+          void refreshFavorites();
         }
       });
 

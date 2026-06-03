@@ -51,6 +51,7 @@ interface RealHousemate {
   room: string;
   initials: string;
   since: string;
+  avatarUrl?: string;
 }
 
 function formatDate(date: Date | string) {
@@ -198,32 +199,58 @@ export function MyHome() {
       return;
     }
     (async () => {
-      const { data, error } = await supabase
+      const { data: homesData, error: homesError } = await supabase
         .from('active_homes')
         .select('id,student_id,room_id,move_in_date')
         .eq('property_id', activeHomeRow.propertyId)
         .neq('student_id', user.id);
-      if (cancelled || error || !data) {
-        if (error) console.error('[MY_HOME] fetch housemates failed', error);
+      if (cancelled || homesError || !homesData || homesData.length === 0) {
+        if (homesError) console.error('[MY_HOME] fetch housemates failed', homesError);
         setHousemates([]);
         return;
       }
+
+      const studentIds = homesData.map(r => r.student_id).filter(Boolean);
+
+      const [profilesResult, personalResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id,full_name,avatar_url')
+          .in('id', studentIds),
+        supabase
+          .from('personal_profiles')
+          .select('user_id,course,institution')
+          .in('user_id', studentIds),
+      ]);
+      if (cancelled) return;
+
+      const profileMap = new Map(
+        (profilesResult.data ?? []).map(p => [p.id, p]),
+      );
+      const personalMap = new Map(
+        (personalResult.data ?? []).map(p => [p.user_id, p]),
+      );
+
       setHousemates(
-        data.map(row => {
+        homesData.map(row => {
           const moveIn = row.move_in_date ? new Date(row.move_in_date) : new Date();
           const since = Number.isNaN(moveIn.getTime())
             ? 'Data não definida'
             : new Intl.DateTimeFormat('pt-PT', { month: 'long', year: 'numeric' }).format(moveIn);
           const r = row.room_id ? getRoom(row.room_id) : undefined;
-          const name = 'Estudante confirmado';
+          const profile = profileMap.get(row.student_id);
+          const personal = personalMap.get(row.student_id);
+          const name = profile?.full_name || 'Estudante confirmado';
+          const course = [personal?.course, personal?.institution].filter(Boolean).join(' · ') || 'Estudante';
           return {
             id: `mate_${row.id}`,
             propertyId: activeHomeRow.propertyId,
             name,
-            course: 'Estudante',
+            course,
             room: r?.roomNumber || r?.title || 'Quarto',
             initials: getInitials(name),
             since,
+            avatarUrl: profile?.avatar_url ?? undefined,
           };
         }),
       );
@@ -666,16 +693,24 @@ export function MyHome() {
                 ) : (
                   housemates.map(housemate => (
                     <div key={housemate.id} className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
-                      <div className="w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold">
-                        {housemate.initials}
-                      </div>
+                      {housemate.avatarUrl ? (
+                        <img
+                          src={housemate.avatarUrl}
+                          alt={housemate.name}
+                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                          {housemate.initials}
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <h4 className="font-semibold text-foreground">{housemate.name}</h4>
                           <Badge variant="outline" className="text-xs">{housemate.room}</Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">{housemate.course}</p>
-                        <p className="text-xs text-muted-foreground mt-1">Em casa desde {housemate.since}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Estadia confirmada · Em casa desde {housemate.since}</p>
                       </div>
                     </div>
                   ))
