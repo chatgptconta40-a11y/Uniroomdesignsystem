@@ -18,8 +18,6 @@ import {
   CalendarDays,
   Euro,
   Building2,
-  ShieldCheck,
-  ChevronRight,
   AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -35,7 +33,6 @@ import { toast } from 'sonner';
 
 function fmt(date: Date | string | undefined): string {
   if (!date) return '—';
-
   return new Date(date).toLocaleDateString('pt-PT', {
     day: 'numeric',
     month: 'long',
@@ -45,7 +42,6 @@ function fmt(date: Date | string | undefined): string {
 
 function fmtMonth(date: Date | string | undefined): string {
   if (!date) return 'Sem data';
-
   return new Date(date).toLocaleDateString('pt-PT', {
     month: 'long',
     year: 'numeric',
@@ -196,7 +192,7 @@ function getNextStepText(app: Application): string {
   if (app.status === 'pending') return 'Aguardar a análise do senhorio.';
   if (app.status === 'under_review') return 'O senhorio está a avaliar a candidatura.';
   if (app.status === 'accepted') return 'Confirma a estadia para garantir o quarto.';
-  if (app.status === 'confirmed') return 'A estadia já está ativa. Consulta “A Minha Casa”.';
+  if (app.status === 'confirmed') return 'A estadia já está ativa. Consulta "A Minha Casa".';
   if (app.status === 'rejected') return 'Podes procurar quartos semelhantes.';
   return 'Candidatura cancelada.';
 }
@@ -355,7 +351,7 @@ export function Applications() {
     const property = app.propertyId ? getProperty(app.propertyId) : undefined;
 
     if (!room || !property) {
-      toast.info('Abre “Mensagens” para contactar o senhorio.');
+      toast.info('Abre "Mensagens" para contactar o senhorio.');
       navigate('/messages');
       return;
     }
@@ -397,7 +393,6 @@ export function Applications() {
       navigate(`/property/${app.propertyId}`);
       return;
     }
-
     const room = app.roomId ? getRoom(app.roomId) : undefined;
     if (room) navigate(`/property/${room.propertyId}`);
   };
@@ -420,7 +415,7 @@ export function Applications() {
         confirmRoom ? ` no ${confirmRoom.title}` : ''
       }${
         confirmProperty ? ` em ${confirmProperty.title}` : ''
-      }. O quarto passará para ocupado e a página “A Minha Casa” ficará ativa.`
+      }. O quarto passará para ocupado e a página "A Minha Casa" ficará ativa.`
     : '';
 
   return (
@@ -433,7 +428,6 @@ export function Applications() {
                 <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
                   <FileText className="w-6 h-6" />
                 </div>
-
                 <div>
                   <h1 className="text-3xl font-bold text-foreground">As Minhas Candidaturas</h1>
                   <p className="text-muted-foreground">
@@ -452,12 +446,10 @@ export function Applications() {
                   {counts.pending + counts.under_review + counts.accepted}
                 </p>
               </Card>
-
               <Card className="p-4">
                 <p className="text-xs text-muted-foreground mb-1">Aceites</p>
                 <p className="text-2xl font-bold text-green-700">{counts.accepted}</p>
               </Card>
-
               <Card className="p-4">
                 <p className="text-xs text-muted-foreground mb-1">Confirmadas</p>
                 <p className="text-2xl font-bold text-emerald-700">{counts.confirmed}</p>
@@ -603,12 +595,10 @@ export function Applications() {
                                     {zone}{zone && city ? ', ' : ''}{city}
                                   </span>
                                 )}
-
                                 <span className="inline-flex items-center gap-1.5">
                                   <CalendarDays className="w-4 h-4" />
                                   Entrada: {fmtMonth(application.moveInDate)}
                                 </span>
-
                                 <span className="inline-flex items-center gap-1.5">
                                   <Euro className="w-4 h-4" />
                                   €{totalPrice}/mês
@@ -633,7 +623,7 @@ export function Applications() {
                                     Mensagem enviada
                                   </p>
                                   <p className="text-sm text-foreground italic line-clamp-3">
-                                    “{application.message}”
+                                    "{application.message}"
                                   </p>
                                 </div>
                               ) : (
@@ -649,14 +639,12 @@ export function Applications() {
                                   <p className="text-xs text-muted-foreground mb-1">Preço base</p>
                                   <p className="font-bold text-foreground">€{price}/mês</p>
                                 </div>
-
                                 <div className="rounded-xl bg-muted/30 p-3">
                                   <p className="text-xs text-muted-foreground mb-1">Despesas</p>
                                   <p className="font-bold text-foreground">
                                     {utilities > 0 ? `+€${utilities}` : 'Incluídas'}
                                   </p>
                                 </div>
-
                                 <div className="rounded-xl bg-muted/30 p-3">
                                   <p className="text-xs text-muted-foreground mb-1">Próximo passo</p>
                                   <p className="font-bold text-foreground line-clamp-1">
@@ -670,11 +658,9 @@ export function Applications() {
                               <p className="text-xs font-semibold text-muted-foreground mb-3">
                                 Estado da candidatura
                               </p>
-
                               <div className="space-y-2">
                                 {timeline.map((step, index) => {
                                   const Icon = step.icon;
-
                                   return (
                                     <div key={step.key} className="flex items-start gap-2.5">
                                       <div className="flex flex-col items-center flex-shrink-0">
@@ -685,7 +671,6 @@ export function Applications() {
                                         >
                                           <Icon className={`w-3 h-3 ${step.color}`} />
                                         </div>
-
                                         {index < timeline.length - 1 && (
                                           <div
                                             className={`w-px flex-1 min-h-[12px] mt-0.5 ${
@@ -694,7 +679,6 @@ export function Applications() {
                                           />
                                         )}
                                       </div>
-
                                       <div className="pb-1.5 min-w-0">
                                         <span
                                           className={`text-xs font-medium ${
@@ -703,13 +687,11 @@ export function Applications() {
                                         >
                                           {step.label}
                                         </span>
-
                                         {step.sublabel && (
                                           <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
                                             {step.sublabel}
                                           </p>
                                         )}
-
                                         {step.date && (
                                           <p className="text-[11px] text-muted-foreground">{step.date}</p>
                                         )}
@@ -729,7 +711,6 @@ export function Applications() {
                             ) : (
                               <Clock className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
                             )}
-
                             <div>
                               <p className="text-sm font-semibold text-foreground">Próximo passo</p>
                               <p className="text-sm text-muted-foreground">{nextStepText}</p>
@@ -747,14 +728,12 @@ export function Applications() {
                                 Confirmar estadia
                               </Button>
                             )}
-
                             {isConfirmed && (
                               <Button onClick={() => navigate('/my-home')} size="sm">
                                 <Home className="w-4 h-4 mr-2" />
                                 Ver a minha casa
                               </Button>
                             )}
-
                             {!isCancelled && !isConfirmed && (
                               <Button
                                 onClick={() => void handleContactLandlord(application)}
@@ -765,7 +744,6 @@ export function Applications() {
                                 Contactar senhorio
                               </Button>
                             )}
-
                             {room && (
                               <Button
                                 onClick={() => handleViewTarget(application)}
@@ -776,7 +754,6 @@ export function Applications() {
                                 Ver quarto
                               </Button>
                             )}
-
                             {property && (
                               <Button
                                 onClick={() => handleViewProperty(application)}
@@ -787,7 +764,6 @@ export function Applications() {
                                 Ver casa
                               </Button>
                             )}
-
                             {(application.status === 'pending' || application.status === 'under_review') && (
                               <Button
                                 onClick={() => handleWithdraw(application.id)}
@@ -799,7 +775,6 @@ export function Applications() {
                                 Cancelar candidatura
                               </Button>
                             )}
-
                             {application.status === 'rejected' && (
                               <Button
                                 onClick={() => navigate('/search')}

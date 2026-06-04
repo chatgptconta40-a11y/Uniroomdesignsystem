@@ -6,6 +6,7 @@ import {
   BarChart2,
   BedDouble,
   Building2,
+  CalendarCheck,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -47,6 +48,7 @@ import {
 import { usePaymentMethod, useLandlordFinanceSummary } from '../hooks/useHousingFinance';
 import { useUserRestrictions } from '../hooks/useUserRestrictions';
 import { useTrustScore, useVerificationStatus } from '../hooks/useTrust';
+import { useVisitRequests } from '../hooks/useVisitRequests';
 import { toast } from 'sonner';
 
 function formatTime(date: Date) {
@@ -72,7 +74,7 @@ function getActivityIcon(type: string) {
     case 'view':
       return <Eye className="w-5 h-5 text-muted-foreground" />;
     default:
-      return <BellDot />;
+      return <AlertCircle className="w-5 h-5 text-muted-foreground" />;
   }
 }
 
@@ -116,6 +118,8 @@ export function LandlordDashboard() {
   const unreadMessages = analyticsOverview.unreadMessages;
   const { requests: maintenanceRequests } = useMaintenance({ scope: 'landlord' });
   const { getPendingCount: getPendingApplicationsCount } = useLandlordApplications(userId);
+  const { visitRequests } = useVisitRequests();
+  const pendingVisitCount = visitRequests.filter(r => r.status === 'pending').length;
   const maintenanceStats = useMemo(() => ({
     total: maintenanceRequests.length,
     pending: maintenanceRequests.filter(r => r.status === 'pending').length,
@@ -162,9 +166,8 @@ export function LandlordDashboard() {
   const pausedProperties = myProperties.filter(property => property.status === 'paused');
   const draftProperties = myProperties.filter(property => property.status === 'draft');
   const hasPhotos = myProperties.length > 0 && myProperties.some(p => Array.isArray(p.images) && p.images.length > 0);
-  const hasGoodVisibility = myProperties.length > 0 && totalViews > 0;
-
   const totalViews = myProperties.reduce((acc, property) => acc + property.views, 0);
+  const hasGoodVisibility = myProperties.length > 0 && totalViews > 0;
 
   const roomStats = {
     total: myRooms.length,
@@ -293,6 +296,11 @@ export function LandlordDashboard() {
       route: '/landlord/applications',
       tone: 'text-blue-700 bg-blue-50 border-blue-100',
     },
+    pendingVisitCount > 0 && {
+      label: `${pendingVisitCount} pedido${pendingVisitCount > 1 ? 's' : ''} de visita por responder`,
+      route: '/landlord/visit-requests',
+      tone: 'text-violet-700 bg-violet-50 border-violet-100',
+    },
     (unreadMessages) > 0 && {
       label: `${unreadMessages} mensagem${(unreadMessages) > 1 ? 'ns' : ''} não lida${(unreadMessages) > 1 ? 's' : ''}`,
       route: '/messages',
@@ -415,7 +423,7 @@ export function LandlordDashboard() {
           </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/listings')}>
             <div className="flex items-center justify-between mb-4">
               <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center">
@@ -447,6 +455,17 @@ export function LandlordDashboard() {
             </div>
             <h3 className="text-4xl font-bold text-foreground mb-3">{pendingApplicationsCount}</h3>
             <p className="text-sm font-medium text-gray-600">Candidaturas pendentes</p>
+          </Card>
+
+          <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/landlord/visit-requests')}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 bg-violet-50 rounded-xl flex items-center justify-center">
+                <CalendarCheck className="w-7 h-7 text-violet-600" />
+              </div>
+              {pendingVisitCount > 0 && <Badge variant="warning">{pendingVisitCount}</Badge>}
+            </div>
+            <h3 className="text-4xl font-bold text-foreground mb-3">{pendingVisitCount}</h3>
+            <p className="text-sm font-medium text-gray-600">Visitas pendentes</p>
           </Card>
 
           <Card className="p-6 cursor-pointer" hover onClick={() => navigate('/messages')}>
@@ -1068,6 +1087,15 @@ export function LandlordDashboard() {
                 <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/applications')}>
                   <Users className="w-4 h-4 mr-2" />
                   Ver candidaturas
+                </Button>
+                <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/visit-requests')}>
+                  <CalendarCheck className="w-4 h-4 mr-2" />
+                  Pedidos de visita
+                  {pendingVisitCount > 0 && (
+                    <span className="ml-auto text-xs font-bold text-violet-700 bg-violet-100 rounded-full px-2 py-0.5">
+                      {pendingVisitCount}
+                    </span>
+                  )}
                 </Button>
                 <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/analytics')}>
                   <ArrowUpRight className="w-4 h-4 mr-2" />

@@ -1,4 +1,4 @@
-import { Home, LogOut, LayoutDashboard, ChevronDown, User, Bell, Heart, FileText, MessageCircle, Shield, BarChart3, Wrench } from 'lucide-react';
+import { Home, LogOut, LayoutDashboard, ChevronDown, User, Bell, Heart, FileText, MessageCircle, Shield, BarChart3, Wrench, CalendarCheck } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import { useState } from 'react';
@@ -262,6 +262,14 @@ export function Navbar() {
                               <span className="text-sm">As Minhas Candidaturas</span>
                             </Link>
                             <Link
+                              to="/student/visit-requests"
+                              className={navLinkClass('/student/visit-requests')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <CalendarCheck className="w-4 h-4" />
+                              <span className="text-sm">Pedidos de Visita</span>
+                            </Link>
+                            <Link
                               to="/favorites"
                               className={navLinkClass('/favorites')}
                               onClick={() => setShowMenu(false)}
@@ -324,6 +332,15 @@ export function Navbar() {
                             >
                               <FileText className="w-4 h-4" />
                               <span className="text-sm">Candidaturas</span>
+                            </Link>
+
+                            <Link
+                              to="/landlord/visit-requests"
+                              className={navLinkClass('/landlord/visit-requests')}
+                              onClick={() => setShowMenu(false)}
+                            >
+                              <CalendarCheck className="w-4 h-4" />
+                              <span className="text-sm">Pedidos de Visita</span>
                             </Link>
 
                             <Link

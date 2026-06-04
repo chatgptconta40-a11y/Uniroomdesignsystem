@@ -23,12 +23,14 @@ import { PropertyDetail } from '../pages/PropertyDetail';
 import { RoomDetail } from '../pages/RoomDetail';
 import { Favorites } from '../pages/Favorites';
 import { Applications } from '../pages/Applications';
+import { StudentVisitRequests } from '../pages/StudentVisitRequests';
 import { Messages } from '../pages/Messages';
 import { Verification } from '../pages/Verification';
 import { MyHome } from '../pages/MyHome';
 import { LandlordDashboard } from '../pages/LandlordDashboard';
 import { LandlordListings } from '../pages/LandlordListings';
 import { LandlordApplications } from '../pages/LandlordApplications';
+import { LandlordVisitRequests } from '../pages/LandlordVisitRequests';
 import { LandlordAnalytics } from '../pages/LandlordAnalytics';
 import { LandlordMaintenance } from '../pages/LandlordMaintenance';
 import { LandlordPropertyDetail } from '../pages/LandlordPropertyDetail';
@@ -156,6 +158,16 @@ function AppShell() {
           />
 
           <Route
+            path="/student/visit-requests"
+            element={
+              <ProtectedRoute allowedTypes={['student']}>
+                <Navbar />
+                <StudentVisitRequests />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/messages"
             element={
               <ProtectedRoute allowedTypes={['student', 'landlord']}>
@@ -230,6 +242,16 @@ function AppShell() {
               <ProtectedRoute allowedTypes={['landlord']}>
                 <Navbar />
                 <LandlordApplications />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/landlord/visit-requests"
+            element={
+              <ProtectedRoute allowedTypes={['landlord']}>
+                <Navbar />
+                <LandlordVisitRequests />
               </ProtectedRoute>
             }
           />

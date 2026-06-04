@@ -114,6 +114,29 @@ export interface Notification {
   createdAt: Date;
 }
 
+export type VisitRequestStatus =
+  | 'pending'
+  | 'accepted'
+  | 'rejected'
+  | 'counter_proposed'
+  | 'cancelled'
+  | 'completed';
+
+export interface VisitRequest {
+  id: string;            // text, app-generated
+  studentId: string;     // uuid
+  landlordId: string;    // uuid
+  propertyId?: string;   // uuid
+  roomId?: string;       // uuid
+  requestedAt: Date;
+  proposedAt?: Date;
+  status: VisitRequestStatus;
+  studentMessage?: string;
+  landlordMessage?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface ActiveHome {
   id: string;
   studentId: string;

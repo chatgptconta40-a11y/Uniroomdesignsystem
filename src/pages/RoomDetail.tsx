@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, MapPin, Users, Home, Check, MessageCircle, Heart, Maximize, Bath, Building, Calendar, Clock, Star, Edit, Pause, Play, FileText, BarChart3 } from 'lucide-react';
+import { ArrowLeft, MapPin, Users, Home, Check, MessageCircle, Heart, Maximize, Bath, Building, Calendar, Clock, Star, Edit, Pause, Play, FileText, BarChart3, CalendarCheck } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
@@ -10,6 +10,7 @@ import { ApplicationModal } from '../components/ApplicationModal';
 import { ReviewModal } from '../components/ReviewModal';
 import { ReportModal } from '../components/ReportModal';
 import { StartConversationModal } from '../components/StartConversationModal';
+import { VisitRequestModal } from '../components/VisitRequestModal';
 import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -17,6 +18,7 @@ import { Accommodation } from '../types/accommodation';
 import { useReviews } from '../hooks/useTrust';
 import { supabase } from '../lib/supabase';
 import { useProfile } from '../hooks/useProfile';
+import { isSupabaseUuid } from '../lib/identity';
 import { toast } from 'sonner';
 import { ComfortScorePanel } from '../components/ComfortScorePanel';
 import { TrustSignals } from '../components/TrustSignals';
@@ -32,9 +34,12 @@ export function RoomDetail() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [showVisitModal, setShowVisitModal] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [existingApplication, setExistingApplication] = useState<{ id: string; status: string } | null>(null);
   const [appRefreshKey, setAppRefreshKey] = useState(0);
+  const [existingVisit, setExistingVisit] = useState<{ id: string; status: string; requestedAt: string; proposedAt?: string | null } | null>(null);
+  const [visitRefreshKey, setVisitRefreshKey] = useState(0);
 
   const room = getRoom(id || '');
   const property = room ? getProperty(room.propertyId) : null;
@@ -73,8 +78,35 @@ export function RoomDetail() {
     return () => { cancelled = true; };
   }, [user?.id, user?.type, room?.id, room?.landlordId, appRefreshKey]);
 
+  useEffect(() => {
+    const isApplicantForVisit =
+      (user?.type === 'student' || user?.type === 'landlord') &&
+      !(user?.type === 'landlord' && room?.landlordId === user?.id);
+    if (!user?.id || !room?.id || !isApplicantForVisit) {
+      setExistingVisit(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('room_visit_requests')
+        .select('id, status, requested_at, proposed_at')
+        .eq('student_id', user.id)
+        .eq('room_id', room.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      const latest = data?.[0] ?? null;
+      if (!cancelled) setExistingVisit(latest ? { id: latest.id, status: latest.status, requestedAt: latest.requested_at, proposedAt: latest.proposed_at ?? undefined } : null);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.type, room?.id, room?.landlordId, visitRefreshKey]);
+
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
   const canActAsApplicant = (user?.type === 'student' || user?.type === 'landlord') && !isLandlordOwner;
+  const effectiveLandlordId = (room?.landlordId && isSupabaseUuid(room.landlordId))
+    ? room.landlordId
+    : (property?.landlordId && isSupabaseUuid(property.landlordId) ? property.landlordId : '');
+  const canRequestVisit = canActAsApplicant && !!effectiveLandlordId;
   const canShowCompatibility = Boolean(
     canActAsApplicant &&
     user?.onboardingCompleted &&
@@ -150,6 +182,17 @@ export function RoomDetail() {
     views: room.views,
   };
 
+  const VISIT_STATUS_LABELS: Record<string, { label: string; description: string; bgCls: string; textCls: string }> = {
+    pending: { label: 'Pedido de visita pendente', description: 'Aguarda confirmação do senhorio', bgCls: 'bg-blue-50 border-blue-200', textCls: 'text-blue-700' },
+    accepted: { label: 'Visita aceite', description: 'O senhorio confirmou a data da visita', bgCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
+    counter_proposed: { label: 'O senhorio propôs outra data', description: 'Aceita a nova data ou cancela o pedido', bgCls: 'bg-amber-50 border-amber-200', textCls: 'text-amber-700' },
+    rejected: { label: 'Pedido de visita rejeitado', description: 'O senhorio não aceitou o pedido', bgCls: 'bg-red-50 border-red-200', textCls: 'text-red-700' },
+    cancelled: { label: 'Pedido cancelado', description: 'Cancelaste este pedido de visita', bgCls: 'bg-muted border-border', textCls: 'text-muted-foreground' },
+    completed: { label: 'Visita concluída', description: 'A visita foi realizada com sucesso', bgCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
+  };
+  const ACTIVE_VISIT_STATUSES = ['pending', 'accepted', 'counter_proposed'];
+  const isActiveVisit = existingVisit && ACTIVE_VISIT_STATUSES.includes(existingVisit.status);
+
   const APP_STATUS_LABELS: Record<string, { label: string; description: string; bgCls: string; textCls: string }> = {
     pending: { label: 'Candidatura enviada', description: 'A aguardar análise pelo senhorio', bgCls: 'bg-blue-50 border-blue-200', textCls: 'text-blue-700' },
     under_review: { label: 'Em análise', description: 'O senhorio está a rever a tua candidatura', bgCls: 'bg-amber-50 border-amber-200', textCls: 'text-amber-700' },
@@ -167,6 +210,14 @@ export function RoomDetail() {
       return;
     }
     setShowApplicationModal(true);
+  };
+
+  const handleVisit = () => {
+    if (!user) {
+      requestAuthentication();
+      return;
+    }
+    setShowVisitModal(true);
   };
 
   const handleContact = () => {
@@ -584,6 +635,33 @@ export function RoomDetail() {
                         Candidatar-me
                       </Button>
                     )}
+
+                    {existingVisit && (
+                      <div className={`rounded-xl border p-3.5 ${VISIT_STATUS_LABELS[existingVisit.status]?.bgCls || 'bg-muted border-border'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <CalendarCheck className={`w-4 h-4 flex-shrink-0 ${VISIT_STATUS_LABELS[existingVisit.status]?.textCls || 'text-foreground'}`} />
+                          <span className={`text-sm font-semibold ${VISIT_STATUS_LABELS[existingVisit.status]?.textCls || 'text-foreground'}`}>
+                            {VISIT_STATUS_LABELS[existingVisit.status]?.label || 'Visita pedida'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {VISIT_STATUS_LABELS[existingVisit.status]?.description}
+                        </p>
+                        <button
+                          onClick={() => navigate('/applications?tab=visits')}
+                          className="mt-2 text-xs text-primary hover:underline font-medium"
+                        >
+                          Ver pedidos de visita →
+                        </button>
+                      </div>
+                    )}
+                    {!isActiveVisit && canRequestVisit && (
+                      <Button variant="outline" className="w-full" onClick={handleVisit}>
+                        <CalendarCheck className="w-4 h-4 mr-2" />
+                        Agendar visita
+                      </Button>
+                    )}
+
                     <Button variant="outline" className="w-full" onClick={handleContact}>
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Enviar mensagem
@@ -639,6 +717,10 @@ export function RoomDetail() {
                     <Button variant="outline" onClick={() => navigate(`/landlord/applications?listing=${room.id}`)}>
                       <FileText className="w-4 h-4 mr-2" />
                       Ver candidaturas
+                    </Button>
+                    <Button variant="outline" onClick={() => navigate('/landlord/visit-requests')}>
+                      <CalendarCheck className="w-4 h-4 mr-2" />
+                      Pedidos de visita
                     </Button>
                     <Button variant="outline" onClick={() => navigate('/messages')}>
                       <MessageCircle className="w-4 h-4 mr-2" />
@@ -740,6 +822,17 @@ export function RoomDetail() {
           Para te candidatares, guardar favoritos ou contactar o senhorio, tens de ter uma conta UniRoom.
         </p>
       </Modal>
+
+      {showVisitModal && canRequestVisit && (
+        <VisitRequestModal
+          roomId={room.id}
+          roomTitle={room.title}
+          landlordId={effectiveLandlordId}
+          propertyId={property.id}
+          onClose={() => setShowVisitModal(false)}
+          onSuccess={() => setVisitRefreshKey(k => k + 1)}
+        />
+      )}
 
       {showApplicationModal && (
         <ApplicationModal

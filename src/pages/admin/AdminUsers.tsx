@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Users,
   Search,
@@ -20,8 +20,9 @@ import {
   adminRejectDocument,
   adminUpsertVerification,
 } from '../../hooks/useTrust';
-import { useAdminUsers } from '../../hooks/useDb';
+import { useAdminUsers, type AdminUserRow } from '../../hooks/useDb';
 import { useAdminAuditLogs } from '../../hooks/useAdminAuditLogs';
+import { supabase } from '../../lib/supabase';
 
 function formatDate(value?: string | Date) {
   if (!value) return '—';
@@ -57,15 +58,45 @@ function getVerificationClass(level: string, pending: boolean) {
 export function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'student' | 'landlord' | 'admin'>('all');
+  const [docFilter, setDocFilter] = useState<'all' | 'pending_docs'>('all');
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [missingPendingUsers, setMissingPendingUsers] = useState<AdminUserRow[]>([]);
 
   const { users, loading: usersLoading, refresh: refreshUsers } = useAdminUsers();
   const { statuses: verifications, statusMap, refresh: refreshVerifications } = useAllVerificationStatuses();
   const { createLog } = useAdminAuditLogs({ limit: 1 });
 
+  useEffect(() => {
+    if (usersLoading) return;
+    const pendingIds = verifications
+      .filter(v => v.documentReviewStatus === 'pending')
+      .map(v => v.userId);
+    const missingIds = pendingIds.filter(id => !users.some(u => u.id === id));
+    if (missingIds.length === 0) { setMissingPendingUsers([]); return; }
+    supabase
+      .from('profiles')
+      .select('*')
+      .in('id', missingIds)
+      .then(({ data, error }) => {
+        if (error) { console.error('[AdminUsers] fetch missing pending users:', error); return; }
+        setMissingPendingUsers((data ?? []).map(r => ({
+          id: r.id, email: r.email, fullName: r.full_name ?? '',
+          type: r.type, status: r.status, verified: !!r.verified,
+          onboardingCompleted: !!r.onboarding_completed,
+          createdAt: new Date(r.created_at),
+          lastActive: r.last_active ? new Date(r.last_active) : undefined,
+        })));
+      });
+  }, [verifications, users, usersLoading]);
+
+  const allUsers = [
+    ...users,
+    ...missingPendingUsers.filter(m => !users.some(u => u.id === m.id)),
+  ];
+
   const entityLabelFor = (userId: string): string => {
-    const u = users.find(x => x.id === userId);
+    const u = allUsers.find(x => x.id === userId);
     return u?.fullName || u?.email || userId;
   };
 
@@ -77,19 +108,21 @@ export function AdminUsers() {
   };
 
   const pendingDocuments = verifications.filter(item => item.documentReviewStatus === 'pending').length;
-  const verifiedUsers = users.filter(user => {
+  const verifiedUsers = allUsers.filter(user => {
     const vs = statusMap[user.id];
     return vs?.level === 'gold' || vs?.level === 'silver';
   }).length;
 
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = allUsers.filter(user => {
     const matchesType = typeFilter === 'all' || user.type === typeFilter;
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
       !q ||
       user.fullName.toLowerCase().includes(q) ||
       user.email.toLowerCase().includes(q);
-    return matchesType && matchesSearch;
+    const matchesPendingDoc =
+      docFilter === 'all' || statusMap[user.id]?.documentReviewStatus === 'pending';
+    return matchesType && matchesSearch && matchesPendingDoc;
   });
 
   const handleApprove = (userId: string) => {
@@ -169,7 +202,7 @@ export function AdminUsers() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card className="p-5">
             <p className="text-sm text-muted-foreground mb-2">Total</p>
-            <p className="text-3xl font-bold text-foreground">{usersLoading ? '—' : users.length}</p>
+            <p className="text-3xl font-bold text-foreground">{usersLoading ? '—' : allUsers.length}</p>
           </Card>
 
           <Card className="p-5">
@@ -177,15 +210,26 @@ export function AdminUsers() {
             <p className="text-3xl font-bold text-green-700">{verifiedUsers}</p>
           </Card>
 
-          <Card className="p-5">
-            <p className="text-sm text-muted-foreground mb-2">Documentos pendentes</p>
-            <p className="text-3xl font-bold text-blue-700">{pendingDocuments}</p>
-          </Card>
+          <button
+            type="button"
+            onClick={() => setDocFilter(f => f === 'pending_docs' ? 'all' : 'pending_docs')}
+            className={`text-left rounded-2xl transition-all ${docFilter === 'pending_docs' ? 'ring-2 ring-blue-500' : 'hover:ring-2 hover:ring-blue-300'}`}
+          >
+            <Card className="p-5 h-full">
+              <p className="text-sm text-muted-foreground mb-2">Documentos pendentes</p>
+              <p className="text-3xl font-bold text-blue-700">{pendingDocuments}</p>
+              {pendingDocuments > 0 && (
+                <p className="text-xs text-blue-600 mt-1">
+                  {docFilter === 'pending_docs' ? '▲ A filtrar' : 'Clica para filtrar'}
+                </p>
+              )}
+            </Card>
+          </button>
 
           <Card className="p-5">
             <p className="text-sm text-muted-foreground mb-2">Estudantes</p>
             <p className="text-3xl font-bold text-primary">
-              {users.filter(user => user.type === 'student').length}
+              {allUsers.filter(user => user.type === 'student').length}
             </p>
           </Card>
         </div>
@@ -202,7 +246,7 @@ export function AdminUsers() {
               />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {(['all', 'student', 'landlord', 'admin'] as const).map(type => (
                 <button
                   key={type}
@@ -216,6 +260,24 @@ export function AdminUsers() {
                   {type === 'all' ? 'Todos' : getTypeLabel(type)}
                 </button>
               ))}
+              <button
+                onClick={() => setDocFilter(f => f === 'pending_docs' ? 'all' : 'pending_docs')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center gap-1.5 ${
+                  docFilter === 'pending_docs'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-card text-muted-foreground border-border hover:border-blue-400'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Docs pendentes
+                {pendingDocuments > 0 && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                    docFilter === 'pending_docs' ? 'bg-white/20' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {pendingDocuments}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
         </Card>

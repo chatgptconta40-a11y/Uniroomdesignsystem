@@ -101,17 +101,6 @@ interface HouseRules {
 
 type StepNumber = 1 | 2 | 3 | 4;
 
-const PROPERTY_IMAGES = [
-  'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&q=80',
-  'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&q=80',
-  'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=1200&q=80',
-];
-
-const ROOM_PHOTOS = [
-  'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=800&q=80',
-  'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&q=80',
-  'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=800&q=80',
-];
 
 const defaultProperty: PropertyDraft = {
   title: '',
@@ -267,10 +256,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
   const [form, setForm] = useState<RoomDraft>(initial ?? emptyRoom());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Photos: start from the room's saved images, falling back to the stock set.
-  const [roomPhotos, setRoomPhotos] = useState<string[]>(
-    initial?.images?.length ? initial.images : ROOM_PHOTOS,
-  );
+  const [roomPhotos, setRoomPhotos] = useState<string[]>(initial?.images ?? []);
   const [selectedPhoto, setSelectedPhoto] = useState(0);
 
   const todayIso = new Date().toISOString().split('T')[0];
@@ -304,6 +290,8 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
     if (!form.availableFrom) errs.availableFrom = 'Indica a data de disponibilidade.';
     else if (form.availableFrom < todayIso) errs.availableFrom = 'A data não pode ser anterior a hoje.';
 
+    if (roomPhotos.length === 0) errs.photos = 'Adiciona pelo menos uma foto real do quarto antes de guardar.';
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -326,9 +314,9 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
 
   const removeRoomPhoto = (index: number) => {
     setRoomPhotos(prev => {
-      if (prev.length <= 1) return prev;
       const next = prev.filter((_, i) => i !== index);
       setSelectedPhoto(cur => {
+        if (next.length === 0) return 0;
         if (index === cur) return 0;
         if (index < cur) return Math.max(0, cur - 1);
         return Math.min(cur, next.length - 1);
@@ -341,7 +329,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
     if (!validate()) return;
     const selectedImages = roomPhotos.length > 0
       ? [roomPhotos[selectedPhoto], ...roomPhotos.filter((_, i) => i !== selectedPhoto)]
-      : ROOM_PHOTOS;
+      : [];
     onSave({ ...form, title: form.title.trim(), images: selectedImages });
   };
 
@@ -481,10 +469,11 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
             </div>
 
             <div>
-              <FieldLabel>Fotos do quarto</FieldLabel>
+              <FieldLabel required>Fotos do quarto</FieldLabel>
               <p className="text-xs text-muted-foreground mb-2">
                 Carrega fotografias reais do quarto. A selecionada será a imagem principal.
               </p>
+              {errors.photos && <p className="text-xs text-red-500 mb-2">{errors.photos}</p>}
               <div className="flex gap-3 flex-wrap">
                 {roomPhotos.map((url, i) => (
                   <div
@@ -554,7 +543,7 @@ export function NewListing() {
   const [propertyErrors, setPropertyErrors] = useState<Record<string, string>>({});
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<RoomDraft | null>(null);
-  const [propertyPhotoOptions, setPropertyPhotoOptions] = useState<string[]>(PROPERTY_IMAGES);
+  const [propertyPhotoOptions, setPropertyPhotoOptions] = useState<string[]>([]);
   const [selectedPropertyPhoto, setSelectedPropertyPhoto] = useState(0);
   const [saving, setSaving] = useState(false);
 
@@ -589,6 +578,7 @@ export function NewListing() {
     if (property.address.trim().length < 8) errs.address = 'Indica uma morada suficientemente completa.';
     if (property.zone.trim().length < 2) errs.zone = 'Indica a zona ou bairro para melhorar a pesquisa.';
     if (!property.city.trim()) errs.city = 'Indica a cidade.';
+    if (propertyPhotoOptions.length === 0) errs.photos = 'Adiciona pelo menos uma foto real da propriedade.';
     const firstSchool = property.nearbySchools[0];
     if (!firstSchool?.school.trim()) errs.school = 'Seleciona pelo menos uma escola.';
     if (!firstSchool?.distanceKm) errs.distanceToSchool = 'Indica a distância à escola principal.';
@@ -682,18 +672,13 @@ export function NewListing() {
 
   const removePropertyPhoto = (index: number) => {
     setPropertyPhotoOptions(prev => {
-      if (prev.length <= 1) {
-        toast.error('Mantém pelo menos uma foto.');
-        return prev;
-      }
-
       const next = prev.filter((_, i) => i !== index);
       setSelectedPropertyPhoto(current => {
+        if (next.length === 0) return 0;
         if (index === current) return 0;
         if (index < current) return Math.max(0, current - 1);
         return Math.min(current, next.length - 1);
       });
-
       return next;
     });
   };
@@ -748,6 +733,24 @@ export function NewListing() {
         toast.error('Seleciona pelo menos um quarto para publicar.');
         return;
       }
+
+      if (propertyPhotoOptions.length === 0) {
+        setStep(1);
+        toast.error('Adiciona pelo menos uma foto real da propriedade antes de publicar.');
+        return;
+      }
+
+      const roomsToPublishNow = mode === 'all' ? rooms : rooms.filter(r => r.publishNow);
+      const roomsWithoutPhotos = roomsToPublishNow.filter(r => !r.images?.length);
+      if (roomsWithoutPhotos.length > 0) {
+        setStep(2);
+        toast.error(
+          roomsWithoutPhotos.length === 1
+            ? `O quarto "${roomsWithoutPhotos[0].title}" não tem fotos. Adiciona pelo menos uma foto antes de publicar.`
+            : `${roomsWithoutPhotos.length} quartos não têm fotos. Adiciona pelo menos uma foto por quarto antes de publicar.`,
+        );
+        return;
+      }
     }
 
     setSaving(true);
@@ -774,7 +777,7 @@ export function NewListing() {
           roomNumber: `Q${index + 1}`,
           title: room.title,
           description: `${room.roomType === 'private' ? 'Quarto privado' : room.roomType === 'shared' ? 'Quarto partilhado' : 'Estúdio'}${room.privateBathroom ? ' com WC privativo' : ''}${room.size ? `, ${room.size}m²` : ''}.`,
-          images: room.images?.length ? room.images : [ROOM_PHOTOS[index % ROOM_PHOTOS.length]],
+          images: room.images ?? [],
           size: room.size ? Number(room.size) : undefined,
           roomType: room.roomType,
           maxOccupants: room.roomType === 'shared' ? 2 : 1,
@@ -795,11 +798,9 @@ export function NewListing() {
       });
 
       const propertyStatus = mode === 'draft' ? 'draft' as const : 'active' as const;
-      const selectedMainImage = propertyPhotoOptions[selectedPropertyPhoto] || propertyPhotoOptions[0] || PROPERTY_IMAGES[0];
-      const orderedPropertyImages = [
-        selectedMainImage,
-        ...propertyPhotoOptions.filter((image, index) => index !== selectedPropertyPhoto && image !== selectedMainImage),
-      ];
+      const orderedPropertyImages = propertyPhotoOptions.length > 0
+        ? [propertyPhotoOptions[selectedPropertyPhoto] ?? propertyPhotoOptions[0], ...propertyPhotoOptions.filter((_, i) => i !== selectedPropertyPhoto)]
+        : [];
 
       const newProperty = {
         id: propertyId,
@@ -894,6 +895,7 @@ export function NewListing() {
   if (!property.city.trim()) missingFields.push('Cidade');
   if (!property.nearbySchools[0]?.school.trim()) missingFields.push('Escola');
   if (!property.nearbySchools[0]?.distanceKm) missingFields.push('Distância à escola');
+  if (propertyPhotoOptions.length === 0) missingFields.push('Pelo menos uma foto da propriedade');
   if (rooms.length === 0) missingFields.push('Pelo menos um quarto');
 
   const AMENITY_OPTIONS = [
@@ -1513,11 +1515,20 @@ export function NewListing() {
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">O que os estudantes vão ver</p>
                 <div className="border border-border rounded-xl overflow-hidden">
                   <div className="relative h-36">
-                    <img
-                      src={propertyPhotoOptions[selectedPropertyPhoto] || propertyPhotoOptions[0] || PROPERTY_IMAGES[0]}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
+                    {propertyPhotoOptions.length > 0 ? (
+                      <img
+                        src={propertyPhotoOptions[selectedPropertyPhoto] ?? propertyPhotoOptions[0]}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-muted flex items-center justify-center">
+                        <div className="text-center text-muted-foreground">
+                          <Camera className="w-8 h-8 mx-auto mb-1 opacity-40" />
+                          <p className="text-xs">Sem fotos adicionadas</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     <div className="absolute bottom-3 left-4 text-white">
                       <p className="font-bold text-lg">{property.title || 'Sem título'}</p>
