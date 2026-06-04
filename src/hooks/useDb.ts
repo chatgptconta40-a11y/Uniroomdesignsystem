@@ -841,19 +841,25 @@ export function useLandlordApplications(landlordId?: string) {
     }
 
     const studentIds = [...new Set(apps.map(a => a.user_id))];
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('id, full_name, email, course, university, year')
-      .in('id', studentIds);
+    const [profilesResult, personalsResult] = await Promise.all([
+      supabase.from('profiles').select('id, full_name, email').in('id', studentIds),
+      supabase.from('personal_profiles').select('user_id, course, institution, year_of_study').in('user_id', studentIds),
+    ]);
 
-    if (profilesError) {
-      console.error('Profiles fetch error:', profilesError.message);
+    if (profilesResult.error) {
+      // Can happen if profiles RLS references a non-existent column — continue with fallback data
+      console.warn('[useLandlordApplications] profiles fetch failed, using fallbacks:', profilesResult.error.message);
+    }
+    if (personalsResult.error) {
+      console.warn('[useLandlordApplications] personal_profiles fetch failed:', personalsResult.error.message);
     }
 
-    const profileMap = new Map((profiles ?? []).map(p => [p.id, p]));
+    const profileMap = new Map((profilesResult.data ?? []).map(p => [p.id, p]));
+    const personalMap = new Map((personalsResult.data ?? []).map(p => [p.user_id, p]));
 
     const enriched: LandlordApplicationRow[] = apps.map(app => {
       const profile = profileMap.get(app.user_id);
+      const personal = personalMap.get(app.user_id);
       return {
         id: app.id,
         propertyId: app.property_id ?? '',
@@ -861,9 +867,9 @@ export function useLandlordApplications(landlordId?: string) {
         studentId: app.user_id,
         studentName: profile?.full_name ?? 'Estudante',
         studentEmail: profile?.email,
-        course: profile?.course ?? undefined,
-        university: profile?.university ?? undefined,
-        year: profile?.year ?? undefined,
+        course: personal?.course ?? undefined,
+        university: personal?.institution ?? undefined,
+        year: personal?.year_of_study ?? undefined,
         status: app.status,
         message: app.message ?? '',
         appliedAt: new Date(app.created_at),

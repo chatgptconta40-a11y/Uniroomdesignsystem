@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
+import { HashRouter, Routes, Route, Navigate } from 'react-router';
 import { Toaster } from 'sonner';
 import { useState } from 'react';
 import { AuthProvider } from '../context/AuthContext';
@@ -43,7 +43,9 @@ import { AdminReports } from '../pages/admin/AdminReports';
 import { AdminAudit } from '../pages/admin/AdminAudit';
 import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
 import { AdminSettings } from '../pages/admin/AdminSettings';
+import { AdminProfile } from '../pages/admin/AdminProfile';
 import { RouteDataRefresher } from '../components/RouteDataRefresher';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 function AppShell() {
   const { compareItems, removeFromCompare } = useCompare();
@@ -257,6 +259,16 @@ function AppShell() {
           />
 
           <Route
+            path="/landlord/contracts"
+            element={<Navigate to="/landlord/dashboard" replace />}
+          />
+
+          <Route
+            path="/landlord/payments"
+            element={<Navigate to="/landlord/dashboard" replace />}
+          />
+
+          <Route
             path="/landlord/analytics"
             element={
               <ProtectedRoute allowedTypes={['landlord']}>
@@ -363,6 +375,17 @@ function AppShell() {
             }
           />
 
+          <Route
+            path="/admin/profile"
+            element={
+              <ProtectedRoute allowedTypes={['admin']}>
+                <AdminLayout>
+                  <AdminProfile />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -387,19 +410,21 @@ function AppShell() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <PropertiesProvider>
-          <AccommodationsProvider>
-            <FavoritesProvider>
-              <CompareProvider>
-                <AppShell />
-                <Toaster richColors position="top-right" />
-              </CompareProvider>
-            </FavoritesProvider>
-          </AccommodationsProvider>
-        </PropertiesProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <AuthProvider>
+          <PropertiesProvider>
+            <AccommodationsProvider>
+              <FavoritesProvider>
+                <CompareProvider>
+                  <AppShell />
+                  <Toaster richColors position="top-right" />
+                </CompareProvider>
+              </FavoritesProvider>
+            </AccommodationsProvider>
+          </PropertiesProvider>
+        </AuthProvider>
+      </HashRouter>
+    </ErrorBoundary>
   );
 }

@@ -61,15 +61,13 @@ export function PropertyCard({
           className="w-full h-full object-cover"
         />
 
-        <div className="absolute top-3 left-3">
-          <div className="flex items-center gap-1.5 bg-white/95 px-2.5 py-1.5 rounded-full shadow-sm">
+        <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2 pointer-events-none">
+          <div className="flex items-center gap-1.5 bg-white/95 px-2.5 py-1.5 rounded-full shadow-sm pointer-events-auto">
             <BedDouble className="w-3.5 h-3.5 text-foreground/70" />
-            <span className="text-xs font-bold text-foreground">{roomCount} quartos</span>
+            <span className="text-xs font-bold text-foreground whitespace-nowrap">{roomCount} quartos</span>
           </div>
-        </div>
 
-        <div className="absolute top-3 right-3">
-          <Badge variant={statusBadge.variant} className={`${statusBadge.className} font-semibold shadow-md border`}>
+          <Badge variant={statusBadge.variant} className={`${statusBadge.className} font-semibold shadow-md border pointer-events-auto`}>
             {statusBadge.label}
           </Badge>
         </div>

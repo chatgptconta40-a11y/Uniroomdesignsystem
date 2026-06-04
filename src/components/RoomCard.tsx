@@ -188,10 +188,16 @@ export function RoomCard({
               style={{ minHeight: '120px' }}
             />
 
-            <div className="absolute top-2 left-2">
-              <Badge variant="default" className={`${roomTypeBadge.color} text-[10px] px-1.5 py-0.5`}>
+            <div className="absolute top-2 left-2 right-11 flex flex-wrap gap-1">
+              <Badge variant="default" className={`${roomTypeBadge.color} text-[10px] px-1.5 py-0.5 max-w-full truncate`}>
                 {roomTypeBadge.label}
               </Badge>
+              {room.privateBathroom && (
+                <Badge variant="default" className="bg-white/95 text-foreground border border-border text-[10px] px-1.5 py-0.5">
+                  <Bath className="w-2.5 h-2.5 mr-0.5" />
+                  WC
+                </Badge>
+              )}
             </div>
 
             {showFavorite && (
@@ -380,39 +386,10 @@ export function RoomCard({
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
 
-        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-          <Badge variant="default" className={roomTypeBadge.color}>
-            {roomTypeBadge.label}
-          </Badge>
-
-          {property.verified && (
-            <Badge variant="default" className="bg-white/92 text-blue-700 border-blue-200">
-              <ShieldCheck className="w-3 h-3 mr-1" />
-              Verificado
-            </Badge>
-          )}
-
-          {isManagement && managementActions && (
-            <Badge
-              variant={managementActions.statusVariant || 'default'}
-              className={`${managementActions.statusClassName || ''} bg-white/95 shadow-sm`}
-            >
-              {managementActions.statusLabel}
-            </Badge>
-          )}
-
-          {room.privateBathroom && (
-            <Badge variant="default" className="bg-white/90 text-foreground">
-              <Bath className="w-3 h-3 mr-1" />
-              WC privado
-            </Badge>
-          )}
-        </div>
-
         {showFavorite && !isManagement && (
           <button
             onClick={handleFavoriteClick}
-            className="absolute top-3 right-3 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-all shadow-sm"
+            className="absolute top-3 right-3 w-9 h-9 bg-white/95 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-all shadow-md z-10"
             aria-label={isFav ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
           >
             <Heart className={`w-4 h-4 ${isFav ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
@@ -421,7 +398,36 @@ export function RoomCard({
       </div>
 
       <div className="p-5">
-        <h3 className="font-bold text-lg text-foreground mb-1 line-clamp-1 group-hover:text-primary transition-colors">
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          <Badge variant="default" className={roomTypeBadge.color}>
+            {roomTypeBadge.label}
+          </Badge>
+
+          {room.privateBathroom && (
+            <Badge variant="default" className="bg-muted text-foreground border border-border">
+              <Bath className="w-3 h-3 mr-1" />
+              WC privado
+            </Badge>
+          )}
+
+          {property.verified && (
+            <Badge variant="default" className="bg-blue-50 text-blue-700 border border-blue-200">
+              <ShieldCheck className="w-3 h-3 mr-1" />
+              Verificado
+            </Badge>
+          )}
+
+          {isManagement && managementActions && (
+            <Badge
+              variant={managementActions.statusVariant || 'default'}
+              className={managementActions.statusClassName || ''}
+            >
+              {managementActions.statusLabel}
+            </Badge>
+          )}
+        </div>
+
+        <h3 className="font-bold text-lg text-foreground mb-1 line-clamp-2 group-hover:text-primary transition-colors">
           {room.title}
         </h3>
 

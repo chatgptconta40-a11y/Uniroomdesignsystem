@@ -48,7 +48,17 @@ export function RoomDetail() {
     ? Array.from(new Set([...room.images, ...property.images]))
     : [];
   const { reviews, averageRating: reviewAvg, total: reviewTotal } = useReviews({ propertyId: property?.id });
-  const { profile: landlordProfile } = useProfile(room?.landlordId);
+
+  // Resolve landlordId: prefer room, fall back to property. Must be a valid UUID or ''.
+  const effectiveLandlordId = (() => {
+    if (room?.landlordId && isSupabaseUuid(room.landlordId)) return room.landlordId;
+    if (property?.landlordId && isSupabaseUuid(property.landlordId)) return property.landlordId;
+    return '';
+  })();
+
+  // Fetch landlord profile only to display their name. Result may be null due to RLS
+  // (student often can't read other users' profiles) — this is NOT a validity check.
+  const { profile: landlordProfile } = useProfile(effectiveLandlordId || undefined);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -103,9 +113,8 @@ export function RoomDetail() {
 
   const isLandlordOwner = user?.type === 'landlord' && room?.landlordId === user?.id;
   const canActAsApplicant = (user?.type === 'student' || user?.type === 'landlord') && !isLandlordOwner;
-  const effectiveLandlordId = (room?.landlordId && isSupabaseUuid(room.landlordId))
-    ? room.landlordId
-    : (property?.landlordId && isSupabaseUuid(property.landlordId) ? property.landlordId : '');
+  // canRequestVisit: only checks UUID validity. Profile readability via RLS is unreliable
+  // from the student's perspective, so existence is enforced by the FK at INSERT time.
   const canRequestVisit = canActAsApplicant && !!effectiveLandlordId;
   const canShowCompatibility = Boolean(
     canActAsApplicant &&
@@ -648,7 +657,7 @@ export function RoomDetail() {
                           {VISIT_STATUS_LABELS[existingVisit.status]?.description}
                         </p>
                         <button
-                          onClick={() => navigate('/applications?tab=visits')}
+                          onClick={() => navigate('/student/visit-requests')}
                           className="mt-2 text-xs text-primary hover:underline font-medium"
                         >
                           Ver pedidos de visita →

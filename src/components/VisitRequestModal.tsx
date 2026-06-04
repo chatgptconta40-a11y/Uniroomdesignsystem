@@ -25,10 +25,6 @@ export function VisitRequestModal({ roomId, roomTitle, landlordId, propertyId, o
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!isSupabaseUuid(landlordId)) {
-      toast.error('Este anúncio não está disponível para visitas de momento. Contacta o suporte.');
-      return;
-    }
     if (!date || !time) {
       toast.error('Seleciona uma data e hora para a visita.');
       return;
@@ -38,8 +34,15 @@ export function VisitRequestModal({ roomId, roomTitle, landlordId, propertyId, o
       toast.error('A data da visita tem de ser no futuro.');
       return;
     }
+    console.log('[VisitRequestModal] handleSubmit:', {
+      landlordId,
+      propertyId,
+      roomId,
+      requestedAt: requestedAt.toISOString(),
+      roomTitle,
+    });
     setLoading(true);
-    const id = await createVisitRequest({
+    const result = await createVisitRequest({
       landlordId,
       propertyId,
       roomId,
@@ -47,8 +50,8 @@ export function VisitRequestModal({ roomId, roomTitle, landlordId, propertyId, o
       studentMessage: message.trim() || undefined,
     });
     setLoading(false);
-    if (!id) {
-      toast.error('Não foi possível enviar o pedido. Tenta novamente.');
+    if ('error' in result) {
+      toast.error('Não foi possível enviar o pedido.', { description: result.error });
       return;
     }
     toast.success('Pedido de visita enviado! O senhorio irá responder em breve.');

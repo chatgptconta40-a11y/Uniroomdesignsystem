@@ -340,6 +340,17 @@ export function Applications() {
       });
     }
 
+    if (confirmStayApp.roomId) {
+      const { error: roomUpdateError } = await supabase
+        .from('rooms')
+        .update({ status: 'occupied', updated_at: new Date().toISOString() })
+        .eq('id', confirmStayApp.roomId);
+      if (roomUpdateError) {
+        console.error('[ROOMS] room status update failed', roomUpdateError);
+      }
+    }
+
+    refreshProperties();
     toast.success('Estadia confirmada! Bem-vindo/a à tua nova casa.');
     setConfirmStayApp(null);
     setRefreshKey(key => key + 1);

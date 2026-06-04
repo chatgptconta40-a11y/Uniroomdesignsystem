@@ -77,24 +77,10 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
 
-          {isAboveBudget && (
-            <div className="absolute top-4 left-4 bg-destructive text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Acima do orçamento
-            </div>
-          )}
-
-          {accommodation.verified && (
-            <div className="absolute top-4 right-16 bg-primary text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg flex items-center gap-1">
-              <CheckCircle className="w-3.5 h-3.5" />
-              Verificado
-            </div>
-          )}
-
           <button
             type="button"
             onClick={handleToggleFavorite}
-            className="absolute top-4 right-4 w-10 h-10 bg-white/95 hover:bg-white rounded-full flex items-center justify-center transition-all shadow-lg hover:scale-110"
+            className="absolute top-4 right-4 w-10 h-10 bg-white/95 hover:bg-white rounded-full flex items-center justify-center transition-all shadow-lg hover:scale-110 z-10"
             aria-label={isFav ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
           >
             <Heart
@@ -113,6 +99,23 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
         </div>
 
         <div className="p-6 flex-1 flex flex-col">
+          {(isAboveBudget || accommodation.verified) && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {accommodation.verified && (
+                <span className="inline-flex items-center gap-1 bg-primary text-white px-2.5 py-1 rounded-full text-xs font-semibold">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Verificado
+                </span>
+              )}
+              {isAboveBudget && (
+                <span className="inline-flex items-center gap-1 bg-destructive text-white px-2.5 py-1 rounded-full text-xs font-semibold">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Acima do orçamento
+                </span>
+              )}
+            </div>
+          )}
+
           <h3 className="text-lg font-semibold text-foreground mb-3 group-hover:text-primary transition-colors line-clamp-2">
             {accommodation.title}
           </h3>

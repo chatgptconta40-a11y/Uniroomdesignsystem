@@ -5,21 +5,23 @@ import {
   Calendar,
   CheckCircle,
   Clock,
-  Copy,
   FileText,
   Flame,
   Home as HomeIcon,
   MapPin,
   MessageCircle,
-  Receipt,
   ShieldCheck,
-  Upload,
   Users,
   Wifi,
   Wrench,
   ArrowRight,
-  CreditCard,
-  X,
+  Sparkles,
+  KeyRound,
+  ChevronRight,
+  Star,
+  Activity,
+  BedDouble,
+  Coffee,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -29,15 +31,7 @@ import { Badge } from '../components/Badge';
 import { MaintenanceModal } from '../components/MaintenanceModal';
 import { StartConversationModal } from '../components/StartConversationModal';
 import { useMaintenance } from '../hooks/useDb';
-import {
-  formatCurrency,
-  getContractStatusLabel,
-  getPaymentMethodLabel,
-  getPaymentMethodMainValue,
-  getPaymentStatusLabel,
-} from '../utils/housingFinanceLabels';
-import { usePaymentMethod, useRentalContracts, useRentPayments } from '../hooks/useHousingFinance';
-import type { ContractStatus } from '../utils/housingFinanceLabels';
+import { formatCurrency } from '../utils/format';
 import { supabase } from '../lib/supabase';
 import { Accommodation, ActiveHome } from '../types/accommodation';
 import { MaintenanceRequest, maintenanceCategoryLabels, maintenanceStatusLabels, maintenanceUrgencyLabels } from '../types/maintenance';
@@ -108,17 +102,11 @@ export function MyHome() {
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
-  const [showContractModal, setShowContractModal] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedProofFileName, setSelectedProofFileName] = useState('');
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
   const { requests: maintenanceRequests, refresh: refreshMaintenanceRequests } = useMaintenance({ scope: 'student' });
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
 
   const [activeHomeRow, setActiveHomeRow] = useState<ActiveHome | null>(null);
-
-  const { contract: realContract } = useRentalContracts({ activeHomeId: activeHomeRow?.id });
-  const { payments: realPayments, uploadProof } = useRentPayments({ activeHomeId: activeHomeRow?.id });
-  const { method: realPaymentMethod } = usePaymentMethod(activeHomeRow?.landlordId ?? '');
 
   const [acceptedAppRow, setAcceptedAppRow] = useState<{
     id: string;
@@ -327,8 +315,18 @@ export function MyHome() {
     if (homeLoading) {
       return (
         <div className="min-h-screen bg-background">
-          <div className="max-w-2xl mx-auto px-6 py-16 text-center text-muted-foreground">
-            A carregar a tua casa…
+          <div className="max-w-7xl mx-auto px-6 py-8 space-y-6 animate-pulse">
+            <div className="h-10 w-64 bg-muted/60 rounded-lg" />
+            <div className="h-72 bg-muted/40 rounded-2xl" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[0, 1, 2, 3].map(i => (
+                <div key={i} className="h-24 bg-muted/40 rounded-2xl" />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 h-96 bg-muted/30 rounded-2xl" />
+              <div className="h-96 bg-muted/30 rounded-2xl" />
+            </div>
           </div>
         </div>
       );
@@ -425,42 +423,9 @@ export function MyHome() {
   const monthlyRent = activeHomeData.monthlyRent ?? room.price;
   const utilitiesAmount = activeHomeData.utilities ?? room.utilities ?? 0;
   const monthlyTotal = monthlyRent + utilitiesAmount;
-
-  const paymentMethod = realPaymentMethod ?? {
-    id: 'none',
-    landlordId: activeHomeData.landlordId,
-    methodType: 'other',
-    label: 'Por definir',
-    holderName: '',
-    isDefault: true,
-    active: true,
-    createdAt: '',
-    updatedAt: '',
-  };
-
-  const startDateIso = new Date(activeHomeData.moveInDate).toISOString().slice(0, 10);
-  const contract = realContract ?? {
-    id: 'pending',
-    activeHomeId: activeHomeData.id,
-    propertyId: activeHomeData.propertyId,
-    roomId: activeHomeData.roomId,
-    landlordId: activeHomeData.landlordId,
-    studentId: user?.id ?? '',
-    title: 'Contrato de arrendamento',
-    contractNumber: '—',
-    status: 'draft' as ContractStatus,
-    startDate: startDateIso,
-    monthlyRent,
-    depositAmount: monthlyRent,
-    utilitiesAmount,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  const rentPayments = realPayments;
-  const nextPayment = rentPayments.find(p => p.status !== 'paid');
-  const paidPayments = rentPayments.filter(p => p.status === 'paid');
-  const paymentsWithProof = rentPayments.filter(p => p.proofUrl);
+  const daysInHome = getDaysSince(activeHomeData.moveInDate);
+  const galleryImages = [...property.images, ...room.images].filter(Boolean).slice(0, 5);
+  const heroImage = galleryImages[activeImageIdx] || galleryImages[0] || '';
 
   const visibleMaintenanceRequests = maintenanceRequests.filter(request =>
     request.roomId === room.id ||
@@ -470,40 +435,11 @@ export function MyHome() {
 
   const pendingRequests = visibleMaintenanceRequests.filter(request => request.status === 'pending').length;
   const inProgressRequests = visibleMaintenanceRequests.filter(request => request.status === 'in_progress').length;
+  const resolvedRequests = visibleMaintenanceRequests.filter(request => request.status === 'resolved' || request.status === 'closed').length;
   const urgentRequests = visibleMaintenanceRequests.filter(
     request => request.urgency === 'high' && request.status !== 'resolved' && request.status !== 'closed',
   ).length;
-
-  const handleCopyPaymentData = async () => {
-    const value = getPaymentMethodMainValue(paymentMethod);
-
-    if (!value) return;
-
-    try {
-      await navigator.clipboard.writeText(value);
-      toast.success('Dados de pagamento copiados.');
-    } catch {
-      toast.info('Copia manualmente os dados de pagamento.', {
-        description: value,
-      });
-    }
-  };
-
-  const handleUploadPaymentProof = async (paymentId: string) => {
-    if (!selectedProofFileName) return;
-    const updated = await uploadProof(
-      paymentId,
-      selectedProofFileName,
-      selectedProofFileName,
-    );
-    if (updated) {
-      toast.success('Comprovativo submetido. O senhorio irá validar em breve.');
-      setShowPaymentModal(false);
-      setSelectedProofFileName('');
-    } else {
-      toast.error('Erro ao submeter comprovativo. Tenta novamente.');
-    }
-  };
+  const openMaintenance = pendingRequests + inProgressRequests;
 
   const amenities = [
     { label: 'WiFi', value: property.amenities.wifi ? 'Incluído' : 'Não incluído', icon: Wifi },
@@ -520,197 +456,288 @@ export function MyHome() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
+    <div className="min-h-screen bg-gradient-to-b from-muted/30 via-background to-background">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-7">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-bold text-foreground">A Minha Casa</h1>
-              <Badge variant="success">
-                <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                Casa ativa
-              </Badge>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75 animate-ping" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-secondary" />
+                </span>
+                <span className="text-xs font-semibold text-secondary uppercase tracking-wide">Casa ativa</span>
+              </div>
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="text-xs text-muted-foreground">Há {daysInHome} dia{daysInHome === 1 ? '' : 's'} contigo</span>
             </div>
-            <p className="text-muted-foreground">
-              Gere a tua estadia, pagamentos, colegas de casa e pedidos de manutenção.
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">A Minha Casa</h1>
+            <p className="text-muted-foreground mt-1.5 max-w-xl">
+              Tudo sobre a tua estadia em <span className="font-semibold text-foreground">{property.title}</span> — colegas, casa e pedidos de manutenção.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button variant="outline" onClick={() => setShowContactModal(true)}>
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <Button variant="outline" onClick={() => setShowContactModal(true)} className="shadow-sm">
               <MessageCircle className="w-4 h-4 mr-2" />
               Contactar senhorio
             </Button>
-            <Button variant="primary" onClick={() => setShowMaintenanceModal(true)}>
+            <Button variant="primary" onClick={() => setShowMaintenanceModal(true)} className="shadow-sm">
               <Wrench className="w-4 h-4 mr-2" />
               Reportar problema
             </Button>
           </div>
         </div>
 
-        <Card className="p-0 mb-6 overflow-hidden">
-          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr]">
-            <div className="relative min-h-[280px]">
-              <img
-                src={property.images[0] || room.images[0]}
-                alt={property.title}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-              <div className="absolute left-6 right-6 bottom-6 text-white">
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <Badge variant="success" className="bg-white/95 text-secondary border-white/60">
-                    <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-                    Propriedade verificada
-                  </Badge>
-                  <Badge variant="outline" className="bg-white/15 text-white border-white/30">
+        <Card className="p-0 mb-6 overflow-hidden border-border/60 shadow-sm">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr]">
+            <div className="relative min-h-[340px] bg-muted">
+              {heroImage && (
+                <img
+                  src={heroImage}
+                  alt={property.title}
+                  className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+                />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
+
+              <div className="absolute top-5 left-5 right-5 flex items-start justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white text-foreground text-xs font-semibold shadow-sm">
+                    <ShieldCheck className="w-3.5 h-3.5 text-secondary" />
+                    Verificado
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur text-white border border-white/20 text-xs font-medium">
+                    <BedDouble className="w-3.5 h-3.5" />
                     {property.totalRooms} quartos
-                  </Badge>
+                  </span>
                 </div>
-                <h2 className="text-2xl font-bold mb-2">{property.title}</h2>
-                <p className="text-sm text-white/90 flex items-center gap-2">
+              </div>
+
+              <div className="absolute left-6 right-6 bottom-6 text-white">
+                <h2 className="text-2xl md:text-3xl font-bold mb-2 drop-shadow-sm">{property.title}</h2>
+                <p className="text-sm text-white/95 flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
-                  {property.address}, {property.zone}, {property.city}
+                  {property.address} · {property.zone}, {property.city}
                 </p>
+
+                {galleryImages.length > 1 && (
+                  <div className="mt-4 flex gap-2">
+                    {galleryImages.map((img, idx) => (
+                      <button
+                        key={`${img}-${idx}`}
+                        type="button"
+                        onClick={() => setActiveImageIdx(idx)}
+                        aria-label={`Imagem ${idx + 1}`}
+                        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
+                          idx === activeImageIdx
+                            ? 'border-white scale-105'
+                            : 'border-white/30 opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="p-6 lg:p-8">
-              <div className="flex items-start justify-between gap-4 mb-6">
+            <div className="p-6 lg:p-8 flex flex-col">
+              <div className="flex items-start justify-between gap-3 mb-5">
                 <div>
-                  <p className="text-sm font-semibold text-primary mb-1">Quarto arrendado</p>
-                  <h3 className="text-xl font-bold text-foreground">{room.title}</h3>
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1.5">O teu quarto</p>
+                  <h3 className="text-2xl font-bold text-foreground">{room.title}</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {room.roomNumber} · {room.size || '—'} m² ·{' '}
-                    {room.privateBathroom ? 'casa de banho privativa' : 'casa de banho partilhada'}
+                    {room.roomNumber ? `${room.roomNumber} · ` : ''}{room.size ? `${room.size} m² · ` : ''}
+                    {room.privateBathroom ? 'WC privativo' : 'WC partilhado'}
                   </p>
                 </div>
-                <Badge variant="success">Ocupado</Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="p-4 bg-muted/40 rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-1">Renda mensal</p>
-                  <p className="text-2xl font-bold text-foreground">{formatCurrency(monthlyRent)}</p>
-                </div>
-                <div className="p-4 bg-muted/40 rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-1">Despesas</p>
-                  <p className="text-2xl font-bold text-foreground">{formatCurrency(utilitiesAmount)}</p>
+                <div className="w-11 h-11 rounded-xl bg-secondary/10 flex items-center justify-center flex-shrink-0">
+                  <KeyRound className="w-5 h-5 text-secondary" />
                 </div>
               </div>
 
-              <div className="space-y-3 text-sm">
+              <div className="rounded-2xl bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 border border-primary/15 p-5 mb-5">
+                <div className="flex items-baseline justify-between mb-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Total mensal</p>
+                    <p className="text-3xl font-bold text-foreground">{formatCurrency(monthlyTotal)}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">/mês</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm pt-3 border-t border-primary/10">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Renda</p>
+                    <p className="font-semibold text-foreground">{formatCurrency(monthlyRent)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Despesas</p>
+                    <p className="font-semibold text-foreground">{formatCurrency(utilitiesAmount)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2.5 text-sm mb-5">
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
-                    Data de entrada
+                    Entrada
                   </span>
                   <span className="font-semibold text-foreground">{formatDate(activeHomeData.moveInDate)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    Contrato até
-                  </span>
-                  <span className="font-semibold text-foreground">{formatDate(activeHomeData.contractEndDate)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-muted-foreground flex items-center gap-2">
                     <MapPin className="w-4 h-4" />
-                    Distância à universidade
+                    À universidade
                   </span>
                   <span className="font-semibold text-foreground">{property.distanceToUniversity} km</span>
                 </div>
               </div>
 
-              <Link to={`/room/${room.id}`} className="block mt-6">
+              <Link to={`/room/${room.id}`} className="block mt-auto">
                 <Button variant="outline" className="w-full">
                   <FileText className="w-4 h-4 mr-2" />
                   Ver anúncio original
+                  <ChevronRight className="w-4 h-4 ml-auto" />
                 </Button>
               </Link>
             </div>
           </div>
         </Card>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {amenities.map(({ label, value, icon: Icon }) => (
-            <Card key={label} className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <Icon className="w-5 h-5 text-primary" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
+          {[
+            { label: 'Dias na casa', value: daysInHome.toString(), sub: 'desde a entrada', icon: Activity, tone: 'text-primary bg-primary/10' },
+            { label: 'Total mensal', value: formatCurrency(monthlyTotal), sub: `${formatCurrency(monthlyRent)} renda`, icon: Sparkles, tone: 'text-accent bg-accent/10' },
+            { label: 'Colegas de casa', value: housemates.length.toString(), sub: housemates.length === 0 ? 'à tua espera' : 'confirmados', icon: Users, tone: 'text-secondary bg-secondary/10' },
+            { label: 'Pedidos abertos', value: openMaintenance.toString(), sub: urgentRequests > 0 ? `${urgentRequests} urgente${urgentRequests > 1 ? 's' : ''}` : 'tudo em ordem', icon: Wrench, tone: urgentRequests > 0 ? 'text-red-600 bg-red-50' : 'text-muted-foreground bg-muted' },
+          ].map(stat => {
+            const Icon = stat.icon;
+            return (
+              <Card key={stat.label} className="p-4 border-border/60 hover:shadow-md hover:border-border transition-all">
+                <div className={`w-10 h-10 rounded-xl ${stat.tone} flex items-center justify-center mb-3`}>
+                  <Icon className="w-5 h-5" />
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="font-semibold text-sm">{value}</p>
+                <p className="text-xl font-bold text-foreground tabular-nums">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+                <p className="text-[11px] text-muted-foreground/80 mt-1">{stat.sub}</p>
+              </Card>
+            );
+          })}
+        </div>
+
+        <Card className="p-4 mb-6 border-border/60">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {amenities.map(({ label, value, icon: Icon }) => (
+              <div key={label} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted/50 transition-colors">
+                <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-4.5 h-4.5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{label}</p>
+                  <p className="font-semibold text-sm text-foreground truncate">{value}</p>
                 </div>
               </div>
-            </Card>
-          ))}
-        </div>
+            ))}
+          </div>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2 space-y-6">
-            <Card className="p-6">
+            <Card className="p-6 border-border/60">
               <div className="flex items-center justify-between gap-4 mb-5">
                 <div>
                   <h3 className="text-lg font-bold text-foreground">Casa e comodidades</h3>
-                  <p className="text-sm text-muted-foreground">Informação prática da casa partilhada.</p>
+                  <p className="text-sm text-muted-foreground">O que esta casa partilhada oferece.</p>
                 </div>
-                <Badge variant="outline">{property.zone}</Badge>
+                <Badge variant="outline" className="flex-shrink-0">
+                  <MapPin className="w-3 h-3 mr-1" />
+                  {property.zone}
+                </Badge>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
                 {[
-                  ['Cozinha equipada', property.amenities.kitchen],
-                  ['Sala comum', property.amenities.livingRoom],
-                  ['Máquina de lavar', property.amenities.laundry],
-                  ['Micro-ondas', property.amenities.microwave],
-                  ['Estacionamento', property.amenities.parking],
-                  ['Elevador', property.amenities.elevator],
-                ].map(([label, enabled]) => (
-                  <div key={label as string} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                    <CheckCircle className={`w-4 h-4 ${enabled ? 'text-secondary' : 'text-muted-foreground'}`} />
-                    <span className={`text-sm font-medium ${enabled ? 'text-foreground' : 'text-muted-foreground'}`}>
-                      {label as string}
-                    </span>
+                  ['Cozinha equipada', property.amenities.kitchen, Coffee],
+                  ['Sala comum', property.amenities.livingRoom, HomeIcon],
+                  ['Máquina de lavar', property.amenities.laundry, Sparkles],
+                  ['Micro-ondas', property.amenities.microwave, Flame],
+                  ['Estacionamento', property.amenities.parking, MapPin],
+                  ['Elevador', property.amenities.elevator, ArrowRight],
+                ].map(([label, enabled, IconCmp]: any) => (
+                  <div
+                    key={label}
+                    className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all ${
+                      enabled
+                        ? 'bg-secondary/5 border-secondary/20'
+                        : 'bg-muted/20 border-border/40 opacity-60'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      enabled ? 'bg-secondary/15 text-secondary' : 'bg-muted text-muted-foreground'
+                    }`}>
+                      <IconCmp className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-medium truncate ${enabled ? 'text-foreground' : 'text-muted-foreground line-through decoration-1'}`}>
+                        {label}
+                      </p>
+                    </div>
+                    {enabled && <CheckCircle className="w-4 h-4 text-secondary flex-shrink-0" />}
                   </div>
                 ))}
               </div>
             </Card>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-bold text-foreground mb-5">Colegas de casa</h3>
-              <div className="space-y-4">
+            <Card className="p-6 border-border/60">
+              <div className="flex items-center justify-between gap-3 mb-5">
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Colegas de casa</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {housemates.length === 0 ? 'Ainda ninguém confirmado nesta casa' : `${housemates.length} ${housemates.length === 1 ? 'pessoa' : 'pessoas'} a viver contigo`}
+                  </p>
+                </div>
+                <Badge variant="outline">
+                  <Users className="w-3 h-3 mr-1" />
+                  {housemates.length + 1}/{property.totalRooms}
+                </Badge>
+              </div>
+              <div className="space-y-3">
                 {housemates.length === 0 ? (
-                  <div className="p-6 bg-muted/30 rounded-lg text-center">
-                    <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                    <h4 className="font-semibold text-foreground mb-1">Ainda sem colegas confirmados</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Quando outros estudantes confirmarem estadia nesta casa, aparecem aqui.
+                  <div className="p-8 bg-muted/20 border border-dashed border-border rounded-xl text-center">
+                    <div className="w-12 h-12 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
+                      <Users className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <h4 className="font-semibold text-foreground mb-1">És o primeiro a chegar</h4>
+                    <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                      Quando outros estudantes confirmarem estadia, aparecem aqui com a sua informação.
                     </p>
                   </div>
                 ) : (
                   housemates.map(housemate => (
-                    <div key={housemate.id} className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
+                    <div key={housemate.id} className="flex items-center gap-4 p-4 border border-border/60 rounded-xl hover:border-border hover:bg-muted/20 transition-all">
                       {housemate.avatarUrl ? (
                         <img
                           src={housemate.avatarUrl}
                           alt={housemate.name}
-                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                          className="w-12 h-12 rounded-full object-cover flex-shrink-0 ring-2 ring-background"
                         />
                       ) : (
-                        <div className="w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                        <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold flex-shrink-0 ring-2 ring-background">
                           {housemate.initials}
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <h4 className="font-semibold text-foreground">{housemate.name}</h4>
+                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                          <h4 className="font-semibold text-foreground truncate">{housemate.name}</h4>
                           <Badge variant="outline" className="text-xs">{housemate.room}</Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground">{housemate.course}</p>
-                        <p className="text-xs text-muted-foreground mt-1">Estadia confirmada · Em casa desde {housemate.since}</p>
+                        <p className="text-sm text-muted-foreground truncate">{housemate.course}</p>
+                        <p className="text-xs text-muted-foreground/80 mt-1 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          Desde {housemate.since}
+                        </p>
                       </div>
                     </div>
                   ))
@@ -718,95 +745,108 @@ export function MyHome() {
               </div>
             </Card>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-bold text-foreground mb-5">Regras principais</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {rules.map(rule => (
-                  <div key={rule} className="flex items-start gap-3 p-4 border border-border rounded-lg">
-                    <CheckCircle className="w-4 h-4 text-secondary mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-foreground">{rule}</p>
+            <Card className="p-6 border-border/60">
+              <h3 className="text-lg font-bold text-foreground mb-1">Regras principais</h3>
+              <p className="text-sm text-muted-foreground mb-5">Acordos a respeitar enquanto vives aqui.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {rules.map((rule, idx) => (
+                  <div key={rule} className="flex items-start gap-3 p-3.5 bg-muted/30 rounded-xl">
+                    <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                      {idx + 1}
+                    </div>
+                    <p className="text-sm text-foreground leading-relaxed">{rule}</p>
                   </div>
                 ))}
               </div>
             </Card>
 
-            <Card className="p-6">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+            <Card className="p-6 border-border/60">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
                 <div>
-                  <h2 className="text-xl font-bold text-foreground mb-1">Pedidos de manutenção</h2>
+                  <h2 className="text-lg font-bold text-foreground">Pedidos de manutenção</h2>
                   <p className="text-sm text-muted-foreground">Acompanha problemas reportados no quarto ou na casa.</p>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {pendingRequests > 0 && <Badge variant="warning">{pendingRequests} pendentes</Badge>}
-                  {inProgressRequests > 0 && <Badge variant="default">{inProgressRequests} em resolução</Badge>}
-                  {urgentRequests > 0 && (
-                    <Badge variant="outline" className="text-destructive bg-destructive/10 border-destructive/20">
-                      {urgentRequests} urgentes
-                    </Badge>
-                  )}
-                </div>
+                {visibleMaintenanceRequests.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => setShowMaintenanceModal(true)} className="flex-shrink-0">
+                    <Wrench className="w-4 h-4 mr-1.5" />
+                    Novo pedido
+                  </Button>
+                )}
               </div>
+
+              {visibleMaintenanceRequests.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mb-5">
+                  <div className="rounded-xl bg-amber-50 border border-amber-200/60 p-3">
+                    <p className="text-2xl font-bold text-amber-700 tabular-nums">{pendingRequests}</p>
+                    <p className="text-xs text-amber-700/80 mt-0.5">Pendentes</p>
+                  </div>
+                  <div className="rounded-xl bg-blue-50 border border-blue-200/60 p-3">
+                    <p className="text-2xl font-bold text-blue-700 tabular-nums">{inProgressRequests}</p>
+                    <p className="text-xs text-blue-700/80 mt-0.5">Em resolução</p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 p-3">
+                    <p className="text-2xl font-bold text-emerald-700 tabular-nums">{resolvedRequests}</p>
+                    <p className="text-xs text-emerald-700/80 mt-0.5">Resolvidos</p>
+                  </div>
+                </div>
+              )}
 
               {visibleMaintenanceRequests.length > 0 ? (
                 <div className="space-y-3">
-                  {visibleMaintenanceRequests.map(request => (
-                    <div key={request.id} className="p-5 border border-border rounded-lg hover:border-primary/40 transition-all">
-                      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex flex-wrap items-center gap-2 mb-2">
-                            <h3 className="font-bold text-foreground">{request.title}</h3>
-                            <Badge
-                              variant={
-                                request.status === 'resolved' || request.status === 'closed'
-                                  ? 'success'
-                                  : request.status === 'in_progress'
-                                  ? 'default'
-                                  : 'warning'
-                              }
-                            >
-                              {maintenanceStatusLabels[request.status]}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className={
-                                request.urgency === 'high'
-                                  ? 'text-destructive bg-destructive/10 border-destructive/20'
-                                  : request.urgency === 'medium'
-                                  ? 'text-accent bg-accent/10 border-accent/20'
-                                  : 'text-secondary bg-secondary/10 border-secondary/20'
-                              }
-                            >
-                              {maintenanceUrgencyLabels[request.urgency]}
-                            </Badge>
+                  {visibleMaintenanceRequests.map(request => {
+                    const isResolved = request.status === 'resolved' || request.status === 'closed';
+                    const dotColor = isResolved
+                      ? 'bg-emerald-500'
+                      : request.status === 'in_progress'
+                      ? 'bg-blue-500'
+                      : 'bg-amber-500';
+                    return (
+                      <div key={request.id} className="relative p-4 border border-border/60 rounded-xl hover:border-primary/30 hover:bg-muted/20 transition-all">
+                        <div className="flex items-start gap-3">
+                          <div className="flex flex-col items-center pt-1.5 flex-shrink-0">
+                            <span className={`w-2.5 h-2.5 rounded-full ${dotColor} ring-4 ring-background`} />
                           </div>
-
-                          <Badge variant="outline" className="mb-3">
-                            {maintenanceCategoryLabels[request.category]}
-                          </Badge>
-                          <p className="text-sm text-muted-foreground mb-3">{request.description}</p>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5" />
-                            Reportado há {getDaysSince(request.createdAt)} dias
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                              <h3 className="font-bold text-foreground">{request.title}</h3>
+                              <Badge
+                                variant={
+                                  isResolved ? 'success' : request.status === 'in_progress' ? 'default' : 'warning'
+                                }
+                              >
+                                {maintenanceStatusLabels[request.status]}
+                              </Badge>
+                              {request.urgency === 'high' && (
+                                <Badge variant="outline" className="text-destructive bg-destructive/10 border-destructive/20">
+                                  {maintenanceUrgencyLabels[request.urgency]}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{request.description}</p>
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                              <span className="inline-flex items-center gap-1">
+                                <Wrench className="w-3 h-3" />
+                                {maintenanceCategoryLabels[request.category]}
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Há {getDaysSince(request.createdAt)} dia{getDaysSince(request.createdAt) === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-
-                  <Button variant="outline" size="sm" className="w-full" onClick={() => setShowMaintenanceModal(true)}>
-                    <Wrench className="w-4 h-4 mr-2" />
-                    Reportar novo problema
-                  </Button>
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="py-12 text-center">
-                  <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <Wrench className="w-8 h-8 text-accent" />
+                <div className="py-10 text-center border border-dashed border-border rounded-xl bg-muted/10">
+                  <div className="w-14 h-14 bg-secondary/10 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle className="w-7 h-7 text-secondary" />
                   </div>
-                  <h3 className="font-bold mb-2">Sem pedidos de manutenção</h3>
-                  <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-                    Quando tiveres algum problema no alojamento, podes reportá-lo aqui.
+                  <h3 className="font-bold mb-1">Tudo a funcionar</h3>
+                  <p className="text-sm text-muted-foreground mb-5 max-w-md mx-auto">
+                    Ainda não reportaste problemas. Se algo falhar, podes reportá-lo aqui.
                   </p>
                   <Button variant="primary" onClick={() => setShowMaintenanceModal(true)}>
                     <Wrench className="w-4 h-4 mr-2" />
@@ -818,224 +858,77 @@ export function MyHome() {
           </div>
 
           <div className="space-y-6">
-            <Card className="p-6">
-              <h3 className="text-lg font-bold text-foreground mb-4">Senhorio responsável</h3>
+            <Card className="p-6 border-border/60 bg-gradient-to-br from-card via-card to-secondary/5">
+              <div className="flex items-center gap-2 mb-4">
+                <ShieldCheck className="w-4 h-4 text-secondary" />
+                <h3 className="text-xs font-semibold text-secondary uppercase tracking-wider">Senhorio</h3>
+              </div>
               <div className="flex items-center gap-4 mb-5">
-                <div className="w-14 h-14 bg-secondary text-secondary-foreground rounded-full flex items-center justify-center text-lg font-bold">
-                  {activeHomeData.landlordName
-                    .split(' ')
-                    .map(name => name[0])
-                    .join('')
-                    .substring(0, 2)
-                    .toUpperCase()}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-bold text-foreground">{activeHomeData.landlordName}</h4>
-                    <CheckCircle className="w-4 h-4 text-secondary" />
+                <div className="relative flex-shrink-0">
+                  <div className="w-16 h-16 bg-gradient-to-br from-secondary to-secondary/70 text-secondary-foreground rounded-2xl flex items-center justify-center text-xl font-bold ring-4 ring-background shadow-sm">
+                    {activeHomeData.landlordName
+                      .split(' ')
+                      .map(name => name[0])
+                      .join('')
+                      .substring(0, 2)
+                      .toUpperCase() || 'S'}
                   </div>
-                  <p className="text-sm text-muted-foreground">Senhorio verificado</p>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-sm">
+                    <CheckCircle className="w-5 h-5 text-secondary" />
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-foreground truncate">{activeHomeData.landlordName || 'Senhorio'}</h4>
+                  <p className="text-sm text-muted-foreground">Verificado pela UniRoom</p>
+                  <div className="flex items-center gap-0.5 mt-1">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
+                    ))}
+                    <span className="text-xs text-muted-foreground ml-1">Excelente</span>
+                  </div>
                 </div>
               </div>
               <Button variant="primary" className="w-full" onClick={() => setShowContactModal(true)}>
                 <MessageCircle className="w-4 h-4 mr-2" />
-                Contactar senhorio
+                Enviar mensagem
               </Button>
-            </Card>
-
-            <Card className="p-0 overflow-hidden border-primary/10">
-              <div className="bg-gradient-to-br from-primary to-blue-700 p-5 text-white">
-                <div className="flex items-start justify-between gap-3 mb-5">
-                  <div>
-                    <p className="text-sm text-white/80 mb-1">Pagamento deste mês</p>
-                    <p className="text-3xl font-bold">{formatCurrency(nextPayment?.totalAmount || monthlyTotal)}</p>
-                  </div>
-                  <div className="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center">
-                    <CreditCard className="w-5 h-5" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-xl bg-white/12 border border-white/15 px-3 py-2">
-                    <p className="text-[11px] text-white/70">Estado</p>
-                    <p className="text-sm font-bold">{getPaymentStatusLabel(nextPayment?.status || 'pending')}</p>
-                  </div>
-                  <div className="rounded-xl bg-white/12 border border-white/15 px-3 py-2">
-                    <p className="text-[11px] text-white/70">Data limite</p>
-                    <p className="text-sm font-bold">
-                      {nextPayment ? formatShortDate(nextPayment.dueDate) : `Dia ${activeHomeData.paymentDay}`}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5">
-                <div className="rounded-2xl border border-border bg-muted/25 p-4 mb-4">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div>
-                      <p className="text-sm font-bold text-foreground">{getPaymentMethodLabel(paymentMethod)}</p>
-                      <p className="text-xs text-muted-foreground">Pagamento fora da plataforma.</p>
-                    </div>
-                    <Badge variant="outline">Dados do senhorio</Badge>
-                  </div>
-
-                  <p className="text-sm font-semibold text-foreground break-all mb-1">
-                    {getPaymentMethodMainValue(paymentMethod)}
-                  </p>
-                  {paymentMethod.holderName && (
-                    <p className="text-xs text-muted-foreground">Titular: {paymentMethod.holderName}</p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" onClick={handleCopyPaymentData}>
-                    <Copy className="w-4 h-4 mr-1.5" />
-                    Copiar
-                  </Button>
-                  {nextPayment && nextPayment.status !== 'paid' && !nextPayment.proofUrl ? (
-                    <Button size="sm" onClick={() => setShowPaymentModal(true)}>
-                      <Upload className="w-4 h-4 mr-1.5" />
-                      Submeter comprovativo
-                    </Button>
-                  ) : nextPayment && nextPayment.status !== 'paid' && nextPayment.proofUrl ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedProofFileName(nextPayment.proofFileName || '');
-                        setShowPaymentModal(true);
-                      }}
-                    >
-                      <Clock className="w-4 h-4 mr-1.5" />
-                      Substituir comprovativo
-                    </Button>
-                  ) : (
-                    <Button size="sm" disabled>
-                      <CheckCircle className="w-4 h-4 mr-1.5" />
-                      Pago
-                    </Button>
-                  )}
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-border">
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    A UniRoom não processa pagamentos. Usa os dados acordados e submete apenas o comprovativo para validação.
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-foreground">Contrato</h3>
-                  <p className="text-sm text-muted-foreground">Documento da tua estadia.</p>
-                </div>
-                <Badge variant={contract.status === 'active' ? 'success' : 'outline'}>
-                  {getContractStatusLabel(contract.status)}
-                </Badge>
-              </div>
-
-              <div className="rounded-2xl bg-muted/25 border border-border p-4 mb-4">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-bold text-foreground truncate">{contract.title}</p>
-                    <p className="text-xs text-muted-foreground">N.º {contract.contractNumber}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Início</p>
-                    <p className="font-semibold text-foreground">{formatShortDate(contract.startDate)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Fim</p>
-                    <p className="font-semibold text-foreground">
-                      {contract.endDate ? formatShortDate(contract.endDate) : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Caução</p>
-                    <p className="font-semibold text-foreground">{formatCurrency(contract.depositAmount)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Recibos</p>
-                    <p className="font-semibold text-foreground">{paidPayments.length}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2">
-                <Button variant="outline" className="w-full justify-start" onClick={() => setShowContractModal(true)}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Ver contrato
+              <Link to="/messages" className="block mt-2">
+                <Button variant="outline" className="w-full" size="sm">
+                  Ver conversas anteriores
+                  <ChevronRight className="w-4 h-4 ml-auto" />
                 </Button>
-                <Button variant="outline" className="w-full justify-start" disabled={paymentsWithProof.length === 0}>
-                  <Receipt className="w-4 h-4 mr-2" />
-                  {paymentsWithProof.length} comprovativo{paymentsWithProof.length === 1 ? '' : 's'} submetido{paymentsWithProof.length === 1 ? '' : 's'}
-                </Button>
-              </div>
+              </Link>
             </Card>
 
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-foreground">Pagamentos registados</h3>
-                  <p className="text-sm text-muted-foreground">Apenas pagamentos criados ou submetidos na tua estadia.</p>
-                </div>
-                <Receipt className="w-5 h-5 text-muted-foreground" />
+            <Card className="p-6 border-border/60">
+              <div className="flex items-center gap-2 mb-4">
+                <Calendar className="w-4 h-4 text-primary" />
+                <h3 className="text-xs font-semibold text-primary uppercase tracking-wider">Cronologia</h3>
               </div>
-
-              {rentPayments.length > 0 ? (
-                <div className="space-y-2">
-                  {rentPayments.map(payment => (
-                    <div key={payment.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground capitalize">
-                          {new Date(payment.periodMonth).toLocaleDateString('pt-PT', {
-                            month: 'long',
-                            year: 'numeric',
-                          })}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {payment.status === 'paid' && payment.paidAt
-                            ? `Validado em ${formatShortDate(payment.paidAt)}`
-                            : payment.proofUrl
-                              ? 'Comprovativo submetido · aguarda validação'
-                              : `Vence em ${formatShortDate(payment.dueDate)}`}
-                        </p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-bold text-foreground">{formatCurrency(payment.totalAmount)}</p>
-                        <Badge
-                          variant={
-                            payment.status === 'paid'
-                              ? 'success'
-                              : payment.status === 'late'
-                              ? 'outline'
-                              : 'warning'
-                          }
-                          className="text-[10px]"
-                        >
-                          {payment.status !== 'paid' && payment.proofUrl ? 'Em validação' : getPaymentStatusLabel(payment.status)}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
+              <div className="space-y-4 relative">
+                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
+                <div className="relative flex items-start gap-3">
+                  <span className="w-3.5 h-3.5 rounded-full bg-secondary ring-4 ring-background mt-1 flex-shrink-0 z-10" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-foreground">Entrada na casa</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(activeHomeData.moveInDate)}</p>
+                  </div>
                 </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-border p-5 text-center">
-                  <Receipt className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-foreground">Ainda sem pagamentos registados</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Quando submeteres comprovativos ou o senhorio validar pagamentos, aparecem aqui.
-                  </p>
+                <div className="relative flex items-start gap-3">
+                  <span className="w-3.5 h-3.5 rounded-full bg-primary ring-4 ring-background mt-1 flex-shrink-0 z-10 animate-pulse" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-foreground">Hoje</p>
+                    <p className="text-xs text-muted-foreground">{formatShortDate(new Date())} · há {daysInHome} dia{daysInHome === 1 ? '' : 's'} contigo</p>
+                  </div>
                 </div>
-              )}
+                <div className="relative flex items-start gap-3 opacity-60">
+                  <span className="w-3.5 h-3.5 rounded-full border-2 border-border bg-background mt-1 flex-shrink-0 z-10" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-muted-foreground">Próximos passos</p>
+                    <p className="text-xs text-muted-foreground">Continua a desfrutar da estadia</p>
+                  </div>
+                </div>
+              </div>
             </Card>
           </div>
         </div>
@@ -1050,276 +943,6 @@ export function MyHome() {
         accommodationId={room.id}
         landlordId={property.landlordId}
       />
-
-      {showPaymentModal && nextPayment && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-2xl overflow-hidden">
-            <div className="flex items-start justify-between gap-4 p-6 border-b border-border">
-              <div>
-                <p className="text-sm font-semibold text-primary mb-1">Submeter comprovativo</p>
-                <h2 className="text-2xl font-bold text-foreground">{formatCurrency(nextPayment.totalAmount)}</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  A UniRoom não executa pagamentos. Paga pelo canal acordado e submete aqui o comprovativo.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  setSelectedProofFileName('');
-                }}
-                className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors"
-                aria-label="Fechar submissão de comprovativo"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-5">
-              <div className="rounded-2xl border border-border bg-muted/25 p-4">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Dados de recebimento do senhorio</p>
-                    <p className="text-lg font-bold text-foreground">{getPaymentMethodLabel(paymentMethod)}</p>
-                  </div>
-                  <Badge variant="outline">Informativo</Badge>
-                </div>
-
-                <div className="rounded-xl bg-card border border-border p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Dados para pagamento</p>
-                  <p className="font-semibold text-foreground break-all">
-                    {getPaymentMethodMainValue(paymentMethod) || 'O senhorio ainda não configurou dados de recebimento.'}
-                  </p>
-                  {paymentMethod.holderName && (
-                    <p className="text-xs text-muted-foreground mt-1">Titular: {paymentMethod.holderName}</p>
-                  )}
-                </div>
-
-                <Button variant="outline" size="sm" className="mt-3 w-full" onClick={handleCopyPaymentData}>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copiar dados
-                </Button>
-              </div>
-
-              <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
-                <p className="text-sm font-semibold text-amber-900">Atenção</p>
-                <p className="text-xs text-amber-800 mt-1">
-                  Este ecrã não processa dinheiro. Serve apenas para anexar prova de pagamento. O senhorio valida
-                  o comprovativo e só depois o estado passa para “Pago”.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-foreground mb-3">
-                  Comprovativo de pagamento *
-                </label>
-
-                <label className={`block rounded-2xl border-2 border-dashed p-5 cursor-pointer transition-all ${
-                  selectedProofFileName
-                    ? 'border-secondary bg-secondary/5'
-                    : 'border-border hover:border-primary/50 hover:bg-muted/40'
-                }`}>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    onChange={event => {
-                      const file = event.target.files?.[0];
-
-                      if (!file) return;
-
-                      setSelectedProofFileName(file.name);
-                    }}
-                  />
-
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                      selectedProofFileName ? 'bg-secondary/10' : 'bg-primary/10'
-                    }`}>
-                      <Upload className={`w-5 h-5 ${selectedProofFileName ? 'text-secondary' : 'text-primary'}`} />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-foreground">
-                        {selectedProofFileName || nextPayment.proofFileName || 'Selecionar ficheiro'}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        PDF, PNG, JPG ou WEBP. Podes submeter ou substituir enquanto aguarda validação.
-                      </p>
-                    </div>
-
-                    {selectedProofFileName && (
-                      <Badge variant="success">Selecionado</Badge>
-                    )}
-                  </div>
-                </label>
-              </div>
-
-              <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
-                <p className="text-sm font-semibold text-blue-900">Validação pelo senhorio</p>
-                <p className="text-xs text-blue-800 mt-1">
-                  Depois de submeteres, o pagamento fica “Em validação”. Enquanto o senhorio não validar,
-                  podes voltar a abrir e substituir o comprovativo.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-5 border-t border-border flex flex-col sm:flex-row gap-3 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  setSelectedProofFileName('');
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => void handleUploadPaymentProof(nextPayment.id)}
-                disabled={!selectedProofFileName}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                {nextPayment.proofUrl ? 'Substituir comprovativo' : 'Submeter comprovativo'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {showContractModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-start justify-between gap-4 p-6 border-b border-border">
-              <div>
-                <p className="text-sm font-semibold text-primary mb-1">Contrato digital</p>
-                <h2 className="text-2xl font-bold text-foreground">{contract.title}</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Documento associado à tua estadia na UniRoom.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowContractModal(false)}
-                className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors"
-                aria-label="Fechar contrato"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto p-6 bg-muted/30">
-              <div className="bg-white text-slate-900 rounded-xl shadow-sm border border-border p-8 space-y-7">
-                <div className="text-center border-b border-slate-200 pb-6">
-                  <h3 className="text-2xl font-bold">Contrato de Arrendamento Universitário</h3>
-                  <p className="text-sm text-slate-500 mt-2">N.º {contract.contractNumber}</p>
-                  <p className="text-xs text-slate-400 mt-1">Gerado digitalmente pela plataforma UniRoom</p>
-                </div>
-
-                <section>
-                  <h4 className="font-bold text-lg mb-3">1. Identificação da estadia</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Alojamento</p>
-                      <p className="font-semibold">{property.title}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Quarto</p>
-                      <p className="font-semibold">{room.roomNumber || room.title}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Morada</p>
-                      <p className="font-semibold">{property.address}, {property.zone}, {property.city}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Senhorio</p>
-                      <p className="font-semibold">{activeHomeData.landlordName}</p>
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <h4 className="font-bold text-lg mb-3">2. Condições financeiras</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Renda mensal</p>
-                      <p className="font-bold text-lg">{formatCurrency(contract.monthlyRent)}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Despesas</p>
-                      <p className="font-bold text-lg">{formatCurrency(contract.utilitiesAmount)}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Caução</p>
-                      <p className="font-bold text-lg">{formatCurrency(contract.depositAmount)}</p>
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <h4 className="font-bold text-lg mb-3">3. Duração</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Data de início</p>
-                      <p className="font-semibold">{formatDate(contract.startDate)}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 p-4">
-                      <p className="text-slate-500">Data de fim</p>
-                      <p className="font-semibold">{contract.endDate ? formatDate(contract.endDate) : 'Sem data definida'}</p>
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <h4 className="font-bold text-lg mb-3">4. Regras principais</h4>
-                  <ul className="space-y-2 text-sm">
-                    {rules.map(rule => (
-                      <li key={rule} className="flex gap-2">
-                        <span className="text-green-600 font-bold">✓</span>
-                        <span>{rule}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-
-                <section>
-                  <h4 className="font-bold text-lg mb-3">5. Observações</h4>
-                  <p className="text-sm leading-relaxed text-slate-700">
-                    {contract.notes || 'Contrato digital associado à estadia confirmada pelo estudante. Este documento reúne os dados essenciais da ocupação, renda, caução, datas e regras do alojamento.'}
-                  </p>
-                </section>
-
-                <section className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
-                  <div className="rounded-lg border border-slate-200 p-4">
-                    <p className="text-xs text-slate-500 mb-6">Assinatura do senhorio</p>
-                    <p className="font-semibold">{activeHomeData.landlordName}</p>
-                    <p className="text-xs text-slate-400">Assinado digitalmente</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 p-4">
-                    <p className="text-xs text-slate-500 mb-6">Assinatura do estudante</p>
-                    <p className="font-semibold">{user?.name || 'Estudante'}</p>
-                    <p className="text-xs text-slate-400">
-                      {contract.signedAt ? `Confirmado em ${formatDate(contract.signedAt)}` : 'Pendente'}
-                    </p>
-                  </div>
-                </section>
-              </div>
-            </div>
-
-            <div className="p-5 border-t border-border bg-card flex flex-col sm:flex-row gap-3 justify-end">
-              <Button variant="outline" onClick={() => window.print()}>
-                <FileText className="w-4 h-4 mr-2" />
-                Imprimir / Guardar PDF
-              </Button>
-              <Button onClick={() => setShowContractModal(false)}>
-                Fechar contrato
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showContactModal && (
         <StartConversationModal

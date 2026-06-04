@@ -69,30 +69,60 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
-async function fetchProfileById(userId: string): Promise<User | null> {
-  if (!isSupabaseConfigured || !supabase) return null;
-  console.log('[AUTH] fetchProfileById start', userId);
-  try {
-    const { data, error } = await withTimeout(
-      supabase
-        .from('profiles')
-        .select('id,email,full_name,type,status,verified,onboarding_completed,profile_completeness,created_at')
-        .eq('id', userId)
-        .maybeSingle(),
-      5000,
-      'profiles select',
-    );
+function isTransientAuthError(message?: string): boolean {
+  if (!message) return false;
+  return /statement timeout|canceling statement|failed to fetch|networkerror|load failed|connection/i.test(message);
+}
 
-    if (error) {
-      console.error('[UniRoom] Profile fetch error:', error.message);
+async function fetchProfileById(userId: string, maxAttempts = 2): Promise<User | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const timeoutMs = 8000 + attempt * 3000;
+    try {
+      const { data, error } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('id,email,full_name,type,status,verified,onboarding_completed,profile_completeness,created_at')
+          .eq('id', userId)
+          .maybeSingle(),
+        timeoutMs,
+        'profiles select',
+      );
+      if (error) {
+        if (/column .*verified.* does not exist/i.test(error.message)) {
+          const fallback = await withTimeout(
+            supabase
+              .from('profiles')
+              .select('id,email,full_name,type,status,onboarding_completed,profile_completeness,created_at')
+              .eq('id', userId)
+              .maybeSingle(),
+            timeoutMs,
+            'profiles select (no verified)',
+          );
+          if (fallback.error) {
+            console.error('[UniRoom] Profile fetch error:', fallback.error.message);
+            return null;
+          }
+          return fallback.data ? mapDbProfile(fallback.data as DbProfile) : null;
+        }
+        if (isTransientAuthError(error.message) && attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, attempt * 900));
+          continue;
+        }
+        console.error('[UniRoom] Profile fetch error:', error.message);
+        return null;
+      }
+      return data ? mapDbProfile(data as DbProfile) : null;
+    } catch (err) {
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, attempt * 900));
+        continue;
+      }
+      console.error('[AUTH] fetchProfileById failed:', err);
       return null;
     }
-    console.log('[AUTH] fetchProfileById result', data ? 'row' : 'null');
-    return data ? mapDbProfile(data as DbProfile) : null;
-  } catch (err) {
-    console.error('[AUTH] fetchProfileById failed:', err);
-    return null;
   }
+  return null;
 }
 
 async function upsertProfileRow(userId: string, data: RegisterData): Promise<void> {
@@ -128,7 +158,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data } = await withTimeout(
+          supabase.auth.getSession(),
+          8000,
+          'getSession',
+        );
         const sessionUser = data.session?.user;
         if (sessionUser) {
           const profile = await fetchProfileById(sessionUser.id);
@@ -184,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: email.trim().toLowerCase(),
           password,
         }),
-        8000,
+        45000,
         'signInWithPassword',
       );
       console.log('[LOGIN] signIn result', { hasUser: !!data?.user, error: error?.message });
@@ -201,7 +235,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: true, user: profile };
     } catch (err) {
       console.error('[LOGIN] failed:', err);
-      const msg = err instanceof Error ? err.message : 'Erro inesperado.';
+      const raw = err instanceof Error ? err.message : 'Erro inesperado.';
+      const msg = raw.toLowerCase().includes('timeout')
+        ? 'A ligação ao Supabase demorou demasiado. Tenta novamente.'
+        : translateAuthError(raw);
       return { success: false, error: msg };
     } finally {
       console.log('[LOGIN] set loading false');
@@ -232,9 +269,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const msg = err instanceof Error ? err.message : 'Erro ao gravar perfil.';
         return { success: false, error: msg };
       }
-      const profile = await fetchProfileById(signUp.user.id);
+      // Profile row may take a moment to be readable after upsert — retry briefly.
+      let profile: User | null = null;
+      for (let i = 0; i < 3; i++) {
+        profile = await fetchProfileById(signUp.user.id);
+        if (profile) break;
+        if (i < 2) await new Promise(r => setTimeout(r, 700));
+      }
       if (!profile) {
-        return { success: false, error: 'Conta criada mas perfil não foi lido.' };
+        return { success: false, error: 'Conta criada mas não foi possível carregar o perfil. Tenta iniciar sessão.' };
       }
       setUser(profile);
       return { success: true, user: profile };

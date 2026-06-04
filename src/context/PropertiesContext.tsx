@@ -206,43 +206,65 @@ function roomToDb(r: Partial<Room>): Record<string, unknown> {
   return out;
 }
 
-function isNetworkError(message?: string): boolean {
+function isTransientError(message?: string): boolean {
   if (!message) return false;
-  return /failed to fetch|networkerror|load failed/i.test(message);
+  return /failed to fetch|networkerror|load failed|statement timeout|canceling statement|connection/i.test(message);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function fetchRemoteProperties(): Promise<Property[]> {
   if (!isSupabaseConfigured) return [];
-  try {
-    const { data, error } = await supabase
-      .from('properties')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
-      if (!isNetworkError(error.message)) console.warn('[UniRoom] Properties fetch error:', error.message);
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        if (isTransientError(error.message) && attempt < maxAttempts) {
+          await sleep(attempt * 1200);
+          continue;
+        }
+        if (!isTransientError(error.message)) console.warn('[UniRoom] Properties fetch error:', error.message);
+        return [];
+      }
+      return (data ?? []).map(normalizeProperty);
+    } catch {
+      if (attempt < maxAttempts) { await sleep(attempt * 1200); continue; }
       return [];
     }
-    return (data ?? []).map(normalizeProperty);
-  } catch {
-    return [];
   }
+  return [];
 }
 
 async function fetchRemoteRooms(): Promise<Room[]> {
   if (!isSupabaseConfigured) return [];
-  try {
-    const { data, error } = await supabase
-      .from('rooms')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
-      if (!isNetworkError(error.message)) console.warn('[UniRoom] Rooms fetch error:', error.message);
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        if (isTransientError(error.message) && attempt < maxAttempts) {
+          await sleep(attempt * 1200);
+          continue;
+        }
+        if (!isTransientError(error.message)) console.warn('[UniRoom] Rooms fetch error:', error.message);
+        return [];
+      }
+      return (data ?? []).map(normalizeRoom);
+    } catch {
+      if (attempt < maxAttempts) { await sleep(attempt * 1200); continue; }
       return [];
     }
-    return (data ?? []).map(normalizeRoom);
-  } catch {
-    return [];
   }
+  return [];
 }
 
 async function syncPropertyToSupabase(property: Property): Promise<void> {

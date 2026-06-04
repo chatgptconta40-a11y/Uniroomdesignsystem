@@ -81,6 +81,9 @@ export function LandlordApplications() {
   const [version, setVersion] = useState(0);
 
   const [baseApplications, setBaseApplications] = useState<Application[]>([]);
+  const [profileEnrichment, setProfileEnrichment] = useState<Map<string, {
+    name: string; email: string; course: string; university: string; year: number;
+  }>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +106,33 @@ export function LandlordApplications() {
     return () => { cancelled = true; };
   }, [user?.id, version]);
 
+  useEffect(() => {
+    if (!baseApplications.length) return;
+    const userIds = [...new Set(baseApplications.map(a => a.userId))];
+    (async () => {
+      const [profilesResult, personalsResult] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, email').in('id', userIds),
+        supabase.from('personal_profiles').select('user_id, course, institution, year_of_study').in('user_id', userIds),
+      ]);
+      if (profilesResult.error) {
+        console.error('[UniRoom] Student profiles fetch error:', profilesResult.error.message);
+      }
+      if (personalsResult.error) {
+        console.error('[UniRoom] Student personal profiles fetch error:', personalsResult.error.message);
+      }
+      const pMap = new Map((profilesResult.data ?? []).map(p => [p.id, p]));
+      const perMap = new Map((personalsResult.data ?? []).map(p => [p.user_id, p]));
+      const enrichment = new Map(userIds.map(id => [id, {
+        name: pMap.get(id)?.full_name ?? '',
+        email: pMap.get(id)?.email ?? '',
+        course: perMap.get(id)?.course ?? '',
+        university: perMap.get(id)?.institution ?? '',
+        year: perMap.get(id)?.year_of_study ?? 0,
+      }]));
+      setProfileEnrichment(enrichment);
+    })();
+  }, [baseApplications]);
+
   const allApplications = useMemo<DetailedApplication[]>(() => {
     const list = listingFilter
       ? baseApplications.filter(app => app.roomId === listingFilter || app.propertyId === listingFilter)
@@ -116,13 +146,14 @@ export function LandlordApplications() {
           : undefined;
       const roomLabel = room?.title || 'Quarto';
       const propertyLabel = property?.title || 'Alojamento';
+      const enriched = profileEnrichment.get(app.userId);
       return {
         ...app,
-        applicantName: '',
-        applicantEmail: '',
-        applicantCourse: '',
-        applicantUniversity: '',
-        applicantYear: 0,
+        applicantName: enriched?.name || '',
+        applicantEmail: enriched?.email || '',
+        applicantCourse: enriched?.course || '',
+        applicantUniversity: enriched?.university || '',
+        applicantYear: enriched?.year || 0,
         compatibilityScore: 0,
         trustScore: 0,
         trustLevel: 'new',
@@ -133,7 +164,7 @@ export function LandlordApplications() {
         listingPrice: room?.price || 0,
       };
     });
-  }, [baseApplications, listingFilter, getRoom, getProperty]);
+  }, [baseApplications, listingFilter, getRoom, getProperty, profileEnrichment]);
 
   const stats = useMemo(() => {
     const t = baseApplications;
@@ -486,7 +517,8 @@ export function LandlordApplications() {
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground mb-2">
                         <span className="flex items-center gap-1">
                           <GraduationCap className="w-3.5 h-3.5" />
-                          {app.applicantCourse} · {app.applicantYear}º ano
+                          {app.applicantCourse || 'Curso não indicado'}
+                          {app.applicantYear ? ` · ${app.applicantYear}º ano` : ''}
                         </span>
 
                         {app.moveInDate && (
@@ -771,7 +803,7 @@ function ApplicationDetailModal({
 
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <h3 className="text-xl font-bold text-foreground">{app.applicantName}</h3>
+              <h3 className="text-xl font-bold text-foreground">{app.applicantName || 'Estudante'}</h3>
 
               {isBest && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold">
@@ -831,7 +863,9 @@ function ApplicationDetailModal({
             <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Email</p>
-              <p className="text-sm font-medium text-foreground truncate">{app.applicantEmail}</p>
+              <p className="text-sm font-medium text-foreground truncate">
+                {app.applicantEmail || 'Não disponível'}
+              </p>
             </div>
           </div>
 
@@ -839,7 +873,10 @@ function ApplicationDetailModal({
             <GraduationCap className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <div>
               <p className="text-xs text-muted-foreground">Curso</p>
-              <p className="text-sm font-medium text-foreground">{app.applicantCourse} · {app.applicantYear}º ano</p>
+              <p className="text-sm font-medium text-foreground">
+                {app.applicantCourse || 'Não preenchido'}
+                {app.applicantYear ? ` · ${app.applicantYear}º ano` : ''}
+              </p>
             </div>
           </div>
 

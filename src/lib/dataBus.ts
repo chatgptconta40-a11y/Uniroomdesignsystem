@@ -19,7 +19,6 @@ export type DataTopic =
   | 'applications'
   | 'messages'
   | 'maintenance'
-  | 'payments'
   | 'reports'
   | 'verifications'
   | 'activeHome'

@@ -85,16 +85,34 @@ export function useVisitRequests() {
     roomId?: string;
     requestedAt: Date;
     studentMessage?: string;
-  }): Promise<string | null> => {
-    if (!user) return null;
-    if (!isSupabaseUuid(input.landlordId)) {
-      console.error('[createVisitRequest] landlordId is not a valid UUID:', input.landlordId);
-      return null;
+  }): Promise<{ id: string } | { error: string }> => {
+    if (!user) return { error: 'Sessão não iniciada.' };
+
+    const userIdValid = isSupabaseUuid(user.id);
+    const landlordIdValid = isSupabaseUuid(input.landlordId);
+
+    console.log('[createVisitRequest] diagnóstico:', {
+      'user.id': user.id,
+      'user.type': user.type,
+      'landlordId': input.landlordId,
+      'propertyId': input.propertyId,
+      'roomId': input.roomId,
+      'requestedAt': input.requestedAt.toISOString(),
+      'user.id é UUID': userIdValid,
+      'landlordId é UUID': landlordIdValid,
+    });
+
+    if (!userIdValid) {
+      const msg = 'Sessão inválida. Faz logout e login novamente.';
+      console.error('[createVisitRequest]', msg, user.id);
+      return { error: msg };
     }
-    if (!isSupabaseUuid(user.id)) {
-      console.error('[createVisitRequest] student user.id is not a valid UUID:', user.id);
-      return null;
+    if (!landlordIdValid) {
+      const msg = 'Este quarto não tem senhorio Supabase válido.';
+      console.error('[createVisitRequest]', msg, input.landlordId);
+      return { error: msg };
     }
+
     const rand = Math.random().toString(36).slice(2, 8);
     const id = `visit-${Date.now()}-${rand}`;
     const { error } = await supabase.from('room_visit_requests').insert({
@@ -107,9 +125,12 @@ export function useVisitRequests() {
       status: 'pending',
       student_message: input.studentMessage ?? null,
     });
-    if (error) { console.error('[createVisitRequest]', error.message); return null; }
+    if (error) {
+      console.error('[createVisitRequest] Supabase error:', error);
+      return { error: error.message };
+    }
     await refresh();
-    return id;
+    return { id };
   };
 
   // ── Student cancels their request (pending or counter_proposed) ────────────

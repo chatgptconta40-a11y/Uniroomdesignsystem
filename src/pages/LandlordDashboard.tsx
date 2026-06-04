@@ -1,35 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import {
   AlertCircle,
   ArrowUpRight,
   BarChart2,
   BedDouble,
-  Building2,
   CalendarCheck,
-  Check,
   CheckCircle2,
   ChevronRight,
-  ClipboardCheck,
-  CreditCard,
   Eye,
   FileText,
   Heart,
   Home,
-  Info,
   MessageCircle,
   PauseCircle,
   PlusCircle,
-  Receipt,
   RefreshCw,
   ShieldCheck,
-  Smartphone,
   Star,
   TrendingUp,
   Users,
-  Wallet,
   Wrench,
-  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -37,19 +28,12 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { TrustBadge } from '../components/TrustBadge';
-import { LandlordContractManager } from '../components/LandlordContractManager';
 import { useMaintenance, useLandlordApplications } from '../hooks/useDb';
 import { useLandlordAnalytics } from '../hooks/useLandlordAnalytics';
-import {
-  formatCurrency,
-  getPaymentMethodLabel,
-  getPaymentMethodMainValue,
-} from '../utils/housingFinanceLabels';
-import { usePaymentMethod, useLandlordFinanceSummary } from '../hooks/useHousingFinance';
+import { formatCurrency } from '../utils/format';
 import { useUserRestrictions } from '../hooks/useUserRestrictions';
 import { useTrustScore, useVerificationStatus } from '../hooks/useTrust';
 import { useVisitRequests } from '../hooks/useVisitRequests';
-import { toast } from 'sonner';
 
 function formatTime(date: Date) {
   const now = new Date();
@@ -78,10 +62,6 @@ function getActivityIcon(type: string) {
   }
 }
 
-function BellDot() {
-  return <div className="w-5 h-5 rounded-full bg-primary/20" />;
-}
-
 function getActivityLabel(type: string) {
   switch (type) {
     case 'application':
@@ -101,17 +81,6 @@ export function LandlordDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { properties, rooms } = useProperties();
-  const [showReceivingSettings, setShowReceivingSettings] = useState(false);
-  const [paymentDraft, setPaymentDraft] = useState({
-    methodType: 'mbway',
-    holderName: user?.name || '',
-    mbwayPhone: '',
-    iban: '',
-    paypalEmail: '',
-    cardProvider: 'Stripe Checkout',
-    instructions: '',
-  });
-
   const userId = user?.id || '';
 
   const { overview: analyticsOverview, recentActivity: analyticsActivity } = useLandlordAnalytics(userId);
@@ -129,23 +98,6 @@ export function LandlordDashboard() {
       r => r.urgency === 'high' && r.status !== 'resolved' && r.status !== 'closed',
     ).length,
   }), [maintenanceRequests]);
-
-  const financeSummary = useLandlordFinanceSummary(userId);
-  const { method: defaultPaymentMethod, upsert: upsertPaymentMethod } = usePaymentMethod(userId);
-
-  useEffect(() => {
-    if (!defaultPaymentMethod) return;
-
-    setPaymentDraft({
-      methodType: defaultPaymentMethod.methodType,
-      holderName: defaultPaymentMethod.holderName || user?.name || '',
-      mbwayPhone: defaultPaymentMethod.mbwayPhone || '',
-      iban: defaultPaymentMethod.iban || '',
-      paypalEmail: defaultPaymentMethod.paypalEmail || '',
-      cardProvider: '',
-      instructions: defaultPaymentMethod.instructions || '',
-    });
-  }, [defaultPaymentMethod?.id, user?.name]);
 
   const myProperties = useMemo(
     () => properties.filter(property => property.landlordId === userId && property.status !== 'archived'),
@@ -199,21 +151,13 @@ export function LandlordDashboard() {
 
   const monthlyPotential = myRooms.reduce((total, room) => total + room.price + (room.utilities ?? 0), 0);
 
-  const { pendingPayments, latePayments, proofPayments, activeContracts, expectedThisMonth } = financeSummary;
-
-  const financeAlertsCount =
-    pendingPayments.length +
-    latePayments.length +
-    proofPayments.length;
-
   const openWorkCount =
     pendingApplicationsCount +
     (unreadMessages) +
     maintenanceStats.pending +
     maintenanceStats.highUrgency +
     draftRooms.length +
-    draftProperties.length +
-    financeAlertsCount;
+    draftProperties.length;
 
   const portfolioScore = [
     activeProperties.length > 0,
@@ -224,71 +168,6 @@ export function LandlordDashboard() {
   ].filter(Boolean).length;
 
   const portfolioScorePercent = Math.round((portfolioScore / 5) * 100);
-
-  const handleOpenReceivingSettings = () => {
-    setShowReceivingSettings(true);
-  };
-
-  const handleSaveReceivingDetails = async () => {
-    if (!user) return;
-
-    const methodType = paymentDraft.methodType;
-
-    if (methodType === 'mbway' && !paymentDraft.mbwayPhone.trim()) {
-      toast.error('Indica o número MB WAY.');
-      return;
-    }
-
-    if (methodType === 'iban' && !paymentDraft.iban.trim()) {
-      toast.error('Indica o IBAN.');
-      return;
-    }
-
-    if (methodType === 'paypal' && !paymentDraft.paypalEmail.trim()) {
-      toast.error('Indica o email PayPal.');
-      return;
-    }
-
-    const updated = await upsertPaymentMethod({
-      methodType,
-      label:
-        methodType === 'mbway'
-          ? 'MB WAY principal'
-          : methodType === 'iban'
-            ? 'Transferência bancária'
-            : methodType === 'paypal'
-              ? 'PayPal'
-              : 'Dados de recebimento',
-      holderName: paymentDraft.holderName || user.name,
-      mbwayPhone: paymentDraft.mbwayPhone,
-      iban: paymentDraft.iban,
-      paypalEmail: paymentDraft.paypalEmail,
-      instructions:
-        methodType === 'paypal'
-          ? paymentDraft.paypalEmail
-          : (paymentDraft.instructions || 'O estudante deve submeter comprovativo após o pagamento.'),
-    });
-
-    if (updated) {
-      setShowReceivingSettings(false);
-      toast.success('Dados de recebimento atualizados.');
-    } else {
-      toast.error('Erro ao guardar dados de recebimento. Tenta novamente.');
-    }
-  };
-
-  const handleValidatePaymentProof = async (paymentId: string) => {
-    const updated = await financeSummary.validatePayment(paymentId);
-
-    if (!updated) {
-      toast.error('Não foi possível validar o comprovativo.');
-      return;
-    }
-
-    toast.success('Comprovativo validado.', {
-      description: 'O pagamento passou para estado Pago.',
-    });
-  };
 
   const priorityTasks = [
     pendingApplicationsCount > 0 && {
@@ -310,16 +189,6 @@ export function LandlordDashboard() {
       label: `${maintenanceStats.highUrgency} pedido${maintenanceStats.highUrgency > 1 ? 's' : ''} urgente${maintenanceStats.highUrgency > 1 ? 's' : ''}`,
       route: '/landlord/maintenance',
       tone: 'text-red-700 bg-red-50 border-red-100',
-    },
-    latePayments.length > 0 && {
-      label: `${latePayments.length} renda${latePayments.length > 1 ? 's' : ''} em atraso`,
-      route: '/landlord/dashboard',
-      tone: 'text-red-700 bg-red-50 border-red-100',
-    },
-    proofPayments.length > 0 && {
-      label: `${proofPayments.length} comprovativo${proofPayments.length > 1 ? 's' : ''} por validar`,
-      route: '/landlord/dashboard',
-      tone: 'text-primary bg-primary/5 border-primary/10',
     },
     draftRooms.length > 0 && {
       label: `${draftRooms.length} quarto${draftRooms.length > 1 ? 's' : ''} em rascunho`,
@@ -360,7 +229,7 @@ export function LandlordDashboard() {
               Dashboard de gestão
             </h1>
             <p className="text-base text-muted-foreground max-w-2xl">
-              Acompanha alojamentos, candidaturas, mensagens, contratos, pagamentos e manutenção num único painel operacional.
+              Acompanha alojamentos, candidaturas, mensagens, visitas e manutenção num único painel operacional.
             </p>
           </div>
 
@@ -558,371 +427,6 @@ export function LandlordDashboard() {
           </Card>
         </div>
 
-        <Card className="p-0 mb-6 overflow-hidden border-primary/10">
-          <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr]">
-            <div className="bg-gradient-to-br from-slate-950 via-primary to-blue-700 p-6 text-white">
-              <div className="flex items-start justify-between gap-4 mb-8">
-                <div>
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/12 border border-white/15 px-3 py-1 text-xs font-semibold text-white/90 mb-4">
-                    <CreditCard className="w-3.5 h-3.5" />
-                    Contratos e pagamentos
-                  </div>
-                  <h2 className="text-2xl font-bold mb-2">Painel financeiro</h2>
-                  <p className="text-sm text-white/75 max-w-sm">
-                    Define o método de pagamento, acompanha comprovativos e identifica rendas com atraso.
-                  </p>
-                </div>
-                <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center">
-                  <Receipt className="w-6 h-6" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-white/12 border border-white/15 p-4">
-                  <p className="text-xs text-white/70 mb-1">Receita prevista</p>
-                  <p className="text-2xl font-bold">{formatCurrency(expectedThisMonth)}</p>
-                </div>
-                <div className="rounded-2xl bg-white/12 border border-white/15 p-4">
-                  <p className="text-xs text-white/70 mb-1">Contratos ativos</p>
-                  <p className="text-2xl font-bold">{activeContracts}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5 md:p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-                <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <p className="text-xs text-muted-foreground">Pendentes</p>
-                    <ClockIcon />
-                  </div>
-                  <p className="text-2xl font-bold text-foreground">{pendingPayments.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">rendas por confirmar</p>
-                </div>
-
-                <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <p className="text-xs text-muted-foreground">Atrasos</p>
-                    <AlertCircle className="w-4 h-4 text-red-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-foreground">{latePayments.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">precisam de seguimento</p>
-                </div>
-
-                <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <p className="text-xs text-muted-foreground">Comprovativos</p>
-                    <ClipboardCheck className="w-4 h-4 text-primary" />
-                  </div>
-                  <p className="text-2xl font-bold text-foreground">{proofPayments.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">por validar</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_0.9fr] gap-4">
-                <div className="rounded-2xl border border-border bg-card p-4">
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground">Dados de recebimento</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Usados quando o estudante escolher transferência ou MB WAY.
-                      </p>
-                    </div>
-                    <Badge variant={defaultPaymentMethod ? 'success' : 'outline'}>
-                      {defaultPaymentMethod ? 'Configurado' : 'Em falta'}
-                    </Badge>
-                  </div>
-
-                  {defaultPaymentMethod ? (
-                    <div className="rounded-xl bg-muted/30 border border-border p-3 mb-3">
-                      <p className="text-xs text-muted-foreground mb-1">
-                        {getPaymentMethodLabel(defaultPaymentMethod)}
-                      </p>
-                      <p className="text-sm font-bold text-foreground break-all">
-                        {getPaymentMethodMainValue(defaultPaymentMethod)}
-                      </p>
-                      {defaultPaymentMethod.holderName && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Titular: {defaultPaymentMethod.holderName}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 mb-3">
-                      <p className="text-sm font-semibold text-amber-800">Método em falta</p>
-                      <p className="text-xs text-amber-700 mt-1">
-                        Configura MB WAY, IBAN ou referência para os estudantes saberem como pagar.
-                      </p>
-                    </div>
-                  )}
-
-                  <Button variant="outline" size="sm" className="w-full" onClick={handleOpenReceivingSettings}>
-                    <CreditCard className="w-4 h-4 mr-1.5" />
-                    {defaultPaymentMethod ? 'Atualizar dados' : 'Configurar dados'}
-                  </Button>
-                </div>
-
-                <div className="rounded-2xl border border-border bg-card p-4">
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground">Validação</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Comprovativos enviados pelos estudantes.
-                      </p>
-                    </div>
-                    <ClipboardCheck className="w-5 h-5 text-primary" />
-                  </div>
-
-                  {proofPayments.length > 0 ? (
-                    <div className="space-y-2">
-                      {proofPayments.slice(0, 3).map(payment => (
-                        <div key={payment.id} className="rounded-xl bg-muted/30 border border-border px-3 py-3">
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">
-                                {formatCurrency(payment.totalAmount)}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {payment.proofFileName || 'Comprovativo submetido'}
-                              </p>
-                            </div>
-                            <Badge variant="warning">Por validar</Badge>
-                          </div>
-
-                          <Button
-                            size="sm"
-                            className="w-full"
-                            onClick={() => void handleValidatePaymentProof(payment.id)}
-                          >
-                            <ClipboardCheck className="w-4 h-4 mr-1.5" />
-                            Validar pagamento
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl bg-green-50 border border-green-100 p-3">
-                      <p className="text-sm font-semibold text-green-800">Sem pendências</p>
-                      <p className="text-xs text-green-700 mt-1">
-                        Quando um estudante carregar comprovativo, aparece aqui.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-
-        {showReceivingSettings && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div className="bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border border-border w-full sm:max-w-lg overflow-hidden flex flex-col max-h-[95svh]">
-
-              {/* Header */}
-              <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Wallet className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-foreground leading-tight">Dados de recebimento</h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">Onde recebes o pagamento da renda</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowReceivingSettings(false)}
-                  className="w-9 h-9 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0"
-                  aria-label="Fechar"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-
-                {/* Method selector */}
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2.5">Método de recebimento</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { value: 'mbway', label: 'MB WAY', icon: Smartphone, color: 'text-rose-600', bg: 'bg-rose-50 border-rose-200', activeBg: 'bg-rose-500' },
-                      { value: 'iban', label: 'Transferência', icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', activeBg: 'bg-blue-500' },
-                      { value: 'paypal', label: 'PayPal', icon: CreditCard, color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-200', activeBg: 'bg-indigo-500' },
-                    ].map(option => {
-                      const Icon = option.icon;
-                      const active = paymentDraft.methodType === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setPaymentDraft(draft => ({ ...draft, methodType: option.value }))}
-                          className={`relative flex flex-col items-center gap-2 rounded-2xl border-2 px-3 py-4 transition-all ${
-                            active
-                              ? `${option.bg} border-current ${option.color} shadow-sm`
-                              : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/30 hover:bg-muted/60'
-                          }`}
-                        >
-                          {active && (
-                            <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-current flex items-center justify-center">
-                              <Check className="w-2.5 h-2.5 text-white" />
-                            </div>
-                          )}
-                          <Icon className="w-6 h-6" />
-                          <span className="text-xs font-semibold leading-tight text-center">{option.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Holder name */}
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">
-                    Nome do titular
-                  </label>
-                  <input
-                    value={paymentDraft.holderName}
-                    onChange={event => setPaymentDraft(draft => ({ ...draft, holderName: event.target.value }))}
-                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
-                    placeholder="Nome completo do titular"
-                  />
-                </div>
-
-                {/* MB WAY */}
-                {paymentDraft.methodType === 'mbway' && (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">
-                      Número de telemóvel MB WAY
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-muted-foreground pointer-events-none select-none">
-                        <span className="text-sm">🇵🇹</span>
-                        <span className="text-sm text-muted-foreground/60">+351</span>
-                        <span className="text-border">|</span>
-                      </div>
-                      <input
-                        type="tel"
-                        value={paymentDraft.mbwayPhone}
-                        onChange={event => setPaymentDraft(draft => ({ ...draft, mbwayPhone: event.target.value }))}
-                        className="w-full pl-24 pr-4 py-3 bg-input-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
-                        placeholder="912 345 678"
-                        maxLength={13}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                      <Info className="w-3 h-3 flex-shrink-0" />
-                      O estudante vê este número ao enviar o pagamento.
-                    </p>
-                  </div>
-                )}
-
-                {/* IBAN */}
-                {paymentDraft.methodType === 'iban' && (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">IBAN</label>
-                    <input
-                      value={paymentDraft.iban}
-                      onChange={event => setPaymentDraft(draft => ({ ...draft, iban: event.target.value.toUpperCase() }))}
-                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
-                      placeholder="PT50 0000 0000 0000 0000 0000 0"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                      <Info className="w-3 h-3 flex-shrink-0" />
-                      Usado para transferência bancária ou referência multibanco.
-                    </p>
-                  </div>
-                )}
-
-                {/* PayPal */}
-                {paymentDraft.methodType === 'paypal' && (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">Email PayPal</label>
-                    <input
-                      type="email"
-                      value={paymentDraft.paypalEmail}
-                      onChange={event => setPaymentDraft(draft => ({ ...draft, paypalEmail: event.target.value }))}
-                      className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
-                      placeholder="pagamentos@exemplo.pt"
-                    />
-                  </div>
-                )}
-
-                {/* Instructions */}
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">
-                    Instruções para o estudante
-                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">(opcional)</span>
-                  </label>
-                  <textarea
-                    value={paymentDraft.instructions}
-                    onChange={event => setPaymentDraft(draft => ({ ...draft, instructions: event.target.value }))}
-                    className="w-full px-4 py-3 bg-input-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow resize-none"
-                    rows={3}
-                    placeholder="Ex: Pagar até dia 5 de cada mês e submeter comprovativo na plataforma."
-                  />
-                </div>
-
-                {/* Preview */}
-                {(paymentDraft.mbwayPhone || paymentDraft.iban || paymentDraft.paypalEmail) && (
-                  <div className="rounded-xl border border-border bg-muted/30 p-4">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5" />
-                      Pré-visualização — o que o estudante vê
-                    </p>
-                    <div className="flex items-start gap-3 p-3 rounded-lg bg-card border border-border">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        paymentDraft.methodType === 'mbway' ? 'bg-rose-100' :
-                        paymentDraft.methodType === 'iban' ? 'bg-blue-100' : 'bg-indigo-100'
-                      }`}>
-                        {paymentDraft.methodType === 'mbway' && <Smartphone className="w-4 h-4 text-rose-600" />}
-                        {paymentDraft.methodType === 'iban' && <Building2 className="w-4 h-4 text-blue-600" />}
-                        {paymentDraft.methodType === 'paypal' && <CreditCard className="w-4 h-4 text-indigo-600" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground">
-                          {paymentDraft.methodType === 'mbway' && 'MB WAY'}
-                          {paymentDraft.methodType === 'iban' && 'Transferência bancária'}
-                          {paymentDraft.methodType === 'paypal' && 'PayPal'}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-                          {paymentDraft.methodType === 'mbway' && (paymentDraft.mbwayPhone ? `+351 ${paymentDraft.mbwayPhone}` : '')}
-                          {paymentDraft.methodType === 'iban' && paymentDraft.iban}
-                          {paymentDraft.methodType === 'paypal' && paymentDraft.paypalEmail}
-                        </p>
-                        {paymentDraft.holderName && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{paymentDraft.holderName}</p>
-                        )}
-                        {paymentDraft.instructions && (
-                          <p className="text-xs text-muted-foreground mt-1 italic">"{paymentDraft.instructions}"</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="px-6 py-4 border-t border-border flex gap-3 flex-shrink-0">
-                <Button variant="outline" onClick={() => setShowReceivingSettings(false)} className="flex-1">
-                  Cancelar
-                </Button>
-                <Button onClick={() => void handleSaveReceivingDetails()} className="flex-1">
-                  <Check className="w-4 h-4 mr-1.5" />
-                  Guardar dados
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <LandlordContractManager
-          landlordId={user.id}
-          onUpdated={() => void financeSummary.refresh()}
-        />
-
         <Card className="p-5 md:p-6 mb-8 bg-gradient-to-br from-accent/5 to-accent/10 border-accent/20 cursor-pointer" hover onClick={() => navigate('/landlord/maintenance')}>
           <div className="flex flex-col md:flex-row md:items-center gap-5">
             <div className="w-12 h-12 bg-accent rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
@@ -1082,11 +586,16 @@ export function LandlordDashboard() {
                 </Button>
                 <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/listings')}>
                   <Home className="w-4 h-4 mr-2" />
-                  Gerir alojamentos
+                  Anúncios
                 </Button>
                 <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/applications')}>
                   <Users className="w-4 h-4 mr-2" />
-                  Ver candidaturas
+                  Candidaturas
+                  {pendingApplicationsCount > 0 && (
+                    <span className="ml-auto text-xs font-bold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
+                      {pendingApplicationsCount}
+                    </span>
+                  )}
                 </Button>
                 <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/visit-requests')}>
                   <CalendarCheck className="w-4 h-4 mr-2" />
@@ -1097,9 +606,18 @@ export function LandlordDashboard() {
                     </span>
                   )}
                 </Button>
+                <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/maintenance')}>
+                  <Wrench className="w-4 h-4 mr-2" />
+                  Manutenção
+                  {maintenanceStats.highUrgency > 0 && (
+                    <span className="ml-auto text-xs font-bold text-red-700 bg-red-100 rounded-full px-2 py-0.5">
+                      {maintenanceStats.highUrgency} urgente{maintenanceStats.highUrgency !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </Button>
                 <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/landlord/analytics')}>
                   <ArrowUpRight className="w-4 h-4 mr-2" />
-                  Ver analytics
+                  Analytics
                 </Button>
               </div>
             </Card>
@@ -1136,6 +654,3 @@ export function LandlordDashboard() {
   );
 }
 
-function ClockIcon() {
-  return <div className="w-4 h-4 rounded-full border-2 border-amber-600" />;
-}

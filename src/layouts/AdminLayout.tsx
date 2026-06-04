@@ -88,7 +88,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               </Link>
             </div>
 
-            <div className="flex items-center gap-3">
+            <Link to="/admin/profile" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <div className="hidden md:flex flex-col items-end">
                 <span className="text-sm font-medium text-gray-900">{user?.name}</span>
                 <span className="text-xs text-gray-500">Administrador</span>
@@ -96,7 +96,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold">
                 {user?.name?.charAt(0).toUpperCase()}
               </div>
-            </div>
+            </Link>
           </div>
 
           {/* Breadcrumbs */}
