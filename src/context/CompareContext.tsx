@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useLocation } from 'react-router';
 import { Room, Property } from '../types/property';
 import { toast } from 'sonner';
 
@@ -15,22 +16,40 @@ interface CompareContextType {
   clearCompare: () => void;
   isInCompare: (roomId: string) => boolean;
   canAdd: boolean;
+  showModal: boolean;
+  openModal: () => void;
+  closeModal: () => void;
 }
 
 const CompareContext = createContext<CompareContextType | null>(null);
 
 export function CompareProvider({ children }: { children: ReactNode }) {
   const [compareItems, setCompareItems] = useState<CompareItem[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const location = useLocation();
+
+  // Clear compare state on route change
+  useEffect(() => {
+    setCompareItems([]);
+    setShowModal(false);
+  }, [location.pathname]);
+
+  // Auto-open modal when 2nd room is added
+  useEffect(() => {
+    if (compareItems.length === 2) {
+      setShowModal(true);
+    }
+  }, [compareItems.length]);
 
   const isInCompare = (roomId: string) => compareItems.some(item => item.room.id === roomId);
-  const canAdd = compareItems.length < 3;
+  const canAdd = compareItems.length < 2;
 
   const addToCompare = (room: Room, property: Property) => {
-    if (compareItems.length >= 3) {
-      toast.error('Máximo de 3 quartos na comparação');
+    if (isInCompare(room.id)) {
+      toast.info('Escolhe um quarto diferente para comparar.');
       return;
     }
-    if (isInCompare(room.id)) return;
+    if (compareItems.length >= 2) return;
     setCompareItems(prev => [...prev, { room, property }]);
   };
 
@@ -46,12 +65,23 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const clearCompare = () => setCompareItems([]);
+  const clearCompare = () => {
+    setCompareItems([]);
+    setShowModal(false);
+  };
+
+  const openModal = () => setShowModal(true);
+
+  const closeModal = () => {
+    setShowModal(false);
+    setCompareItems([]);
+  };
 
   return (
     <CompareContext.Provider value={{
       compareItems, addToCompare, removeFromCompare, toggleCompare,
       clearCompare, isInCompare, canAdd,
+      showModal, openModal, closeModal,
     }}>
       {children}
     </CompareContext.Provider>

@@ -72,6 +72,12 @@ function normalizeProperty(value: any): Property {
     zone: value.zone ?? '',
     distanceToUniversity: Number(value.distanceToUniversity ?? value.distance_to_university ?? 0),
     coordinates: value.coordinates ?? undefined,
+    publicAddress: Boolean(
+      value.publicAddress ??
+      value.public_address ??
+      (value.houseRules ?? value.house_rules)?.publicAddress ??
+      false,
+    ),
     images: normalizeImages(value.images),
     amenities: {
       ...defaultAmenities,

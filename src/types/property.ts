@@ -9,6 +9,7 @@ export interface Property {
   zone: string;
   distanceToUniversity: number;
   coordinates?: { lat: number; lng: number };
+  publicAddress?: boolean;
 
   images: string[];
 
@@ -36,6 +37,7 @@ export interface Property {
     cleaningPolicy?: string;
     visitorsPolicy?: string;
     preferredGender?: 'any' | 'male' | 'female';
+    publicAddress?: boolean; // temporary; migrate to own column when schema is ready
   };
 
   totalRooms: number;

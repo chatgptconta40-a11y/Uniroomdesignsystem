@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { MapPin, X, Heart, Navigation, Bath, Maximize } from 'lucide-react';
+import { MapPin, X, Heart, Navigation, Bath, Maximize, GraduationCap } from 'lucide-react';
 import { Room, Property } from '../types/property';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
+import { ESTGV, walkMinutesFromDistance } from '../utils/estgv';
 
 interface ResultItem {
   room: Room;
@@ -88,8 +89,8 @@ function MiniRoomCard({ room, property, onClose }: { room: Room; property: Prope
           <span className="line-clamp-1">{property.zone}, {property.city}</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
-          <Navigation className="w-3 h-3" />
-          <span>{property.distanceToUniversity}km da uni</span>
+          <GraduationCap className="w-3 h-3 text-primary" />
+          <span>~{walkMinutesFromDistance(property.distanceToUniversity)}min a pé até ESTGV</span>
           {room.size && (
             <>
               <span className="text-border">·</span>
@@ -139,9 +140,25 @@ export function SearchMapView({ results }: { results: ResultItem[] }) {
 
   const selectedGroup = selectedPropertyId ? groups.find(g => g.property.id === selectedPropertyId) : null;
   const selectedRoom = selectedGroup?.rooms[selectedRoomIdx] ?? null;
+  const totalAvailable = groups.reduce((sum, g) => sum + g.availableCount, 0);
+  const estgvPos = latLngToPercent(ESTGV.lat, ESTGV.lng);
+  const selectedCoords = selectedGroup
+    ? (selectedGroup.property.coordinates ?? stablePosition(selectedGroup.property.id))
+    : null;
+  const selectedPos = selectedCoords ? latLngToPercent(selectedCoords.lat, selectedCoords.lng) : null;
 
   return (
-    <div className="flex gap-0 h-[calc(100vh-13rem)] min-h-[500px] rounded-2xl overflow-hidden border border-border shadow-md">
+    <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-3 px-2 text-sm text-muted-foreground">
+      <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-primary font-semibold">
+        <GraduationCap className="w-4 h-4" />
+        Perto de ESTGV — Viseu
+      </span>
+      <span className="text-foreground font-medium">{groups.length} casas</span>
+      <span>·</span>
+      <span>{totalAvailable} quartos disponíveis</span>
+    </div>
+    <div className="flex gap-0 h-[calc(100vh-15rem)] min-h-[500px] rounded-2xl overflow-hidden border border-border shadow-md">
       {/* Left panel: scrollable room list */}
       <div className="w-72 flex-shrink-0 bg-card border-r border-border overflow-y-auto">
         <div className="p-3 border-b border-border bg-muted/40">
@@ -228,6 +245,36 @@ export function SearchMapView({ results }: { results: ResultItem[] }) {
           1km
         </div>
 
+        {/* Dashed route line from selected property to ESTGV */}
+        {selectedPos && (
+          <svg className="absolute inset-0 w-full h-full pointer-events-none z-[15]" xmlns="http://www.w3.org/2000/svg">
+            <line
+              x1={`${selectedPos.x}%`}
+              y1={`${selectedPos.y}%`}
+              x2={`${estgvPos.x}%`}
+              y2={`${estgvPos.y}%`}
+              stroke="#0f172a"
+              strokeWidth="2"
+              strokeDasharray="6,4"
+              opacity="0.55"
+            />
+          </svg>
+        )}
+
+        {/* ESTGV destination pin */}
+        <div
+          className="absolute z-[18] pointer-events-none"
+          style={{ left: `${estgvPos.x}%`, top: `${estgvPos.y}%`, transform: 'translate(-50%, -100%)' }}
+        >
+          <div className="flex flex-col items-center">
+            <div className="flex items-center gap-1.5 bg-slate-900 text-white px-2.5 py-1.5 rounded-full shadow-lg border-2 border-amber-400">
+              <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
+              <span className="text-[11px] font-bold whitespace-nowrap">ESTGV — IPV</span>
+            </div>
+            <div className="w-2.5 h-2.5 bg-slate-900 border-2 border-amber-400 rotate-45 -mt-1.5" />
+          </div>
+        </div>
+
         {/* Property pins */}
         {groups.map(({ property, rooms, availableCount }) => {
           const coords = property.coordinates ?? stablePosition(property.id);
@@ -307,6 +354,7 @@ export function SearchMapView({ results }: { results: ResultItem[] }) {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }

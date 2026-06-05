@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from './Button';
 import { useReport } from '../hooks/useTrust';
 
-type ReportedType = 'accommodation' | 'user' | 'message' | 'review';
+type ReportedType = 'accommodation' | 'user' | 'message' | 'review' | 'listing';
 type ReportType = 'fraude_possivel' | 'localizacao_falsa' | 'pagamento_externo' | 'fotos_enganosas' | 'identidade_nao_verificada' | 'comportamento_abusivo';
 type ReportPriority = 'baixa' | 'media' | 'alta' | 'critica';
 
@@ -78,9 +78,10 @@ const PRIORITY_BADGE: Record<ReportPriority, { label: string; cls: string }> = {
 
 const TYPE_LABELS: Record<ReportedType, string> = {
   accommodation: 'alojamento',
-  user: 'utilizador',
-  message: 'mensagem',
-  review: 'avaliação',
+  listing:       'anúncio',
+  user:          'utilizador',
+  message:       'mensagem',
+  review:        'avaliação',
 };
 
 export function ReportModal({
@@ -107,6 +108,11 @@ export function ReportModal({
   const canSubmit = Boolean(reason && selectedOption && trimmedDescription.length >= 20 && !isSubmitting);
 
   const handleSubmit = async () => {
+    if (!userId) {
+      toast.error('Tens de iniciar sessão para denunciar.');
+      return;
+    }
+
     if (!reason || !selectedOption) {
       toast.error('Seleciona um motivo para a denúncia.');
       return;
@@ -131,9 +137,7 @@ export function ReportModal({
     setIsSubmitting(false);
 
     if (!ok) {
-      toast.error('Erro ao enviar a denúncia.', {
-        description: 'Verifica a tua ligação e tenta novamente.',
-      });
+      toast.error('Erro ao enviar denúncia.');
       return;
     }
 

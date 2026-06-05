@@ -1,6 +1,5 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router';
 import { Toaster } from 'sonner';
-import { useState } from 'react';
 import { AuthProvider } from '../context/AuthContext';
 import { FavoritesProvider } from '../context/FavoritesContext';
 import { AccommodationsProvider } from '../context/AccommodationsContext';
@@ -48,8 +47,7 @@ import { RouteDataRefresher } from '../components/RouteDataRefresher';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 function AppShell() {
-  const { compareItems, removeFromCompare } = useCompare();
-  const [showCompareModal, setShowCompareModal] = useState(false);
+  const { compareItems, removeFromCompare, showModal, closeModal } = useCompare();
 
   return (
     <>
@@ -390,18 +388,12 @@ function AppShell() {
         </Routes>
       </div>
 
-      {compareItems.length > 0 && (
-        <CompareBar
-          items={compareItems}
-          onRemove={removeFromCompare}
-          onCompare={() => setShowCompareModal(true)}
-        />
-      )}
+      {compareItems.length === 1 && <CompareBar />}
 
       <CompareModal
-        open={showCompareModal}
-        onOpenChange={setShowCompareModal}
+        open={showModal}
         items={compareItems}
+        onClose={closeModal}
         onRemove={removeFromCompare}
       />
     </>

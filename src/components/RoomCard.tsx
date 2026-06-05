@@ -52,6 +52,7 @@ const walkMinutes = (km: number) => Math.round(km * 13);
 
 interface CompareProps {
   isComparing: boolean;
+  compareMode?: 'idle' | 'base' | 'other';
   onToggle: (event: MouseEvent) => void;
   disabled: boolean;
 }
@@ -343,25 +344,23 @@ export function RoomCard({
               {compareProps && (
                 <button
                   onClick={compareProps.onToggle}
-                  disabled={compareProps.disabled}
+                  disabled={compareProps.disabled || compareProps.compareMode === 'base'}
                   className={`text-[11px] px-2 py-1 rounded-lg border transition-colors flex items-center gap-1 whitespace-nowrap ${
-                    compareProps.isComparing
-                      ? 'bg-primary/10 text-primary border-primary'
-                      : compareProps.disabled
-                        ? 'bg-muted text-muted-foreground border-border opacity-40 cursor-not-allowed'
-                        : 'bg-card text-muted-foreground border-border hover:border-primary hover:text-primary'
+                    compareProps.compareMode === 'base'
+                      ? 'bg-primary/10 text-primary border-primary opacity-70 cursor-not-allowed'
+                      : compareProps.compareMode === 'other'
+                        ? 'bg-card text-primary border-primary hover:bg-primary/10'
+                        : compareProps.disabled
+                          ? 'bg-muted text-muted-foreground border-border opacity-40 cursor-not-allowed'
+                          : 'bg-card text-muted-foreground border-border hover:border-primary hover:text-primary'
                   }`}
                 >
-                  {compareProps.isComparing ? (
-                    <>
-                      <Check className="w-3 h-3" />
-                      Comparar
-                    </>
+                  {compareProps.compareMode === 'base' ? (
+                    <><Check className="w-3 h-3" />Selecionado</>
+                  ) : compareProps.compareMode === 'other' ? (
+                    <><Columns className="w-3 h-3" />Comparar com este</>
                   ) : (
-                    <>
-                      <Columns className="w-3 h-3" />
-                      Comparar
-                    </>
+                    <><Columns className="w-3 h-3" />Comparar</>
                   )}
                 </button>
               )}
@@ -615,25 +614,23 @@ export function RoomCard({
             {compareProps && (
               <button
                 onClick={compareProps.onToggle}
-                disabled={compareProps.disabled}
+                disabled={compareProps.disabled || compareProps.compareMode === 'base'}
                 className={`w-full mt-2 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 border ${
-                  compareProps.isComparing
-                    ? 'bg-primary/10 text-primary border-primary'
-                    : compareProps.disabled
-                      ? 'bg-muted text-muted-foreground border-border cursor-not-allowed opacity-40'
-                      : 'bg-card text-muted-foreground border-border hover:border-primary hover:text-primary'
+                  compareProps.compareMode === 'base'
+                    ? 'bg-primary/10 text-primary border-primary opacity-70 cursor-not-allowed'
+                    : compareProps.compareMode === 'other'
+                      ? 'bg-primary/5 text-primary border-primary hover:bg-primary/15'
+                      : compareProps.disabled
+                        ? 'bg-muted text-muted-foreground border-border cursor-not-allowed opacity-40'
+                        : 'bg-card text-muted-foreground border-border hover:border-primary hover:text-primary'
                 }`}
               >
-                {compareProps.isComparing ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    Na comparação
-                  </>
+                {compareProps.compareMode === 'base' ? (
+                  <><Check className="w-3.5 h-3.5" />Selecionado</>
+                ) : compareProps.compareMode === 'other' ? (
+                  <><Columns className="w-3.5 h-3.5" />Comparar com este</>
                 ) : (
-                  <>
-                    <Columns className="w-3.5 h-3.5" />
-                    Comparar
-                  </>
+                  <><Columns className="w-3.5 h-3.5" />Comparar</>
                 )}
               </button>
             )}

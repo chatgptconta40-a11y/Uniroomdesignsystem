@@ -250,20 +250,22 @@ function MapRoomCard({
   selected,
   isInCompare,
   toggleCompare,
-  canAdd,
+  compareItemsCount,
 }: {
   room: Room;
   property: Property;
   selected: boolean;
   isInCompare: (id: string) => boolean;
   toggleCompare: (room: Room, property: Property) => void;
-  canAdd: boolean;
+  compareItemsCount: number;
 }) {
   const navigate = useNavigate();
   const walk = walkMinutes(property.distanceToUniversity);
   const totalPrice = room.price + (room.utilities || 0);
-  const comparing = isInCompare(room.id);
-  const compareDisabled = !canAdd && !comparing;
+  const isBase = isInCompare(room.id);
+  const isSelectingSecond = compareItemsCount === 1;
+  const compareMode = isSelectingSecond ? (isBase ? 'base' : 'other') : 'idle';
+  const compareDisabled = compareMode === 'base';
 
   return (
     <article
@@ -346,27 +348,26 @@ function MapRoomCard({
           type="button"
           onClick={(event) => {
             event.stopPropagation();
+            if (isBase) return;
             toggleCompare(room, property);
           }}
           disabled={compareDisabled}
           className={`w-full h-9 rounded-lg border text-xs font-semibold transition-colors flex items-center justify-center gap-2 ${
-            comparing
-              ? 'bg-primary/10 text-primary border-primary'
-              : compareDisabled
-                ? 'bg-muted text-muted-foreground border-border opacity-50 cursor-not-allowed'
-                : 'bg-card text-muted-foreground border-border hover:border-primary hover:text-primary'
+            compareMode === 'base'
+              ? 'bg-primary/10 text-primary border-primary opacity-70 cursor-not-allowed'
+              : compareMode === 'other'
+                ? 'bg-primary/5 text-primary border-primary hover:bg-primary/15'
+                : compareDisabled
+                  ? 'bg-muted text-muted-foreground border-border opacity-50 cursor-not-allowed'
+                  : 'bg-card text-muted-foreground border-border hover:border-primary hover:text-primary'
           }`}
         >
-          {comparing ? (
-            <>
-              <Check className="w-3.5 h-3.5" />
-              Na comparação
-            </>
+          {compareMode === 'base' ? (
+            <><Check className="w-3.5 h-3.5" />Selecionado</>
+          ) : compareMode === 'other' ? (
+            <><Columns className="w-3.5 h-3.5" />Comparar com este</>
           ) : (
-            <>
-              <Columns className="w-3.5 h-3.5" />
-              Comparar
-            </>
+            <><Columns className="w-3.5 h-3.5" />Comparar</>
           )}
         </button>
       </div>
@@ -379,13 +380,13 @@ function GoogleMapsView({
   universityLabel,
   isInCompare,
   toggleCompare,
-  canAdd,
+  compareItemsCount,
 }: {
   results: ResultItem[];
   universityLabel: string;
   isInCompare: (id: string) => boolean;
   toggleCompare: (room: Room, property: Property) => void;
-  canAdd: boolean;
+  compareItemsCount: number;
 }) {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const groups = useMemo(() => groupResults(results), [results]);
@@ -562,7 +563,7 @@ function GoogleMapsView({
                 selected={property.id === selectedPropertyId}
                 isInCompare={isInCompare}
                 toggleCompare={toggleCompare}
-                canAdd={canAdd}
+                compareItemsCount={compareItemsCount}
               />
             ))}
           </div>
@@ -696,7 +697,7 @@ function FilterSidebar({
 
 export function SearchRooms() {
   const { rooms, properties, refreshProperties } = useProperties();
-  const { isInCompare, toggleCompare, canAdd } = useCompare();
+  const { isInCompare, toggleCompare, compareItems } = useCompare();
   const { statusMap: verificationStatusMap } = useAllVerificationStatuses();
   const { user } = useAuth();
   const { profile: studentProfile, loading: profileLoading } = useStudentProfile(
@@ -1127,7 +1128,7 @@ export function SearchRooms() {
               universityLabel={universityLabel}
               isInCompare={isInCompare}
               toggleCompare={toggleCompare}
-              canAdd={canAdd}
+              compareItemsCount={compareItems.length}
             />
           ) : (
             <EmptyState
@@ -1176,9 +1177,13 @@ export function SearchRooms() {
                       availableRooms={availableRooms}
                       compareProps={{
                         isComparing: isInCompare(room.id),
-                        disabled: !canAdd && !isInCompare(room.id),
+                        compareMode: compareItems.length === 0
+                          ? 'idle'
+                          : isInCompare(room.id) ? 'base' : 'other',
+                        disabled: false,
                         onToggle: event => {
                           event.stopPropagation();
+                          if (isInCompare(room.id)) return; // base room is disabled — no-op
                           toggleCompare(room, property);
                         },
                       }}

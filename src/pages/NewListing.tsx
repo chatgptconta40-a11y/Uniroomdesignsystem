@@ -27,6 +27,9 @@ import {
   Layers,
   GraduationCap,
   MapPin,
+  Search,
+  Loader2,
+  Lock,
   PartyPopper,
   PawPrint,
   Cigarette,
@@ -37,6 +40,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { LocationPicker } from '../components/map/LocationPicker';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { useUserRestrictions } from '../hooks/useUserRestrictions';
@@ -73,6 +77,9 @@ interface PropertyDraft {
   address: string;
   zone: string;
   city: string;
+  coordinates: { lat: number; lng: number } | null;
+  locationConfirmed: boolean;
+  publicAddress: boolean;
   nearbySchools: SchoolEntry[];
   utilitiesIncluded: boolean;
   utilitiesNotes: string;
@@ -108,6 +115,9 @@ const defaultProperty: PropertyDraft = {
   address: '',
   zone: '',
   city: 'Viseu',
+  coordinates: null,
+  locationConfirmed: false,
+  publicAddress: false,
   nearbySchools: [{ school: 'ESTGV', distanceKm: '', walkMinutes: '' }],
   utilitiesIncluded: false,
   utilitiesNotes: '',
@@ -534,7 +544,7 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
 export function NewListing() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { addProperty, addRoom, refreshProperties } = useProperties();
+  const { addProperty, addRoom } = useProperties();
 
   const [step, setStep] = useState<StepNumber>(1);
   const [property, setProperty] = useState<PropertyDraft>(defaultProperty);
@@ -546,6 +556,8 @@ export function NewListing() {
   const [propertyPhotoOptions, setPropertyPhotoOptions] = useState<string[]>([]);
   const [selectedPropertyPhoto, setSelectedPropertyPhoto] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [geocodeLoading, setGeocodeLoading] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
 
   const {
     isSuspended,
@@ -568,6 +580,41 @@ export function NewListing() {
     setRules(prev => ({ ...prev, ...updates }));
   };
 
+  function isValidCoords(c: { lat: number; lng: number } | null | undefined): c is { lat: number; lng: number } {
+    if (!c) return false;
+    if (c.lat === 0 && c.lng === 0) return false;
+    if (c.lat < -90 || c.lat > 90) return false;
+    if (c.lng < -180 || c.lng > 180) return false;
+    return true;
+  }
+
+  const handleGeocode = async () => {
+    const query = [property.address.trim(), property.zone.trim(), property.city.trim()]
+      .filter(Boolean)
+      .join(', ');
+    if (!query) {
+      setGeocodeError('Preenche a morada antes de usar a pesquisa automática.');
+      return;
+    }
+    setGeocodeLoading(true);
+    setGeocodeError(null);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&accept-language=pt&q=${encodeURIComponent(query)}&limit=1&countrycodes=pt`;
+      const res = await fetch(url);
+      const data = await res.json() as Array<{ lat: string; lon: string; display_name: string }>;
+      if (!data.length) {
+        setGeocodeError('Morada não encontrada. Tenta ser mais específico ou coloca o pin manualmente.');
+      } else {
+        const coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+        setP({ coordinates: coords, locationConfirmed: false });
+      }
+    } catch {
+      setGeocodeError('Não foi possível pesquisar a morada. Verifica a ligação à internet.');
+    } finally {
+      setGeocodeLoading(false);
+    }
+  };
+
   const validateStep1 = () => {
     const errs: Record<string, string> = {};
     const firstSchoolEntry = property.nearbySchools[0];
@@ -578,6 +625,7 @@ export function NewListing() {
     if (property.address.trim().length < 8) errs.address = 'Indica uma morada suficientemente completa.';
     if (property.zone.trim().length < 2) errs.zone = 'Indica a zona ou bairro para melhorar a pesquisa.';
     if (!property.city.trim()) errs.city = 'Indica a cidade.';
+    if (!isValidCoords(property.coordinates) || !property.locationConfirmed) errs.coordinates = 'Confirma a localização no mapa antes de avançar.';
     if (propertyPhotoOptions.length === 0) errs.photos = 'Adiciona pelo menos uma foto real da propriedade.';
     const firstSchool = property.nearbySchools[0];
     if (!firstSchool?.school.trim()) errs.school = 'Seleciona pelo menos uma escola.';
@@ -810,6 +858,7 @@ export function NewListing() {
         address: property.address.trim(),
         city: property.city.trim(),
         zone: property.zone.trim() || property.city.trim(),
+        coordinates: property.coordinates ?? undefined,
         distanceToUniversity: Number(property.nearbySchools[0]?.distanceKm) || 0,
         images: orderedPropertyImages,
         amenities: {
@@ -835,6 +884,8 @@ export function NewListing() {
           cleaningPolicy: rules.cleaningPolicy || undefined,
           visitorsPolicy: rules.visitorsPolicy || undefined,
           preferredGender: rules.preferredGender,
+          // publicAddress stored here until public_address column is added to schema
+          publicAddress: property.publicAddress,
         },
         totalRooms: rooms.length,
         roomIds,
@@ -847,10 +898,8 @@ export function NewListing() {
       };
 
       await addProperty(newProperty, { skipRefresh: true });
-      for (const room of roomsToCreate) {
-        await addRoom(room, { skipRefresh: true });
-      }
-      await refreshProperties();
+      await Promise.all(roomsToCreate.map(room => addRoom(room, { skipRefresh: true })));
+      // Realtime subscription handles live state; LandlordListings triggers the final sync on navigation.
       window.dispatchEvent(new Event('uniroom:properties-updated'));
 
       saveSucceeded = true;
@@ -880,7 +929,7 @@ export function NewListing() {
     if (saveSucceeded) {
       setTimeout(
         () => navigate('/landlord/listings', { state: { refresh: Date.now() } }),
-        900,
+        400,
       );
     }
   };
@@ -893,6 +942,7 @@ export function NewListing() {
   if (property.address.trim().length < 8) missingFields.push('Morada completa');
   if (property.zone.trim().length < 2) missingFields.push('Zona ou bairro');
   if (!property.city.trim()) missingFields.push('Cidade');
+  if (!isValidCoords(property.coordinates) || !property.locationConfirmed) missingFields.push('Localização confirmada no mapa');
   if (!property.nearbySchools[0]?.school.trim()) missingFields.push('Escola');
   if (!property.nearbySchools[0]?.distanceKm) missingFields.push('Distância à escola');
   if (propertyPhotoOptions.length === 0) missingFields.push('Pelo menos uma foto da propriedade');
@@ -1029,7 +1079,7 @@ export function NewListing() {
                   {propertyErrors.city && <p className="text-xs text-red-500 mt-1">{propertyErrors.city}</p>}
                 </div>
 
-                <div className="col-span-2">
+                <div className="col-span-3">
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <FieldLabel required>Escolas próximas</FieldLabel>
@@ -1138,6 +1188,114 @@ export function NewListing() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* ── Confirmar localização no mapa ───────────────────────── */}
+              <div className={`rounded-2xl border-2 p-5 space-y-4 transition-colors ${
+                propertyErrors.coordinates
+                  ? 'border-red-300 bg-red-50/30'
+                  : property.locationConfirmed
+                    ? 'border-green-200 bg-green-50/30'
+                    : 'border-border bg-muted/10'
+              }`}>
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-primary shrink-0" />
+                      Confirmar localização no mapa
+                      <span className="text-red-500">*</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Usamos esta localização para calcular o percurso até à ESTGV.
+                      A morada completa pode ficar protegida até aceitares uma candidatura ou visita.
+                    </p>
+                  </div>
+                  {property.locationConfirmed && (
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-100 border border-green-200 px-2.5 py-1 rounded-full whitespace-nowrap shrink-0">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Localização confirmada
+                    </span>
+                  )}
+                </div>
+
+                {/* Geocode button */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGeocode}
+                    disabled={geocodeLoading || !property.address.trim()}
+                    className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-all ${
+                      geocodeLoading || !property.address.trim()
+                        ? 'border-border text-muted-foreground bg-muted cursor-not-allowed opacity-60'
+                        : 'border-primary/40 text-primary bg-primary/5 hover:bg-primary/10 cursor-pointer'
+                    }`}
+                  >
+                    {geocodeLoading
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Search className="w-4 h-4" />
+                    }
+                    {geocodeLoading ? 'A procurar...' : 'Procurar morada no mapa'}
+                  </button>
+                  {!property.address.trim() && (
+                    <p className="text-xs text-muted-foreground">Preenche a morada acima para usar a pesquisa automática.</p>
+                  )}
+                </div>
+                {geocodeError && (
+                  <p className="text-xs text-amber-700 flex items-center gap-1.5 -mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {geocodeError}
+                  </p>
+                )}
+
+                {/* Map */}
+                <LocationPicker
+                  value={property.coordinates}
+                  onChange={coords => setP({ coordinates: coords })}
+                  heightClass="h-56"
+                />
+
+                {/* Confirm button — visible while pin is placed but not yet confirmed */}
+                {isValidCoords(property.coordinates) && !property.locationConfirmed && (
+                  <button
+                    type="button"
+                    onClick={() => setP({ locationConfirmed: true })}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary/90 active:scale-[.99] transition-all"
+                  >
+                    <Check className="w-4 h-4" />
+                    Confirmar localização
+                  </button>
+                )}
+
+                {/* Advanced: coordinates */}
+                {isValidCoords(property.coordinates) && (
+                  <details className="text-xs group">
+                    <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground list-none flex items-center gap-1">
+                      <span className="text-[10px] uppercase tracking-wide font-medium">Avançado</span>
+                      <span className="text-muted-foreground/50">·</span>
+                      <span>ver coordenadas</span>
+                    </summary>
+                    <p className="mt-1.5 font-mono text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+                      lat: {property.coordinates!.lat.toFixed(6)} &nbsp;·&nbsp; lng: {property.coordinates!.lng.toFixed(6)}
+                    </p>
+                  </details>
+                )}
+
+                {/* Privacy toggle */}
+                <Toggle
+                  checked={!property.publicAddress}
+                  onChange={v => setP({ publicAddress: !v })}
+                  label="Proteger morada completa até candidatura aceite ou visita marcada"
+                  icon={Lock}
+                />
+
+                {/* Error */}
+                {propertyErrors.coordinates && (
+                  <p className="text-xs text-red-500 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {propertyErrors.coordinates}
+                  </p>
+                )}
               </div>
 
               <div>

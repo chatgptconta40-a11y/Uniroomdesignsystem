@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { computeVerificationLevel } from '../utils/trustLabels';
-import { useDataBusRefresh } from '../lib/dataBus';
+import { useDataBusRefresh, emitDataRefresh } from '../lib/dataBus';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -372,35 +372,66 @@ export function useReviews(params: { propertyId?: string; reviewedUserId?: strin
 
 const SEVERITY_EN: Record<string, string> = {
   critica: 'high',
-  alta: 'high',
-  media: 'medium',
-  baixa: 'low',
+  alta:    'high',
+  media:   'medium',
+  baixa:   'low',
 };
+
+// Maps frontend Portuguese reason keys → report_reason DB enum values
+const REASON_MAP: Record<string, string> = {
+  fraude_possivel:           'scam',
+  pagamento_externo:         'scam',
+  comportamento_abusivo:     'harassment',
+  fotos_enganosas:           'fake_listing',
+  localizacao_falsa:         'fake_listing',
+  identidade_nao_verificada: 'other',
+};
+
+const VALID_TARGET_TYPES = new Set([
+  'accommodation', 'user', 'message', 'review', 'listing',
+]);
 
 export function useReport() {
   const [loading, setLoading] = useState(false);
 
   const createReport = useCallback(async (input: CreateReportInput): Promise<boolean> => {
     setLoading(true);
+
     const { data: { session } } = await supabase.auth.getSession();
-    // The DB `reason` column is a report_reason enum with values unknown to the
-    // frontend. To avoid cast errors, we store the reason key in `description`
-    // and omit the enum column entirely.
-    const descParts = [input.reason, input.description].filter(Boolean);
+    const reporterId = session?.user?.id;
+
+    if (!reporterId) {
+      setLoading(false);
+      return false;
+    }
+
+    if (!input.reason || !input.targetId || !VALID_TARGET_TYPES.has(input.targetType)) {
+      setLoading(false);
+      return false;
+    }
+
     const row = {
-      id: crypto.randomUUID(),
-      reporter_id: session?.user?.id ?? null,
-      target_type: input.targetType,
-      target_id: input.targetId,
-      target_name: input.targetName ?? null,
-      description: descParts.length > 0 ? descParts.join('\n') : null,
-      severity: SEVERITY_EN[input.severity ?? ''] ?? input.severity ?? null,
-      status: 'pending',
-      created_at: new Date().toISOString(),
+      id:           crypto.randomUUID(),
+      reporter_id:  reporterId,
+      target_type:  input.targetType,
+      target_id:    input.targetId,
+      target_name:  input.targetName ?? null,
+      reason:       REASON_MAP[input.reason] ?? 'other',
+      description:  input.description ?? null,
+      severity:     SEVERITY_EN[input.severity ?? ''] ?? 'low',
+      status:       'pending',
+      created_at:   new Date().toISOString(),
     };
+
     const { error } = await supabase.from('reports').insert(row);
     setLoading(false);
-    if (error) { console.error('[TRUST] create report', error); return false; }
+
+    if (error) {
+      console.error('[ReportModal] create report failed:', error);
+      return false;
+    }
+
+    emitDataRefresh('reports');
     return true;
   }, []);
 

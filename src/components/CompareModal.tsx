@@ -2,12 +2,15 @@ import { useNavigate } from 'react-router';
 import {
   X, Check, MapPin, Maximize, Bath, Star, Navigation,
   Calendar, Clock, Wifi, WashingMachine, Trophy, TrendingDown,
-  Zap, Award,
+  Award, Heart,
 } from 'lucide-react';
 import { CompareItem } from '../context/CompareContext';
+import { useFavorites } from '../context/FavoritesContext';
+import { useAuth } from '../context/AuthContext';
 import { Button } from './Button';
 
 interface CompareModalProps {
+  open: boolean;
   items: CompareItem[];
   onClose: () => void;
   onRemove: (roomId: string) => void;
@@ -26,10 +29,12 @@ function HighlightBadge({ label, color }: { label: string; color: string }) {
   );
 }
 
-export function CompareModal({ items, onClose, onRemove }: CompareModalProps) {
+export function CompareModal({ open, items, onClose, onRemove }: CompareModalProps) {
   const navigate = useNavigate();
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const { user } = useAuth();
 
-  if (items.length === 0) return null;
+  if (!open || items.length === 0) return null;
 
   // Compute highlights
   const prices = items.map(i => i.room.price);
@@ -297,28 +302,34 @@ export function CompareModal({ items, onClose, onRemove }: CompareModalProps) {
                 <td className="px-5 py-4 bg-muted/40 border-r border-border">
                   <span className="text-sm font-semibold text-foreground">Ações</span>
                 </td>
-                {items.map(({ room }) => (
-                  <td key={room.id} className="px-4 py-4 border-l border-border/50">
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => { onClose(); navigate(`/room/${room.id}`); }}
-                      >
-                        Ver detalhes
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => { onClose(); navigate(`/room/${room.id}`); }}
-                      >
-                        Candidatar-me
-                      </Button>
-                    </div>
-                  </td>
-                ))}
+                {items.map(({ room, property }) => {
+                  const fav = isFavorite(room.id);
+                  return (
+                    <td key={room.id} className="px-4 py-4 border-l border-border/50">
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => { onClose(); navigate(`/room/${room.id}`); }}
+                        >
+                          Ver detalhes
+                        </Button>
+                        {user && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={`w-full ${fav ? 'text-red-500 border-red-300 hover:bg-red-50' : ''}`}
+                            onClick={() => toggleFavorite(room.id, property.id)}
+                          >
+                            <Heart className={`w-3.5 h-3.5 mr-1.5 ${fav ? 'fill-red-500' : ''}`} />
+                            {fav ? 'Favorito' : 'Guardar favorito'}
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
               </tr>
             </tbody>
           </table>

@@ -98,6 +98,9 @@ export default defineConfig({
       '@mui/icons-material',
       '@emotion/react',
       '@emotion/styled',
+      'leaflet',
+      'react-leaflet',
+      '@react-leaflet/core',
     ],
   },
 })

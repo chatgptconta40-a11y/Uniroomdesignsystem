@@ -28,7 +28,7 @@ import {
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { LocationMap } from '../components/LocationMap';
+import { ESTGVRouteSection } from '../components/ESTGVRouteSection';
 import { RoomCard } from '../components/RoomCard';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
@@ -486,10 +486,9 @@ export function PropertyDetail() {
               </Card>
             )}
 
-            {/* Localização */}
+            {/* Localização e percurso até à ESTGV */}
             <Card className="p-5 md:p-6">
-              <h2 className="text-xl font-bold text-foreground mb-4">Localização</h2>
-              <LocationMap address={property.address} zone={property.zone} city={property.city} />
+              <ESTGVRouteSection property={property} />
             </Card>
           </div>
 

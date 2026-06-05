@@ -5,7 +5,7 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { Modal } from '../components/Modal';
-import { LocationMap } from '../components/LocationMap';
+import { ESTGVRouteSection } from '../components/ESTGVRouteSection';
 import { ApplicationModal } from '../components/ApplicationModal';
 import { ReviewModal } from '../components/ReviewModal';
 import { ReportModal } from '../components/ReportModal';
@@ -747,58 +747,12 @@ export function RoomDetail() {
         </div>
 
         <section className="mt-10">
-          <div className="mb-5">
-            <h2 className="text-2xl font-bold text-foreground">Localização</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Onde fica a casa e quanto demoras até à universidade.
-            </p>
-          </div>
           <Card className="p-4 md:p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <LocationMap
-                  address={property.address}
-                  zone={property.zone}
-                  city={property.city}
-                  mapHeightClass="h-[28rem]"
-                />
-              </div>
-              <div className="flex flex-col">
-                {property.address && (
-                  <div className="mb-4 flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
-                    <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Morada</p>
-                      <p className="text-sm font-semibold text-foreground">{property.address}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{property.zone}, {property.city}</p>
-                    </div>
-                  </div>
-                )}
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between py-2 border-b border-border">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <Building className="w-3.5 h-3.5" />
-                      Universidade mais próxima
-                    </span>
-                    <span className="font-semibold">{property.distanceToUniversity} km</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-border">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      A pé
-                    </span>
-                    <span className="font-semibold">~{Math.round(property.distanceToUniversity * 13)} min</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" />
-                      Transporte público
-                    </span>
-                    <span className="font-semibold">~{Math.round(property.distanceToUniversity * 5)} min</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ESTGVRouteSection
+              property={property}
+              room={{ id: room.id, title: room.title }}
+              mapHeightClass="h-[28rem]"
+            />
           </Card>
         </section>
       </div>

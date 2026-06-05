@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Archive,
   Calendar,
   CheckCircle,
   Clock,
@@ -21,28 +22,34 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
-import { useProperties } from '../../context/PropertiesContext';
 import { useApplications, useAdminUsers } from '../../hooks/useDb';
 import { useAdminAuditLogs } from '../../hooks/useAdminAuditLogs';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useProperties } from '../../context/PropertiesContext';
 import { Property } from '../../types/property';
 
-type AdminFilter = 'all' | 'active' | 'pending' | 'suspended';
+type AdminFilter = 'all' | 'active' | 'pending' | 'suspended' | 'archived';
 
 function getDisplayStatus(property: Property): AdminFilter {
   if (property.adminSuspended) return 'suspended';
-  if (property.status === 'draft') return 'pending';
-  if (property.status === 'active') return 'active';
-  return 'pending';
+  switch (property.status) {
+    case 'active':   return 'active';
+    case 'draft':    return 'pending';
+    case 'paused':   return 'suspended';
+    case 'archived': return 'archived';
+    default:         return 'pending';
+  }
 }
+
 
 export function AdminProperties() {
   const { user } = useAuth();
-  const { properties, rooms } = useProperties();
   const { users: adminUsers } = useAdminUsers();
   const { applications } = useApplications({ scope: 'all' });
   const { createLog } = useAdminAuditLogs({ limit: 1 });
+
+  const { properties, rooms, loading: dataLoading, refreshProperties } = useProperties();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<AdminFilter>('all');
@@ -95,13 +102,14 @@ export function AdminProperties() {
 
   const stats = useMemo(() => {
     return {
-      total: properties.length,
-      active: properties.filter((p) => getDisplayStatus(p) === 'active').length,
-      pending: properties.filter((p) => getDisplayStatus(p) === 'pending').length,
-      suspended: properties.filter((p) => p.adminSuspended).length,
-      totalRooms: rooms.length,
+      total:          properties.length,
+      active:         properties.filter((p) => getDisplayStatus(p) === 'active').length,
+      pending:        properties.filter((p) => getDisplayStatus(p) === 'pending').length,
+      suspended:      properties.filter((p) => getDisplayStatus(p) === 'suspended').length,
+      archived:       properties.filter((p) => getDisplayStatus(p) === 'archived').length,
+      totalRooms:     rooms.length,
       availableRooms: rooms.filter((r) => r.status === 'available').length,
-      occupiedRooms: rooms.filter((r) => r.status === 'occupied').length,
+      occupiedRooms:  rooms.filter((r) => r.status === 'occupied').length,
     };
   }, [properties, rooms]);
 
@@ -121,31 +129,37 @@ export function AdminProperties() {
   };
 
   const getStatusBadge = (property: Property) => {
-    const status = getDisplayStatus(property);
-    switch (status) {
-      case 'active':
-        return (
-          <Badge variant="success">
-            <CheckCircle className="w-3 h-3 mr-1" />
-            Ativo
-          </Badge>
-        );
-      case 'pending':
-        return (
-          <Badge variant="outline" className="text-yellow-600 border-yellow-300">
-            <Clock className="w-3 h-3 mr-1" />
-            Pendente
-          </Badge>
-        );
-      case 'suspended':
-        return (
-          <Badge variant="outline" className="text-red-600 border-red-300">
-            <ShieldOff className="w-3 h-3 mr-1" />
-            Suspenso
-          </Badge>
-        );
-      default:
-        return null;
+    if (property.adminSuspended) return (
+      <Badge variant="outline" className="text-red-600 border-red-300">
+        <ShieldOff className="w-3 h-3 mr-1" />Suspenso
+      </Badge>
+    );
+    switch (property.status) {
+      case 'active': return (
+        <Badge variant="success">
+          <CheckCircle className="w-3 h-3 mr-1" />Ativo
+        </Badge>
+      );
+      case 'draft': return (
+        <Badge variant="outline" className="text-yellow-600 border-yellow-300">
+          <Clock className="w-3 h-3 mr-1" />Rascunho
+        </Badge>
+      );
+      case 'paused': return (
+        <Badge variant="outline" className="text-orange-600 border-orange-300">
+          <ShieldOff className="w-3 h-3 mr-1" />Pausado
+        </Badge>
+      );
+      case 'archived': return (
+        <Badge variant="outline" className="text-gray-500 border-gray-300">
+          <Archive className="w-3 h-3 mr-1" />Arquivado
+        </Badge>
+      );
+      default: return (
+        <Badge variant="outline" className="text-gray-600 border-gray-300">
+          <Clock className="w-3 h-3 mr-1" />{property.status}
+        </Badge>
+      );
     }
   };
 
@@ -170,6 +184,7 @@ export function AdminProperties() {
         entityId: property.id,
         entityLabel: property.title,
       });
+      void refreshProperties();
     } else {
       console.error('[AdminProperties] approve error:', error.message);
     }
@@ -201,6 +216,7 @@ export function AdminProperties() {
         entityLabel: property.title,
         note: trimmed,
       });
+      void refreshProperties();
     } else {
       console.error('[AdminProperties] suspend error:', error.message);
     }
@@ -221,15 +237,23 @@ export function AdminProperties() {
         <p className="text-gray-600">Gerir todas as propriedades e quartos da plataforma</p>
       </div>
 
+      {dataLoading && properties.length === 0 && (
+        <div className="flex items-center justify-center py-12 text-gray-500">
+          <Clock className="w-5 h-5 animate-spin mr-2" />
+          A carregar propriedades…
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
         {[
-          { label: 'Total', value: stats.total, icon: Home, color: 'bg-blue-100 text-blue-600' },
-          { label: 'Ativas', value: stats.active, icon: CheckCircle, color: 'bg-green-100 text-green-600' },
-          { label: 'Pendentes', value: stats.pending, icon: Clock, color: 'bg-yellow-100 text-yellow-600' },
-          { label: 'Suspensas', value: stats.suspended, icon: ShieldOff, color: 'bg-red-100 text-red-600' },
-          { label: 'Quartos', value: stats.totalRooms, icon: DoorOpen, color: 'bg-purple-100 text-purple-600' },
-          { label: 'Disponíveis', value: stats.availableRooms, icon: DoorOpen, color: 'bg-green-100 text-green-600' },
-          { label: 'Ocupados', value: stats.occupiedRooms, icon: DoorClosed, color: 'bg-gray-100 text-gray-600' },
+          { label: 'Total',       value: stats.total,          icon: Home,        color: 'bg-blue-100 text-blue-600' },
+          { label: 'Ativas',      value: stats.active,         icon: CheckCircle, color: 'bg-green-100 text-green-600' },
+          { label: 'Rascunhos',   value: stats.pending,        icon: Clock,       color: 'bg-yellow-100 text-yellow-600' },
+          { label: 'Suspensas',   value: stats.suspended,      icon: ShieldOff,   color: 'bg-red-100 text-red-600' },
+          { label: 'Arquivadas',  value: stats.archived,       icon: Archive,     color: 'bg-gray-100 text-gray-500' },
+          { label: 'Quartos',     value: stats.totalRooms,     icon: DoorOpen,    color: 'bg-purple-100 text-purple-600' },
+          { label: 'Disponíveis', value: stats.availableRooms, icon: DoorOpen,    color: 'bg-green-100 text-green-600' },
+          { label: 'Ocupados',    value: stats.occupiedRooms,  icon: DoorClosed,  color: 'bg-gray-100 text-gray-600' },
         ].map((stat) => {
           const Icon = stat.icon;
           return (
@@ -262,10 +286,11 @@ export function AdminProperties() {
 
           <div className="flex flex-wrap gap-2">
             {([
-              { key: 'all', label: 'Todos' },
-              { key: 'active', label: 'Ativos' },
-              { key: 'pending', label: 'Pendentes' },
-              { key: 'suspended', label: 'Suspensos' },
+              { key: 'all',      label: 'Todos' },
+              { key: 'active',   label: 'Ativos' },
+              { key: 'pending',  label: 'Rascunhos' },
+              { key: 'suspended',label: 'Suspensos' },
+              { key: 'archived', label: 'Arquivados' },
             ] as const).map((item) => (
               <button
                 key={item.key}

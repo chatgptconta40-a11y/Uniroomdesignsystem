@@ -24,7 +24,7 @@ import { ReportModal } from '../components/ReportModal';
 import { MaintenanceModal } from '../components/MaintenanceModal';
 import { LandlordStatsCard } from '../components/LandlordStatsCard';
 import { LandlordManagementPanel } from '../components/LandlordManagementPanel';
-import { LocationMap } from '../components/LocationMap';
+import { ESTGVRouteSection } from '../components/ESTGVRouteSection';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
@@ -352,17 +352,8 @@ export function AccommodationDetail() {
             <section>
               <h2 className="text-2xl font-bold mb-8">Localização e mobilidade</h2>
 
-              <Card className="p-8 mb-8">
-                <LocationMap
-                  address={accommodation.address}
-                  zone={accommodation.zone}
-                  city={accommodation.city}
-                />
-
-                <div className="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
-                  <Navigation className="w-4 h-4" />
-                  <span>{accommodation.address}</span>
-                </div>
+              <Card className="p-6 md:p-8 mb-8">
+                <ESTGVRouteSection property={accommodation} />
               </Card>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
