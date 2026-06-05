@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useCallback } from 'react';
 import {
   GraduationCap,
   MapPin,
@@ -204,6 +204,7 @@ function TransportCard({
 // ─── Main section ──────────────────────────────────────────────────────────────
 
 export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const access = useLocationAccess({
     id: property.id,
     landlordId: property.landlordId,
@@ -229,10 +230,10 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
 
   const isApproximate = !!mapCoords && !access.showFullAddress;
 
-  // ORS routes: only when key + valid coords + full address access
-  const orsOrigin = ORS_KEY_CONFIGURED && access.showFullAddress && hasCoords
-    ? property.coordinates!
-    : null;
+  // ORS routes: key + any valid coords (mapCoords already applies privacy masking).
+  // We do NOT require showFullAddress — routing from approximate coords is safe
+  // because it doesn't reveal the exact address beyond what the pin already shows.
+  const orsOrigin = ORS_KEY_CONFIGURED && mapCoords ? mapCoords : null;
 
   const { selectedMode, routeResult, routeLoading, routeError, setMode } = useRoute(orsOrigin);
 
@@ -268,6 +269,17 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
   // Route to show on the map (only for non-transit modes)
   const mapRoute = selectedMode !== 'transit' ? routeResult : null;
 
+  // Clicking "Ver percurso" scrolls to the Leaflet map and ensures a routable
+  // mode is active. Falls back to opening Google Maps when ORS is not configured.
+  const handleVerPercurso = useCallback(() => {
+    if (ORS_KEY_CONFIGURED && mapCoords) {
+      if (selectedMode === 'transit') setMode('walking');
+      mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      window.open(urls.directions, '_blank', 'noreferrer');
+    }
+  }, [mapCoords, selectedMode, setMode, urls.directions]);
+
   return (
     <section className="space-y-4 min-w-0 overflow-hidden">
       {/* Header */}
@@ -298,7 +310,7 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
       )}
 
       {/* Map + destination summary side-by-side on lg */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_220px]">
+      <div ref={mapContainerRef} className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_220px]">
         {mapCoords ? (
           <PropertyRouteMap
             coords={mapCoords}
@@ -384,15 +396,14 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
           <Navigation className="h-4 w-4 shrink-0" />
           Obter direções
         </a>
-        <a
-          href={urls.directions}
-          target="_blank"
-          rel="noreferrer"
+        <button
+          type="button"
+          onClick={handleVerPercurso}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-primary/90 sm:col-span-2 lg:col-span-1"
         >
           <GraduationCap className="h-4 w-4 shrink-0" />
           Ver percurso até à ESTGV
-        </a>
+        </button>
       </div>
 
       {/* Approximate location notice */}
