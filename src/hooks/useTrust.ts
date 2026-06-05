@@ -321,15 +321,33 @@ export function useReviews(params: { propertyId?: string; reviewedUserId?: strin
     : 0;
 
   const createReview = useCallback(async (input: CreateReviewInput): Promise<Review | null> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const reviewerId = session?.user?.id;
+    if (!reviewerId) {
+      console.error('[ReviewModal] publish review failed: no authenticated session');
+      return null;
+    }
+
+    // Only pass reviewed_user_id if it looks like a valid UUID
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const reviewedUserId =
+      input.reviewedUserId && UUID_RE.test(input.reviewedUserId)
+        ? input.reviewedUserId
+        : null;
+
+    const rating = Math.round(Math.min(5, Math.max(1, input.rating)));
+
     const row = {
-      property_id: input.propertyId,
-      reviewed_user_id: input.reviewedUserId,
-      rating: input.rating,
-      criteria: input.criteria ?? null,
+      id: crypto.randomUUID(),
+      reviewer_id: reviewerId,
+      property_id: input.propertyId ?? null,
+      reviewed_user_id: reviewedUserId,
+      rating,
+      criteria: input.criteria ?? {},
       comment: input.comment ?? null,
       recommend: input.recommend,
       helpful: 0,
-      verified: true,
+      verified: false,
       reviewer_name: input.reviewerName ?? null,
       reviewer_avatar: input.reviewerAvatar ?? null,
       created_at: new Date().toISOString(),
@@ -339,7 +357,10 @@ export function useReviews(params: { propertyId?: string; reviewedUserId?: strin
       .insert(row)
       .select()
       .single();
-    if (error) { console.error('[TRUST] create review', error); return null; }
+    if (error) {
+      console.error('[ReviewModal] publish review failed:', error);
+      return null;
+    }
     await refresh();
     return data ? dbToReview(data) : null;
   }, [refresh]);
@@ -350,7 +371,7 @@ export function useReviews(params: { propertyId?: string; reviewedUserId?: strin
 // ── useReport ─────────────────────────────────────────────────────────────────
 
 const SEVERITY_EN: Record<string, string> = {
-  critica: 'critical',
+  critica: 'high',
   alta: 'high',
   media: 'medium',
   baixa: 'low',
@@ -362,13 +383,17 @@ export function useReport() {
   const createReport = useCallback(async (input: CreateReportInput): Promise<boolean> => {
     setLoading(true);
     const { data: { session } } = await supabase.auth.getSession();
+    // The DB `reason` column is a report_reason enum with values unknown to the
+    // frontend. To avoid cast errors, we store the reason key in `description`
+    // and omit the enum column entirely.
+    const descParts = [input.reason, input.description].filter(Boolean);
     const row = {
+      id: crypto.randomUUID(),
       reporter_id: session?.user?.id ?? null,
       target_type: input.targetType,
       target_id: input.targetId,
       target_name: input.targetName ?? null,
-      reason: input.reason,
-      description: input.description ?? null,
+      description: descParts.length > 0 ? descParts.join('\n') : null,
       severity: SEVERITY_EN[input.severity ?? ''] ?? input.severity ?? null,
       status: 'pending',
       created_at: new Date().toISOString(),

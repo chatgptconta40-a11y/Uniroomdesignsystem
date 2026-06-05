@@ -67,7 +67,7 @@ export function AdminDashboard() {
 
   const criticalAlerts = allReports.filter(
     report =>
-      report.severity === 'critical' &&
+      report.severity === 'high' &&
       report.status !== 'resolved' &&
       report.status !== 'dismissed',
   );

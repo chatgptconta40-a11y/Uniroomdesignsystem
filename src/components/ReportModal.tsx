@@ -119,7 +119,7 @@ export function ReportModal({
 
     setIsSubmitting(true);
 
-    await createReport({
+    const ok = await createReport({
       targetType: reportedType,
       targetId: reportedId,
       targetName: reportedName,
@@ -128,11 +128,18 @@ export function ReportModal({
       severity: selectedOption.priority,
     });
 
+    setIsSubmitting(false);
+
+    if (!ok) {
+      toast.error('Erro ao enviar a denúncia.', {
+        description: 'Verifica a tua ligação e tenta novamente.',
+      });
+      return;
+    }
+
     toast.success('Denúncia enviada com sucesso!', {
       description: 'A equipa UniRoom vai analisar o caso. A tua identidade será mantida em confidencialidade.',
     });
-
-    setIsSubmitting(false);
     onClose();
   };
 

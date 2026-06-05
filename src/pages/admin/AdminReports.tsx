@@ -57,8 +57,7 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: React.El
 };
 
 const SEVERITY_CONFIG: Record<string, { label: string; cls: string }> = {
-  critical: { label: 'Crítica', cls: 'bg-red-50 text-red-700 border-red-200' },
-  high: { label: 'Alta', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  high: { label: 'Alta', cls: 'bg-red-50 text-red-700 border-red-200' },
   medium: { label: 'Média', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   low: { label: 'Baixa', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
 };
@@ -153,8 +152,12 @@ function ReportDetailModal({
     const ok = await onUpdateStatus(report.id, newStatus, noteText || undefined);
     if (!ok) { toast.error('Erro ao atualizar a denúncia.'); return; }
     setReport(prev => ({ ...prev, status: newStatus }));
+    const auditAction =
+      newStatus === 'resolved' ? 'report_resolved'
+      : newStatus === 'dismissed' ? 'report_rejected'
+      : 'report_under_review';
     void createLog({
-      action: newStatus === 'resolved' ? 'report_resolved' : 'report_rejected',
+      action: auditAction,
       entityType: 'report',
       entityId: report.id,
       entityLabel: `Denúncia: ${REPORT_TYPE_LABELS[report.reason] ?? report.reason} — ${report.targetName ?? report.targetId}`,
@@ -551,7 +554,7 @@ export function AdminReports() {
     inReview: reports.filter(r => r.status === 'under_review').length,
     resolved: reports.filter(r => r.status === 'resolved').length,
     critical: reports.filter(
-      r => r.severity === 'critical' && r.status !== 'resolved' && r.status !== 'dismissed',
+      r => r.severity === 'high' && r.status !== 'resolved' && r.status !== 'dismissed',
     ).length,
   };
 
@@ -569,8 +572,6 @@ export function AdminReports() {
       (filterReason === 'all' || r.reason === filterReason)
     );
   });
-
-  // ── Sanction handlers (UI-only, mock side effects) ──────────────────────────
 
   const updateUserStatus = async (
     userId: string,
@@ -700,7 +701,6 @@ export function AdminReports() {
             className="px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="all">Todas as prioridades</option>
-            <option value="critical">Crítica</option>
             <option value="high">Alta</option>
             <option value="medium">Média</option>
             <option value="low">Baixa</option>
@@ -740,7 +740,7 @@ export function AdminReports() {
             const statusCfg = getStatusCfg(report.status);
             const severityCfg = getSeverityCfg(report.severity);
             const StatusIcon = statusCfg.icon;
-            const isCritical = report.severity === 'critical';
+            const isCritical = report.severity === 'high';
             const isActive = report.status !== 'resolved' && report.status !== 'dismissed';
 
             return (

@@ -77,7 +77,7 @@ function isTransientAuthError(message?: string): boolean {
 async function fetchProfileById(userId: string, maxAttempts = 2): Promise<User | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const timeoutMs = 8000 + attempt * 3000;
+    const timeoutMs = 5000;
     try {
       const { data, error } = await withTimeout(
         supabase
@@ -106,7 +106,7 @@ async function fetchProfileById(userId: string, maxAttempts = 2): Promise<User |
           return fallback.data ? mapDbProfile(fallback.data as DbProfile) : null;
         }
         if (isTransientAuthError(error.message) && attempt < maxAttempts) {
-          await new Promise(r => setTimeout(r, attempt * 900));
+          await new Promise(r => setTimeout(r, 300));
           continue;
         }
         console.error('[UniRoom] Profile fetch error:', error.message);
@@ -115,7 +115,7 @@ async function fetchProfileById(userId: string, maxAttempts = 2): Promise<User |
       return data ? mapDbProfile(data as DbProfile) : null;
     } catch (err) {
       if (attempt < maxAttempts) {
-        await new Promise(r => setTimeout(r, attempt * 900));
+        await new Promise(r => setTimeout(r, 300));
         continue;
       }
       console.error('[AUTH] fetchProfileById failed:', err);
@@ -155,34 +155,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true;
+    let initialDone = false;
 
-    (async () => {
-      try {
-        const { data } = await withTimeout(
-          supabase.auth.getSession(),
-          8000,
-          'getSession',
-        );
-        const sessionUser = data.session?.user;
-        if (sessionUser) {
-          const profile = await fetchProfileById(sessionUser.id);
-          if (mounted) setUser(profile);
-        } else if (mounted) {
-          setUser(null);
-        }
-      } catch (err) {
-        console.error('[UniRoom] Falha ao carregar sessão Supabase:', err);
-        if (mounted) setUser(null);
-      } finally {
+    const markInitialDone = () => {
+      if (!initialDone) {
+        initialDone = true;
         if (mounted) setLoading(false);
       }
-    })();
+    };
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-      console.log('[AUTH] onAuthStateChange', event, 'session user id:', session?.user?.id);
       if (event === 'SIGNED_OUT' || !session?.user) {
         setUser(null);
+        markInitialDone();
         return;
       }
       // Defer Supabase calls outside the auth callback to avoid the gotrue lock deadlock.
@@ -191,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         fetchProfileById(uid).then(profile => {
           if (mounted) setUser(profile);
+          markInitialDone();
         });
       }, 0);
     });

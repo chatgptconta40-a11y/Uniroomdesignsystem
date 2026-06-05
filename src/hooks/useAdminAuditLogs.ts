@@ -9,6 +9,7 @@ export type AuditAction =
   | 'ad_reactivated'
   | 'report_resolved'
   | 'report_rejected'
+  | 'report_under_review'
   | 'landlord_suspended'
   | 'landlord_suspension_lifted'
   | 'landlord_blocked'
@@ -61,6 +62,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ad_reactivated: 'Anúncio reativado',
   report_resolved: 'Denúncia resolvida',
   report_rejected: 'Denúncia rejeitada',
+  report_under_review: 'Denúncia em análise',
   landlord_suspended: 'Senhorio suspenso',
   landlord_suspension_lifted: 'Suspensão de senhorio levantada',
   landlord_blocked: 'Senhorio bloqueado de publicar',

@@ -744,7 +744,9 @@ export function MyHome() {
                 )}
               </div>
             </Card>
+          </div>
 
+          <div className="lg:col-span-3 space-y-6">
             <Card className="p-6 border-border/60">
               <h3 className="text-lg font-bold text-foreground mb-1">Regras principais</h3>
               <p className="text-sm text-muted-foreground mb-5">Acordos a respeitar enquanto vives aqui.</p>
@@ -857,7 +859,7 @@ export function MyHome() {
             </Card>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-6 lg:row-start-1">
             <Card className="p-6 border-border/60 bg-gradient-to-br from-card via-card to-secondary/5">
               <div className="flex items-center gap-2 mb-4">
                 <ShieldCheck className="w-4 h-4 text-secondary" />

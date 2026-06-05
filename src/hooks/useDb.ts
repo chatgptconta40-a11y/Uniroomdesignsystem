@@ -653,7 +653,7 @@ export function useReports() {
   ).length;
 
   const criticalCount = reports.filter(
-    r => r.severity === 'critical' && r.status !== 'resolved' && r.status !== 'dismissed',
+    r => r.severity === 'high' && r.status !== 'resolved' && r.status !== 'dismissed',
   ).length;
 
   return { reports, loading, refresh, updateStatus, addInternalNote, openCount, criticalCount };

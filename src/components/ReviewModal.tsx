@@ -44,6 +44,16 @@ export function ReviewModal({
   };
 
   const handleSubmit = async () => {
+    if (!propertyId) {
+      toast.error('Não foi possível identificar a propriedade. Tenta novamente.');
+      return;
+    }
+
+    if (!userId) {
+      toast.error('Tens de estar autenticado para publicar uma avaliação.');
+      return;
+    }
+
     if (rating === 0) {
       toast.error('Por favor, seleciona uma classificação geral');
       return;
@@ -56,6 +66,11 @@ export function ReviewModal({
 
     if (!comment.trim()) {
       toast.error('Por favor, escreve um comentário');
+      return;
+    }
+
+    if (comment.trim().length > 500) {
+      toast.error('O comentário não pode exceder 500 caracteres');
       return;
     }
 

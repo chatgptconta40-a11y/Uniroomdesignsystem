@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import type { UserType } from '../types/auth';
@@ -16,13 +16,25 @@ function getDefaultRoute(type: UserType): string {
 
 export function ProtectedRoute({ children, allowedTypes }: ProtectedRouteProps) {
   const { isAuthenticated, loading, user } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => setTimedOut(true), 12000);
+    return () => clearTimeout(t);
+  }, [loading]);
+
+  if (loading && !timedOut) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">A carregar...</div>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-muted-foreground">A carregar sessão…</p>
       </div>
     );
+  }
+
+  if (timedOut && loading) {
+    return <Navigate to="/login" replace />;
   }
 
   if (!isAuthenticated) {

@@ -82,7 +82,7 @@ export function AdminUsers() {
         if (error) { console.error('[AdminUsers] fetch missing pending users:', error); return; }
         setMissingPendingUsers((data ?? []).map(r => ({
           id: r.id, email: r.email, fullName: r.full_name ?? '',
-          type: r.type, status: r.status, verified: !!r.verified,
+          type: r.type, status: (r.status ?? 'active') as AdminUserRow['status'], verified: !!r.verified,
           onboardingCompleted: !!r.onboarding_completed,
           createdAt: new Date(r.created_at),
           lastActive: r.last_active ? new Date(r.last_active) : undefined,

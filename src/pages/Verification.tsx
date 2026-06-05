@@ -233,9 +233,17 @@ export function Verification() {
     setIsProcessing(true);
     await new Promise(resolve => setTimeout(resolve, 900));
 
-    await submitDocument(documentFile.name);
+    const result = await submitDocument(documentFile.name);
 
     setIsProcessing(false);
+
+    if (!result) {
+      toast.error('Não foi possível enviar o documento.', {
+        description: 'Verifica a tua ligação e tenta novamente.',
+      });
+      return;
+    }
+
     toast.success('Documento enviado para análise do administrador.');
   };
 

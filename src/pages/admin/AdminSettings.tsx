@@ -101,10 +101,7 @@ export function AdminSettings() {
       toast.error('Por favor, insira um email válido');
       return;
     }
-    toast.success(`Convite enviado com sucesso para ${inviteEmail}!`);
-    setInviteEmail('');
-    setInviteRole('moderator');
-    setShowInviteModal(false);
+    toast.info('Funcionalidade não disponível. O convite de administradores ainda não está implementado.');
   };
 
   const numberField = (key: keyof AppSettings, value: number) => (
