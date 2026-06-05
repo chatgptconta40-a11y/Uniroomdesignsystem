@@ -1,4 +1,4 @@
-import { useMemo, useRef, useCallback } from 'react';
+import { useMemo, useRef, useCallback, useState } from 'react';
 import {
   GraduationCap,
   MapPin,
@@ -269,16 +269,41 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
   // Route to show on the map (only for non-transit modes)
   const mapRoute = selectedMode !== 'transit' ? routeResult : null;
 
-  // Clicking "Ver percurso" scrolls to the Leaflet map and ensures a routable
-  // mode is active. Falls back to opening Google Maps when ORS is not configured.
-  const handleVerPercurso = useCallback(() => {
-    if (ORS_KEY_CONFIGURED && mapCoords) {
-      if (selectedMode === 'transit') setMode('walking');
-      mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else {
-      window.open(urls.directions, '_blank', 'noreferrer');
+  // focusTrigger: incrementing causes PropertyRouteMap to flyTo the property pin.
+  const [focusTrigger, setFocusTrigger] = useState(0);
+  // Brief inline notices for edge-case user actions.
+  const [noCoordNotice, setNoCoordNotice] = useState(false);
+  const [transitSwitchedNotice, setTransitSwitchedNotice] = useState(false);
+
+  function showNoticeFor(setter: (v: boolean) => void) {
+    setter(true);
+    setTimeout(() => setter(false), 3500);
+  }
+
+  // "Abrir no mapa": centers the internal Leaflet map on the property pin.
+  const handleAbrirNoMapa = useCallback(() => {
+    if (!mapCoords) {
+      showNoticeFor(setNoCoordNotice);
+      return;
     }
-  }, [mapCoords, selectedMode, setMode, urls.directions]);
+    mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFocusTrigger(n => n + 1);
+  }, [mapCoords]);
+
+  // "Ver percurso": draws the real ORS route on the Leaflet map.
+  // If transit is active, auto-switches to walking and notifies.
+  // Falls back to opening Google Maps only when no ORS key AND no coords.
+  const handleVerPercurso = useCallback(() => {
+    if (!mapCoords) {
+      showNoticeFor(setNoCoordNotice);
+      return;
+    }
+    if (selectedMode === 'transit') {
+      setMode('walking');
+      showNoticeFor(setTransitSwitchedNotice);
+    }
+    mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [mapCoords, selectedMode, setMode]);
 
   return (
     <section className="space-y-4 min-w-0 overflow-hidden">
@@ -317,6 +342,7 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
             isApproximate={isApproximate}
             routeResult={mapRoute}
             heightClass="h-52 lg:h-full lg:min-h-[200px]"
+            focusTrigger={focusTrigger}
           />
         ) : (
           <div className="h-52 lg:h-full lg:min-h-[200px] rounded-2xl border border-border bg-muted flex items-center justify-center">
@@ -376,32 +402,56 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
         ))}
       </div>
 
+      {/* Inline notices for edge cases */}
+      {noCoordNotice && (
+        <div className="flex items-center gap-2 rounded-lg border border-muted bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          <MapPin className="h-3.5 w-3.5 shrink-0" />
+          Localização ainda não disponível para esta propriedade.
+        </div>
+      )}
+      {transitSwitchedNotice && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+          <Info className="h-3.5 w-3.5 shrink-0" />
+          Transporte público não tem rota interna — a mostrar percurso a pé. Para horários, usa "Abrir direções externas".
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <a
-          href={urls.view}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-bold text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
+        {/* Focuses the internal Leaflet map on the property pin */}
+        <button
+          type="button"
+          onClick={handleAbrirNoMapa}
+          disabled={!mapCoords}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-bold text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <ExternalLink className="h-4 w-4 shrink-0" />
-          Abrir no mapa
-        </a>
+          <MapPin className="h-4 w-4 shrink-0" />
+          Centrar no mapa
+        </button>
+
+        {/* External fallback — clearly labelled as leaving the app */}
         <a
           href={urls.directions}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-bold text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
         >
-          <Navigation className="h-4 w-4 shrink-0" />
-          Obter direções
+          <ExternalLink className="h-4 w-4 shrink-0" />
+          Abrir direções externas
         </a>
+
+        {/* Primary CTA: draws ORS route on internal Leaflet map */}
         <button
           type="button"
           onClick={handleVerPercurso}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-primary/90 sm:col-span-2 lg:col-span-1"
+          disabled={!mapCoords}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 lg:col-span-1"
         >
-          <GraduationCap className="h-4 w-4 shrink-0" />
+          {routeLoading ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          ) : (
+            <GraduationCap className="h-4 w-4 shrink-0" />
+          )}
           Ver percurso até à ESTGV
         </button>
       </div>

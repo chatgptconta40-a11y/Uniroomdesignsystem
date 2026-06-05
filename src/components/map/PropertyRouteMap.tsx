@@ -5,6 +5,18 @@ import L from 'leaflet';
 import { ESTGV, type LatLng } from '../../utils/estgv';
 import type { RouteResult } from '../../utils/openroute';
 
+// Flies to property coords whenever focusTrigger increments.
+function MapFocuser({ coords, trigger }: { coords: LatLng; trigger: number }) {
+  const map = useMap();
+  const prevTrigger = useRef(-1);
+  useEffect(() => {
+    if (trigger === 0 || trigger === prevTrigger.current) return;
+    prevTrigger.current = trigger;
+    map.flyTo([coords.lat, coords.lng], Math.max(map.getZoom(), 15), { animate: true, duration: 0.8 });
+  }, [trigger, coords.lat, coords.lng, map]);
+  return null;
+}
+
 // Leaflet's default icon URLs break in Vite — we use DivIcon with inline SVG instead.
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 
@@ -91,6 +103,8 @@ interface PropertyRouteMapProps {
   isApproximate?: boolean;
   routeResult?: RouteResult | null;
   heightClass?: string;
+  /** Increment this number to trigger an animated flyTo on the property pin. */
+  focusTrigger?: number;
 }
 
 export function PropertyRouteMap({
@@ -98,6 +112,7 @@ export function PropertyRouteMap({
   isApproximate = false,
   routeResult,
   heightClass = 'h-52 lg:min-h-[180px] lg:h-full',
+  focusTrigger = 0,
 }: PropertyRouteMapProps) {
   const center: [number, number] = [
     (coords.lat + ESTGV.lat) / 2,
@@ -139,6 +154,7 @@ export function PropertyRouteMap({
           polyline={routeResult?.polyline ?? null}
           propertyCoords={coords}
         />
+        <MapFocuser coords={coords} trigger={focusTrigger} />
       </MapContainer>
     </div>
   );
