@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Home, User, Building, ArrowRight, Check } from 'lucide-react';
+import { Home, User, Building, ArrowRight, Check, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/Input';
 import { Checkbox } from '../components/Checkbox';
 import { Button } from '../components/Button';
 import { UserType } from '../types/auth';
 import { toast } from 'sonner';
+import { supabaseUrl } from '../lib/supabase';
+import { projectId as makeProjectId } from '../../utils/supabase/info';
+
+const EXPECTED_PROJECT = 'wsdxtflqoghexndbeetn';
+const hasMismatch = makeProjectId !== EXPECTED_PROJECT;
 
 export function Register() {
   const navigate = useNavigate();
@@ -110,12 +115,31 @@ export function Register() {
           </div>
         </Link>
 
+        {hasMismatch && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <strong>Diagnóstico Supabase — MISMATCH</strong>
+                <p className="mt-1 font-mono text-xs">
+                  utils/supabase/info.tsx → <span className="text-red-600">{makeProjectId}</span><br />
+                  src/lib/supabase.ts → <span className="text-green-700">{EXPECTED_PROJECT}</span>
+                </p>
+                <p className="mt-1">O signup pode estar a ir para o projeto errado. Reconecta o Supabase nas definições do Figma Make.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-card rounded-2xl p-8 border border-border" style={{ boxShadow: 'var(--shadow-lg)' }}>
           <div className="text-center mb-8">
             <h1 className="mb-3">Criar conta</h1>
             <p className="text-muted-foreground">
               Escolhe o teu perfil e começa a usar a UniRoom
             </p>
+          </div>
+          <div className="mb-4 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground font-mono">
+            Auth → <span className="text-foreground">{supabaseUrl}</span>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
