@@ -230,7 +230,7 @@ interface PropertyPhoto {
 export function NewListing() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { addProperty, addRoom } = useProperties();
+  const { addProperty, addRoom, refreshProperties } = useProperties();
 
   // Generate the property ID once so photo uploads can reference it immediately.
   const [propertyId] = useState(() => crypto.randomUUID());
@@ -636,8 +636,7 @@ export function NewListing() {
 
       await addProperty(newProperty, { skipRefresh: true });
       await Promise.all(roomsToCreate.map(room => addRoom(room, { skipRefresh: true })));
-      // Realtime subscription handles live state; LandlordListings triggers the final sync on navigation.
-      window.dispatchEvent(new Event('uniroom:properties-updated'));
+      await refreshProperties(true);
 
       saveSucceeded = true;
 

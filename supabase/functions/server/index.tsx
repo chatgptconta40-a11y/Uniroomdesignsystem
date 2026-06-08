@@ -470,6 +470,90 @@ app.delete("/make-server-08c694dc/images/cleanup", async (c) => {
   }
 });
 
+// ─── Properties & Rooms (admin client — bypasses RLS) ────────────────────────
+
+const PROPERTIES_SELECT =
+  "id, landlord_id, title, description, address, city, zone, distance_to_university, coordinates, total_rooms, whole_property_available, whole_property_price, whole_property_utilities, whole_property_minimum_stay, status, verified, admin_suspended, admin_suspension_reason, admin_suspended_at, admin_suspended_by, views, images, amenities, house_rules, created_at, updated_at";
+
+const ROOMS_SELECT =
+  "id, property_id, landlord_id, title, room_number, description, price, utilities, room_type, status, available_from, size, area, private_bathroom, desk, wardrobe, balcony, air_conditioning, max_occupants, minimum_stay, images, reserved_by, occupied_by, move_in_date, compatibility_score, views, created_at, updated_at";
+
+app.get("/make-server-08c694dc/properties", async (c) => {
+  try {
+    const supabase = adminClient();
+    const { data, error } = await supabase
+      .from("properties")
+      .select(PROPERTIES_SELECT)
+      .order("created_at", { ascending: false });
+    if (error) { console.log(`[properties] list error: ${error.message}`); return c.json({ error: error.message }, 500); }
+    return c.json({ data: data ?? [] });
+  } catch (err) { console.log(`[properties] list exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
+});
+
+app.get("/make-server-08c694dc/properties/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const supabase = adminClient();
+    const { data, error } = await supabase.from("properties").select("*").eq("id", id).maybeSingle();
+    if (error) return c.json({ error: error.message }, 500);
+    if (!data) return c.json({ error: "Not found" }, 404);
+    return c.json({ data });
+  } catch (err) { console.log(`[properties/:id] exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
+});
+
+app.post("/make-server-08c694dc/properties", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+    const body = await c.req.json();
+    if (body.landlord_id && body.landlord_id !== authed.user.id) {
+      return c.json({ error: "Forbidden: landlord_id mismatch" }, 403);
+    }
+    const supabase = adminClient();
+    const { error } = await supabase.from("properties").upsert(body, { onConflict: "id" });
+    if (error) { console.log(`[properties] upsert error: ${error.message}`); return c.json({ error: error.message }, 500); }
+    return c.json({ success: true });
+  } catch (err) { console.log(`[properties] upsert exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
+});
+
+app.get("/make-server-08c694dc/rooms", async (c) => {
+  try {
+    const supabase = adminClient();
+    const { data, error } = await supabase
+      .from("rooms")
+      .select(ROOMS_SELECT)
+      .order("created_at", { ascending: false });
+    if (error) { console.log(`[rooms] list error: ${error.message}`); return c.json({ error: error.message }, 500); }
+    return c.json({ data: data ?? [] });
+  } catch (err) { console.log(`[rooms] list exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
+});
+
+app.get("/make-server-08c694dc/rooms/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const supabase = adminClient();
+    const { data, error } = await supabase.from("rooms").select("*").eq("id", id).maybeSingle();
+    if (error) return c.json({ error: error.message }, 500);
+    if (!data) return c.json({ error: "Not found" }, 404);
+    return c.json({ data });
+  } catch (err) { console.log(`[rooms/:id] exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
+});
+
+app.post("/make-server-08c694dc/rooms", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+    const body = await c.req.json();
+    if (body.landlord_id && body.landlord_id !== authed.user.id) {
+      return c.json({ error: "Forbidden: landlord_id mismatch" }, 403);
+    }
+    const supabase = adminClient();
+    const { error } = await supabase.from("rooms").upsert(body, { onConflict: "id" });
+    if (error) { console.log(`[rooms] upsert error: ${error.message}`); return c.json({ error: error.message }, 500); }
+    return c.json({ success: true });
+  } catch (err) { console.log(`[rooms] upsert exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
+});
+
 // ─── Startup ──────────────────────────────────────────────────────────────────
 
 (async () => {

@@ -76,8 +76,8 @@ const DEFAULT_FILTERS: SearchFilters = {
   cities: [],
   university: 'ESTGV',
   entryMonth: '',
-  minPrice: 150,
-  maxPrice: 600,
+  minPrice: 0,
+  maxPrice: 2000,
   includeUtilitiesInPrice: false,
   roomTypes: [],
   maxWalkMinutes: 60,
@@ -629,31 +629,33 @@ function FilterSidebar({
           </div>
 
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Preço
-            </p>
-
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {[250, 300, 400].map(value => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => set({ maxPrice: filters.maxPrice === value ? 600 : value })}
-                  className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                    filters.maxPrice === value
-                      ? 'bg-primary text-white border-primary'
-                      : 'bg-muted/50 text-muted-foreground border-border hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  €{value}
-                </button>
-              ))}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Preço
+              </p>
+              <span className="text-sm font-semibold text-primary">
+                €0 – €{filters.maxPrice === 2000 ? '2000' : filters.maxPrice}
+              </span>
             </div>
 
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>€{filters.minPrice}</span>
-              <span className="font-semibold text-primary">€{filters.minPrice} - €{filters.maxPrice}</span>
-              <span>€600</span>
+            <div className="relative pb-1">
+              <input
+                type="range"
+                min={0}
+                max={2000}
+                step={25}
+                value={filters.maxPrice}
+                onChange={e => set({ maxPrice: Number(e.target.value) })}
+                className="price-slider w-full h-2 rounded-full appearance-none cursor-pointer"
+                style={{
+                  background: `linear-gradient(to right, var(--primary) 0%, var(--primary) ${(filters.maxPrice / 2000) * 100}%, var(--border) ${(filters.maxPrice / 2000) * 100}%, var(--border) 100%)`,
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+              <span>€0</span>
+              <span>€2000</span>
             </div>
           </div>
 
@@ -740,11 +742,18 @@ export function SearchRooms() {
     setLoading(true);
 
     const timer = setTimeout(() => {
+      console.log('[search] total properties:', properties.length, properties.map(p => ({ id: p.id, status: p.status, adminSuspended: p.adminSuspended })));
+      console.log('[search] total rooms:', rooms.length, rooms.map(r => ({ id: r.id, status: r.status, propertyId: r.propertyId, price: r.price })));
+
       const activeProperties = properties.filter(property => property.status === 'active' && !property.adminSuspended);
       const propertiesMap = new Map(activeProperties.map(property => [property.id, property]));
       const activePropertyIds = activeProperties.map(property => property.id);
 
+      console.log('[search] active properties:', activeProperties.length, activePropertyIds);
+
       let filtered = rooms.filter(room => room.status === 'available' && activePropertyIds.includes(room.propertyId));
+
+      console.log('[search] available rooms (status+property filter):', filtered.length, filtered.map(r => ({ id: r.id, price: r.price })));
 
       if (filters.query.trim()) {
         const query = filters.query.toLowerCase();
@@ -824,6 +833,8 @@ export function SearchRooms() {
         return true;
       });
 
+      console.log('[search] rooms after all filters:', filtered.length, 'filters:', { minPrice: filters.minPrice, maxPrice: filters.maxPrice, cities: filters.cities, roomTypes: filters.roomTypes });
+
       const pairs = filtered
         .map(room => {
           const property = propertiesMap.get(room.propertyId);
@@ -868,7 +879,7 @@ export function SearchRooms() {
     if (filters.query.trim()) count++;
     if (filters.cities.length > 0) count++;
     if (filters.roomTypes.length > 0) count++;
-    if (filters.minPrice > 150 || filters.maxPrice < 600) count++;
+    if (filters.minPrice > 0 || filters.maxPrice < 2000) count++;
     if (filters.maxWalkMinutes < 60) count++;
     if (canShowCompatibility && filters.minCompatibility > 0) count++;
     if (filters.entryMonth) count++;

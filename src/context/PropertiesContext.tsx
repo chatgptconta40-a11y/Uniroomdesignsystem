@@ -1,8 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { Property, Room, PropertyStatus, RoomStatus } from '../types/property';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { useDataBusRefresh } from '../lib/dataBus';
 import { useAuth } from './AuthContext';
+
+// All reads and writes go through the Edge Function server (admin client,
+// bypasses RLS completely). This is the only reliable way to ensure
+// all users (student, landlord, admin, anonymous) see the same data.
+const SERVER_BASE = `${supabaseUrl}/functions/v1/make-server-08c694dc`;
 
 interface PropertiesContextType {
   properties: Property[];
@@ -19,20 +24,15 @@ interface PropertiesContextType {
   getProperty: (id: string) => Property | undefined;
   getRoom: (id: string) => Room | undefined;
   getRoomsByProperty: (propertyId: string) => Room[];
-  refreshProperties: () => Promise<void>;
+  refreshProperties: (force?: boolean) => Promise<void>;
   fetchPropertyDetail: (id: string) => Promise<Property | null>;
   fetchRoomDetail: (id: string) => Promise<Room | null>;
   adminSuspendProperty: (id: string, reason: string, adminName: string) => Promise<void>;
   liftAdminSuspension: (id: string) => Promise<void>;
 }
 
-const PROPERTIES_LIGHT_FIELDS =
-  'id, landlord_id, title, address, city, zone, distance_to_university, coordinates, total_rooms, whole_property_available, whole_property_price, status, verified, admin_suspended, views, images, created_at, updated_at';
-
-const ROOMS_LIGHT_FIELDS =
-  'id, property_id, landlord_id, title, room_number, price, utilities, room_type, status, available_from, size, private_bathroom, desk, wardrobe, balcony, images, created_at, updated_at';
-
-const REFRESH_THROTTLE_MS = 120_000;
+// Throttle for automatic (non-forced) refreshes only.
+const REFRESH_THROTTLE_MS = 30_000;
 
 const PropertiesContext = createContext<PropertiesContextType | undefined>(undefined);
 
@@ -166,7 +166,6 @@ function attachRoomIds(properties: Property[], rooms: Room[]): Property[] {
 
 function propertyToDb(p: Partial<Property>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-
   if (p.id !== undefined) out.id = p.id;
   if (p.landlordId !== undefined) out.landlord_id = p.landlordId;
   if (p.title !== undefined) out.title = p.title;
@@ -189,13 +188,11 @@ function propertyToDb(p: Partial<Property>): Record<string, unknown> {
   if (p.views !== undefined) out.views = p.views;
   if (p.createdAt !== undefined) out.created_at = p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt;
   if (p.updatedAt !== undefined) out.updated_at = p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt;
-
   return out;
 }
 
 function roomToDb(r: Partial<Room>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-
   if (r.id !== undefined) out.id = r.id;
   if (r.propertyId !== undefined) out.property_id = r.propertyId;
   if (r.landlordId !== undefined) out.landlord_id = r.landlordId;
@@ -223,7 +220,6 @@ function roomToDb(r: Partial<Room>): Record<string, unknown> {
   if (r.views !== undefined) out.views = r.views;
   if (r.createdAt !== undefined) out.created_at = r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt;
   if (r.updatedAt !== undefined) out.updated_at = r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt;
-
   return out;
 }
 
@@ -236,109 +232,99 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchRemoteProperties(): Promise<Property[]> {
+// ─── Server helpers ───────────────────────────────────────────────────────────
+
+async function serverGet<T>(path: string): Promise<T[]> {
   if (!isSupabaseConfigured) return [];
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      if (attempt === 1) console.log('[fetch] properties light');
-      const { data, error } = await supabase
-        .from('properties')
-        .select(PROPERTIES_LIGHT_FIELDS)
-        .order('created_at', { ascending: false });
-      if (error) {
-        if (isTransientError(error.message) && attempt < maxAttempts) {
-          await sleep(attempt * 1200);
-          continue;
-        }
-        if (!isTransientError(error.message)) console.warn('[UniRoom] Properties fetch error:', error.message);
+      const res = await fetch(`${SERVER_BASE}${path}`, {
+        headers: { Authorization: `Bearer ${supabaseAnonKey}` },
+      });
+      if (!res.ok) {
+        const msg = `HTTP ${res.status}`;
+        if (attempt < maxAttempts) { await sleep(attempt * 1000); continue; }
+        console.warn(`[UniRoom] GET ${path} error: ${msg}`);
         return [];
       }
-      return (data ?? []).map(normalizeProperty);
-    } catch {
-      if (attempt < maxAttempts) { await sleep(attempt * 1200); continue; }
+      const json = await res.json();
+      return (json.data ?? []) as T[];
+    } catch (err) {
+      if (isTransientError(String(err)) && attempt < maxAttempts) { await sleep(attempt * 1000); continue; }
+      console.warn(`[UniRoom] GET ${path} exception:`, err);
       return [];
     }
   }
   return [];
+}
+
+async function serverGetOne<T>(path: string): Promise<T | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const res = await fetch(`${SERVER_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${supabaseAnonKey}` },
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return (json.data ?? null) as T | null;
+  } catch {
+    return null;
+  }
+}
+
+async function serverPost(path: string, body: unknown): Promise<void> {
+  if (!isSupabaseConfigured) throw new Error('Supabase não configurado.');
+  const { data: session } = await supabase.auth.getSession();
+  const token = session.session?.access_token ?? supabaseAnonKey;
+  const res = await fetch(`${SERVER_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(String(json.error ?? `Server error ${res.status}`));
+  }
+}
+
+// ─── Remote fetch ─────────────────────────────────────────────────────────────
+
+async function fetchRemoteProperties(): Promise<Property[]> {
+  console.log('[fetch] properties via server');
+  const rows = await serverGet<unknown>('/properties');
+  return rows.map(normalizeProperty);
 }
 
 async function fetchRemoteRooms(): Promise<Room[]> {
-  if (!isSupabaseConfigured) return [];
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      if (attempt === 1) console.log('[fetch] rooms light');
-      const { data, error } = await supabase
-        .from('rooms')
-        .select(ROOMS_LIGHT_FIELDS)
-        .order('created_at', { ascending: false });
-      if (error) {
-        if (isTransientError(error.message) && attempt < maxAttempts) {
-          await sleep(attempt * 1200);
-          continue;
-        }
-        if (!isTransientError(error.message)) console.warn('[UniRoom] Rooms fetch error:', error.message);
-        return [];
-      }
-      return (data ?? []).map(normalizeRoom);
-    } catch {
-      if (attempt < maxAttempts) { await sleep(attempt * 1200); continue; }
-      return [];
-    }
-  }
-  return [];
+  console.log('[fetch] rooms via server');
+  const rows = await serverGet<unknown>('/rooms');
+  return rows.map(normalizeRoom);
 }
 
 async function fetchPropertyDetailRemote(id: string): Promise<Property | null> {
-  if (!isSupabaseConfigured) return null;
-  console.log('[fetch] property detail', id);
-  const { data, error } = await supabase
-    .from('properties')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  if (error || !data) return null;
-  return normalizeProperty(data);
+  console.log('[fetch] property detail via server', id);
+  const row = await serverGetOne<unknown>(`/properties/${encodeURIComponent(id)}`);
+  return row ? normalizeProperty(row) : null;
 }
 
 async function fetchRoomDetailRemote(id: string): Promise<Room | null> {
-  if (!isSupabaseConfigured) return null;
-  console.log('[fetch] room detail', id);
-  const { data, error } = await supabase
-    .from('rooms')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  if (error || !data) return null;
-  return normalizeRoom(data);
+  console.log('[fetch] room detail via server', id);
+  const row = await serverGetOne<unknown>(`/rooms/${encodeURIComponent(id)}`);
+  return row ? normalizeRoom(row) : null;
 }
 
-async function syncPropertyToSupabase(property: Property): Promise<void> {
-  if (!isSupabaseConfigured) {
-    throw new Error('Supabase não configurado.');
-  }
-  const { error } = await supabase
-    .from('properties')
-    .upsert(propertyToDb(property), { onConflict: 'id' });
-  if (error) {
-    if (!isNetworkError(error.message)) console.warn('[UniRoom] Property sync error:', error.message);
-    throw new Error(error.message || 'Falha ao gravar a propriedade.');
-  }
+// ─── Remote sync ──────────────────────────────────────────────────────────────
+
+async function syncPropertyToServer(property: Property): Promise<void> {
+  await serverPost('/properties', propertyToDb(property));
 }
 
-async function syncRoomToSupabase(room: Room): Promise<void> {
-  if (!isSupabaseConfigured) {
-    throw new Error('Supabase não configurado.');
-  }
-  const { error } = await supabase
-    .from('rooms')
-    .upsert(roomToDb(room), { onConflict: 'id' });
-  if (error) {
-    if (!isNetworkError(error.message)) console.warn('[UniRoom] Room sync error:', error.message);
-    throw new Error(error.message || 'Falha ao gravar o quarto.');
-  }
+async function syncRoomToServer(room: Room): Promise<void> {
+  await serverPost('/rooms', roomToDb(room));
 }
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function PropertiesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -347,30 +333,24 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Snapshot estável da lista atual de rooms, para os callbacks do canal
-  // Realtime poderem recalcular roomIds sem reanexar o listener.
   const roomsRef = useRef<Room[]>([]);
   useEffect(() => { roomsRef.current = rooms; }, [rooms]);
 
   const applyToState = useCallback((nextProperties: Property[], nextRooms: Room[]) => {
-    const normalizedRooms = nextRooms.map(normalizeRoom);
-    const normalizedProperties = attachRoomIds(nextProperties.map(normalizeProperty), normalizedRooms);
-    setProperties(normalizedProperties);
-    setRooms(normalizedRooms);
+    const withRoomIds = attachRoomIds(nextProperties, nextRooms);
+    setProperties(withRoomIds);
+    setRooms(nextRooms);
     notifyPropertiesChanged();
   }, []);
 
   const lastRefreshAtRef = useRef<number>(0);
   const inflightRefreshRef = useRef<Promise<void> | null>(null);
 
-  const refreshProperties = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setLoading(false);
-      return;
-    }
-    if (inflightRefreshRef.current) return inflightRefreshRef.current;
-    const now = Date.now();
-    if (now - lastRefreshAtRef.current < REFRESH_THROTTLE_MS) return;
+  const refreshProperties = useCallback(async (force = false) => {
+    if (!isSupabaseConfigured) { setLoading(false); return; }
+    if (!force && inflightRefreshRef.current) return inflightRefreshRef.current;
+    if (!force && Date.now() - lastRefreshAtRef.current < REFRESH_THROTTLE_MS) return;
+    if (force) inflightRefreshRef.current = null;
 
     const run = (async () => {
       setLoading(true);
@@ -396,130 +376,106 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
 
   useDataBusRefresh('properties', refreshProperties);
 
-  // ─── Realtime: properties + rooms ──────────────────────────────────────
-  // Mutamos diretamente o state com a row recebida (sem refetch completo),
-  // recalculando depois roomIds/totalRooms para manter consistência.
+  // Realtime: apply row-level changes directly to state (no full refetch needed)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
     const channel = supabase
       .channel(`uniroom:properties-rooms:${Math.random().toString(36).slice(2, 9)}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'properties' },
-        payload => {
-          if (payload.eventType === 'DELETE') {
-            const removedId = String((payload.old as { id?: string }).id ?? '');
-            if (!removedId) return;
-            setProperties(prev => {
-              if (!prev.some(p => p.id === removedId)) return prev;
-              return prev.filter(p => p.id !== removedId);
-            });
-            return;
-          }
-
-          const incoming = normalizeProperty(payload.new);
-
-          setProperties(prev => {
-            const idx = prev.findIndex(p => p.id === incoming.id);
-            const nextList = idx === -1
-              ? [incoming, ...prev]
-              : prev.map(p => (p.id === incoming.id ? incoming : p));
-            // attachRoomIds depende dos rooms — recalcula usando o snapshot
-            // mais recente via setRooms abaixo. Aqui mantemos a lista crua,
-            // o recompute corre em useMemo derivado? Não, fazemos imediato:
-            return attachRoomIds(nextList, roomsRef.current);
-          });
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms' },
-        payload => {
-          if (payload.eventType === 'DELETE') {
-            const removedId = String((payload.old as { id?: string }).id ?? '');
-            if (!removedId) return;
-            setRooms(prev => {
-              if (!prev.some(r => r.id === removedId)) return prev;
-              const next = prev.filter(r => r.id !== removedId);
-              roomsRef.current = next;
-              setProperties(props => attachRoomIds(props, next));
-              return next;
-            });
-            return;
-          }
-
-          const incoming = normalizeRoom(payload.new);
-
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'properties' }, payload => {
+        if (payload.eventType === 'DELETE') {
+          const removedId = String((payload.old as { id?: string }).id ?? '');
+          if (removedId) setProperties(prev => prev.filter(p => p.id !== removedId));
+          return;
+        }
+        const incoming = normalizeProperty(payload.new);
+        setProperties(prev => {
+          const idx = prev.findIndex(p => p.id === incoming.id);
+          const next = idx === -1 ? [incoming, ...prev] : prev.map(p => p.id === incoming.id ? incoming : p);
+          return attachRoomIds(next, roomsRef.current);
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, payload => {
+        if (payload.eventType === 'DELETE') {
+          const removedId = String((payload.old as { id?: string }).id ?? '');
+          if (!removedId) return;
           setRooms(prev => {
-            const idx = prev.findIndex(r => r.id === incoming.id);
-            const next = idx === -1
-              ? [incoming, ...prev]
-              : prev.map(r => (r.id === incoming.id ? incoming : r));
+            const next = prev.filter(r => r.id !== removedId);
             roomsRef.current = next;
             setProperties(props => attachRoomIds(props, next));
             return next;
           });
-        },
-      )
+          return;
+        }
+        const incoming = normalizeRoom(payload.new);
+        setRooms(prev => {
+          const idx = prev.findIndex(r => r.id === incoming.id);
+          const next = idx === -1 ? [incoming, ...prev] : prev.map(r => r.id === incoming.id ? incoming : r);
+          roomsRef.current = next;
+          setProperties(props => attachRoomIds(props, next));
+          return next;
+        });
+      })
       .subscribe();
 
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return () => { void supabase.removeChannel(channel); };
   }, []);
 
   const addProperty = async (property: Property, options?: { skipRefresh?: boolean }) => {
-    const nextProperty = normalizeProperty({
-      ...property,
-      createdAt: property.createdAt || new Date(),
-      updatedAt: new Date(),
+    const next = normalizeProperty({ ...property, createdAt: property.createdAt || new Date(), updatedAt: new Date() });
+    // Optimistic
+    setProperties(prev => {
+      if (prev.some(p => p.id === next.id)) return prev;
+      return attachRoomIds([next, ...prev], roomsRef.current);
     });
-    await syncPropertyToSupabase(nextProperty);
-    if (!options?.skipRefresh) await refreshProperties();
+    await syncPropertyToServer(next);
+    if (!options?.skipRefresh) await refreshProperties(true);
   };
 
   const addRoom = async (room: Room, options?: { skipRefresh?: boolean }) => {
-    const nextRoom = normalizeRoom({
-      ...room,
-      createdAt: room.createdAt || new Date(),
-      updatedAt: new Date(),
+    const next = normalizeRoom({ ...room, createdAt: room.createdAt || new Date(), updatedAt: new Date() });
+    // Optimistic
+    setRooms(prev => {
+      if (prev.some(r => r.id === next.id)) return prev;
+      const updated = [next, ...prev];
+      roomsRef.current = updated;
+      setProperties(props => attachRoomIds(props, updated));
+      return updated;
     });
-    await syncRoomToSupabase(nextRoom);
-    if (!options?.skipRefresh) await refreshProperties();
+    await syncRoomToServer(next);
+    if (!options?.skipRefresh) await refreshProperties(true);
   };
 
   const updateProperty = async (id: string, updates: Partial<Property>) => {
     const existing = properties.find(p => p.id === id);
     if (!existing) return;
     const updated = normalizeProperty({ ...existing, ...updates, updatedAt: new Date() });
-    await syncPropertyToSupabase(updated);
-    await refreshProperties();
+    // Optimistic
+    setProperties(prev => attachRoomIds(prev.map(p => p.id === id ? updated : p), roomsRef.current));
+    await syncPropertyToServer(updated);
+    await refreshProperties(true);
   };
 
-  const updatePropertyStatus = async (id: string, status: PropertyStatus) => {
-    await updateProperty(id, { status });
-  };
-
-  const deleteProperty = async (id: string) => {
-    await updatePropertyStatus(id, 'archived');
-  };
+  const updatePropertyStatus = async (id: string, status: PropertyStatus) => updateProperty(id, { status });
+  const deleteProperty = async (id: string) => updatePropertyStatus(id, 'archived');
 
   const updateRoom = async (id: string, updates: Partial<Room>) => {
     const existing = rooms.find(r => r.id === id);
     if (!existing) return;
     const updated = normalizeRoom({ ...existing, ...updates, updatedAt: new Date() });
-    await syncRoomToSupabase(updated);
-    await refreshProperties();
+    // Optimistic
+    setRooms(prev => {
+      const next = prev.map(r => r.id === id ? updated : r);
+      roomsRef.current = next;
+      setProperties(props => attachRoomIds(props, next));
+      return next;
+    });
+    await syncRoomToServer(updated);
+    await refreshProperties(true);
   };
 
-  const updateRoomStatus = async (id: string, status: RoomStatus) => {
-    await updateRoom(id, { status });
-  };
-
-  const deleteRoom = async (id: string) => {
-    await updateRoomStatus(id, 'paused');
-  };
+  const updateRoomStatus = async (id: string, status: RoomStatus) => updateRoom(id, { status });
+  const deleteRoom = async (id: string) => updateRoomStatus(id, 'paused');
 
   const getProperty = (id: string) => properties.find(p => p.id === id);
   const getRoom = (id: string) => rooms.find(r => r.id === id);
@@ -545,36 +501,46 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <PropertiesContext.Provider
-      value={{
-        properties,
-        rooms,
-        loading,
-        addProperty,
-        addRoom,
-        updatePropertyStatus,
-        updateProperty,
-        deleteProperty,
-        updateRoom,
-        updateRoomStatus,
-        deleteRoom,
-        getProperty,
-        getRoom,
-        getRoomsByProperty,
-        refreshProperties,
-        fetchPropertyDetail: fetchPropertyDetailRemote,
-        fetchRoomDetail: fetchRoomDetailRemote,
-        adminSuspendProperty,
-        liftAdminSuspension,
-      }}
-    >
+    <PropertiesContext.Provider value={{
+      properties, rooms, loading,
+      addProperty, addRoom,
+      updatePropertyStatus, updateProperty, deleteProperty,
+      updateRoom, updateRoomStatus, deleteRoom,
+      getProperty, getRoom, getRoomsByProperty,
+      refreshProperties,
+      fetchPropertyDetail: fetchPropertyDetailRemote,
+      fetchRoomDetail: fetchRoomDetailRemote,
+      adminSuspendProperty, liftAdminSuspension,
+    }}>
       {children}
     </PropertiesContext.Provider>
   );
 }
 
+// ─── Safe fallback for isolated component previews ────────────────────────────
+
+const noop = async () => {};
+
+const FALLBACK_CONTEXT: PropertiesContextType = {
+  properties: [], rooms: [], loading: false,
+  addProperty: noop as PropertiesContextType['addProperty'],
+  addRoom: noop as PropertiesContextType['addRoom'],
+  updatePropertyStatus: noop as PropertiesContextType['updatePropertyStatus'],
+  updateProperty: noop as PropertiesContextType['updateProperty'],
+  deleteProperty: noop as PropertiesContextType['deleteProperty'],
+  updateRoom: noop as PropertiesContextType['updateRoom'],
+  updateRoomStatus: noop as PropertiesContextType['updateRoomStatus'],
+  deleteRoom: noop as PropertiesContextType['deleteRoom'],
+  getProperty: () => undefined,
+  getRoom: () => undefined,
+  getRoomsByProperty: () => [],
+  refreshProperties: noop,
+  fetchPropertyDetail: async () => null,
+  fetchRoomDetail: async () => null,
+  adminSuspendProperty: noop as PropertiesContextType['adminSuspendProperty'],
+  liftAdminSuspension: noop as PropertiesContextType['liftAdminSuspension'],
+};
+
 export function useProperties() {
-  const ctx = useContext(PropertiesContext);
-  if (!ctx) throw new Error('useProperties must be used within PropertiesProvider');
-  return ctx;
+  return useContext(PropertiesContext) ?? FALLBACK_CONTEXT;
 }
