@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 import { Link } from 'react-router';
+import { ImgWithFallback } from './ImgWithFallback';
 import {
   MapPin,
   Heart,
@@ -71,7 +72,7 @@ export function AccommodationCard({ accommodation }: AccommodationCardProps) {
     <Link to={`/accommodation/${accommodation.id}`} className="block h-full">
       <div className="group bg-card rounded-xl border border-border overflow-hidden shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-1 h-full flex flex-col">
         <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-          <img
+          <ImgWithFallback
             src={accommodation.images[0]}
             alt={accommodation.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

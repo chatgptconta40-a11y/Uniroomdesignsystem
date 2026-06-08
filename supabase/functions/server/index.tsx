@@ -309,7 +309,175 @@ async function seedDemoContent(ids: Record<string, string>) {
   console.log("Demo content seeded successfully");
 }
 
+app.post("/make-server-08c694dc/active-homes/confirm", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+
+    const { applicationId, landlordId, propertyId, roomId, moveInDate } = await c.req.json();
+    if (!applicationId || !landlordId || !propertyId) {
+      return c.json({ error: "Missing required fields: applicationId, landlordId, propertyId" }, 400);
+    }
+
+    const supabase = adminClient();
+
+    // Verify the application belongs to the authenticated user and is accepted
+    const { data: app_, error: appErr } = await supabase
+      .from("applications")
+      .select("id, user_id, status")
+      .eq("id", applicationId)
+      .single();
+    if (appErr || !app_) return c.json({ error: `Application not found: ${appErr?.message}` }, 404);
+    if (app_.user_id !== authed.user.id) return c.json({ error: "Forbidden: application belongs to another user" }, 403);
+    if (app_.status !== "accepted") return c.json({ error: "Application is not in accepted state" }, 400);
+
+    // Check for existing active home
+    const { data: existing } = await supabase
+      .from("active_homes")
+      .select("id")
+      .eq("student_id", authed.user.id)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      return c.json({ error: "already_has_active_home" }, 409);
+    }
+
+    // Insert active home using service role (bypasses RLS)
+    const { error: insertError } = await supabase.from("active_homes").insert({
+      id: crypto.randomUUID(),
+      student_id: authed.user.id,
+      landlord_id: landlordId,
+      property_id: propertyId,
+      room_id: roomId || null,
+      application_id: applicationId,
+      move_in_date: moveInDate || null,
+    });
+    if (insertError) {
+      console.log(`[confirm-stay] insert error: ${insertError.message}`);
+      return c.json({ error: `Failed to create active home: ${insertError.message}` }, 500);
+    }
+
+    // Mark application as confirmed
+    const { error: updateError } = await supabase
+      .from("applications")
+      .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
+      .eq("id", applicationId);
+    if (updateError) {
+      console.log(`[confirm-stay] application update error: ${updateError.message}`);
+      // Non-fatal: active home was created, just log it
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[confirm-stay] error: ${err}`);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// ─── Image Storage ────────────────────────────────────────────────────────────
+
+const PROPERTY_BUCKET = "make-08c694dc-property-images";
+const ROOM_BUCKET = "make-08c694dc-room-images";
+
+async function ensureImageBuckets() {
+  const supabase = adminClient();
+  const { data: buckets } = await supabase.storage.listBuckets();
+  const names = new Set(buckets?.map(b => b.name) ?? []);
+  for (const name of [PROPERTY_BUCKET, ROOM_BUCKET]) {
+    if (!names.has(name)) {
+      const { error } = await supabase.storage.createBucket(name, { public: true });
+      if (error) console.log(`[storage] failed to create bucket ${name}: ${error.message}`);
+      else console.log(`[storage] created bucket ${name}`);
+    }
+  }
+}
+
+app.post("/make-server-08c694dc/images/upload", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+
+    const formData = await c.req.formData();
+    const file = formData.get("file") as File | null;
+    const type = formData.get("type") as string | null;
+    const landlordId = formData.get("landlordId") as string | null;
+    const propertyId = formData.get("propertyId") as string | null;
+    const roomId = formData.get("roomId") as string | null;
+
+    if (!file || !type || !landlordId || !propertyId) {
+      return c.json({ error: "Missing required fields: file, type, landlordId, propertyId" }, 400);
+    }
+    if (!["property", "room"].includes(type)) {
+      return c.json({ error: "type must be 'property' or 'room'" }, 400);
+    }
+    if (authed.user.id !== landlordId) {
+      return c.json({ error: "Forbidden: landlordId does not match authenticated user" }, 403);
+    }
+
+    const imageId = crypto.randomUUID();
+    const bucket = type === "property" ? PROPERTY_BUCKET : ROOM_BUCKET;
+    const path = type === "property"
+      ? `${landlordId}/${propertyId}/${imageId}.webp`
+      : `${landlordId}/${propertyId}/${roomId ?? "misc"}/${imageId}.webp`;
+
+    const buffer = await file.arrayBuffer();
+    const supabase = adminClient();
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(path, buffer, { contentType: "image/webp", upsert: false });
+
+    if (uploadError) {
+      console.log(`[images] upload error: ${uploadError.message}`);
+      return c.json({ error: `Storage upload failed: ${uploadError.message}` }, 500);
+    }
+
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+    return c.json({ url: urlData.publicUrl });
+  } catch (err) {
+    console.log(`[images] upload exception: ${err}`);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+app.delete("/make-server-08c694dc/images/cleanup", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+
+    const { type, landlordId, propertyId, roomId } = await c.req.json();
+    if (!type || !landlordId || !propertyId) {
+      return c.json({ error: "Missing required fields" }, 400);
+    }
+    if (authed.user.id !== landlordId) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const supabase = adminClient();
+    const bucket = type === "property" ? PROPERTY_BUCKET : ROOM_BUCKET;
+    const folder = type === "property"
+      ? `${landlordId}/${propertyId}`
+      : `${landlordId}/${propertyId}/${roomId}`;
+
+    const { data: files } = await supabase.storage.from(bucket).list(folder);
+    if (files && files.length > 0) {
+      const paths = files.map(f => `${folder}/${f.name}`);
+      await supabase.storage.from(bucket).remove(paths);
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[images] cleanup exception: ${err}`);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// ─── Startup ──────────────────────────────────────────────────────────────────
+
 (async () => {
+  try {
+    await ensureImageBuckets();
+  } catch (e) {
+    console.log(`Bucket setup error: ${e}`);
+  }
   try {
     const ids = await seedDemoUsers();
     if (ids) await seedDemoContent(ids);
@@ -317,7 +485,5 @@ async function seedDemoContent(ids: Record<string, string>) {
     console.log(`Seed pipeline error: ${e}`);
   }
 })();
-
-Deno.serve(app.fetch);
 
 Deno.serve(app.fetch);

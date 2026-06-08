@@ -47,6 +47,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
+import { RoomFormModal, type RoomDraft } from '../components/listings/RoomFormModal';
+// uploadImages removed — images are uploaded eagerly inside RoomFormModal
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -402,243 +404,6 @@ function RoomCard({ room, reservedByName, onEdit, onPause, onReactivate }: {
         )}
       </div>
     </div>
-  );
-}
-
-// ─── AddRoomModal ─────────────────────────────────────────────────────────────
-
-function AddRoomModal({
-  propertyId,
-  landlordId,
-  existingRoomsCount,
-  onClose,
-  onAdd,
-}: {
-  propertyId: string;
-  landlordId: string;
-  existingRoomsCount: number;
-  onClose: () => void;
-  onAdd: (room: Room) => void;
-}) {
-  const [form, setForm] = useState({
-    title: '',
-    price: '',
-    utilities: '',
-    size: '',
-    roomType: 'private' as Room['roomType'],
-    privateBathroom: false,
-    balcony: false,
-    desk: true,
-    wardrobe: true,
-    airConditioning: false,
-    availableFrom: new Date().toISOString().split('T')[0],
-    minimumStay: '6',
-    publishNow: false,
-  });
-
-  const set = (field: string, value: string | boolean) =>
-    setForm(prev => ({ ...prev, [field]: value }));
-
-  const handleSubmit = () => {
-    if (!form.title.trim()) { toast.error('O nome do quarto é obrigatório'); return; }
-    if (!form.price || isNaN(Number(form.price)) || Number(form.price) <= 0) {
-      toast.error('Insere um preço válido'); return;
-    }
-
-    const roomNumber = `Q${existingRoomsCount + 1}`;
-    const newRoom: Room = {
-      id: `room-${Date.now()}`,
-      propertyId,
-      landlordId,
-      roomNumber,
-      title: form.title.trim(),
-      description: '',
-      images: [],
-      size: form.size ? Number(form.size) : undefined,
-      roomType: form.roomType,
-      maxOccupants: 1,
-      privateBathroom: form.privateBathroom,
-      balcony: form.balcony,
-      desk: form.desk,
-      wardrobe: form.wardrobe,
-      airConditioning: form.airConditioning,
-      price: Number(form.price),
-      utilities: form.utilities ? Number(form.utilities) : undefined,
-      availableFrom: new Date(form.availableFrom),
-      minimumStay: Number(form.minimumStay) || 6,
-      status: form.publishNow ? 'available' : 'draft',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      views: 0,
-    };
-
-    onAdd(newRoom);
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-background rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between p-5 border-b border-border sticky top-0 bg-background rounded-t-2xl z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
-                <PlusCircle className="w-5 h-5 text-primary" />
-              </div>
-              <h3 className="text-lg font-bold">Novo Quarto</h3>
-            </div>
-            <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="p-5 flex flex-col gap-4">
-            {/* Name */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Nome do quarto *</label>
-              <input
-                value={form.title}
-                onChange={e => set('title', e.target.value)}
-                placeholder="ex: Suite com WC Privativo"
-                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-            </div>
-
-            {/* Price + Utilities */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Renda (€/mês) *</label>
-                <input
-                  type="number"
-                  value={form.price}
-                  onChange={e => set('price', e.target.value)}
-                  placeholder="280"
-                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Despesas (€/mês)</label>
-                <input
-                  type="number"
-                  value={form.utilities}
-                  onChange={e => set('utilities', e.target.value)}
-                  placeholder="Opcional"
-                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-            </div>
-
-            {/* Area + Type */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Área (m²)</label>
-                <input
-                  type="number"
-                  value={form.size}
-                  onChange={e => set('size', e.target.value)}
-                  placeholder="Opcional"
-                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Tipo</label>
-                <select
-                  value={form.roomType}
-                  onChange={e => set('roomType', e.target.value)}
-                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                >
-                  <option value="private">Quarto Privado</option>
-                  <option value="shared">Quarto Partilhado</option>
-                  <option value="studio">Estúdio</option>
-                  <option value="apartment">Apartamento</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Available from + Min stay */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Disponível a partir de</label>
-                <input
-                  type="date"
-                  value={form.availableFrom}
-                  onChange={e => set('availableFrom', e.target.value)}
-                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Estadia mínima (meses)</label>
-                <input
-                  type="number"
-                  value={form.minimumStay}
-                  onChange={e => set('minimumStay', e.target.value)}
-                  placeholder="6"
-                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-            </div>
-
-            {/* Extras */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Extras do quarto</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { key: 'privateBathroom', label: 'WC Privativo' },
-                  { key: 'balcony', label: 'Varanda' },
-                  { key: 'desk', label: 'Secretária' },
-                  { key: 'wardrobe', label: 'Roupeiro' },
-                  { key: 'airConditioning', label: 'Ar Condicionado' },
-                ].map(({ key, label }) => (
-                  <label key={key} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form[key as keyof typeof form] as boolean}
-                      onChange={e => set(key, e.target.checked)}
-                      className="w-4 h-4 accent-primary"
-                    />
-                    <span className="text-sm">{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Publish toggle */}
-            <div className={`rounded-xl border p-4 flex items-center gap-3 cursor-pointer transition-colors ${
-              form.publishNow ? 'border-green-300 bg-green-50' : 'border-border bg-muted/30'
-            }`} onClick={() => set('publishNow', !form.publishNow)}>
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                form.publishNow ? 'border-green-600 bg-green-600' : 'border-border'
-              }`}>
-                {form.publishNow && <CheckCircle className="w-3.5 h-3.5 text-white" />}
-              </div>
-              <div>
-                <p className="text-sm font-medium">{form.publishNow ? 'Publicar imediatamente' : 'Guardar como rascunho'}</p>
-                <p className="text-xs text-muted-foreground">
-                  {form.publishNow ? 'O quarto ficará visível para estudantes' : 'Podes publicar mais tarde'}
-                </p>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3 pt-1">
-              <button
-                onClick={onClose}
-                className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                {form.publishNow ? 'Publicar Quarto' : 'Guardar Rascunho'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -1487,25 +1252,62 @@ export function LandlordPropertyDetail() {
     toast.success(details.format === 'videochamada' ? 'Videochamada agendada com sucesso' : 'Visita presencial agendada com sucesso');
   };
 
-  const handleAddRoom = (room: Room) => {
-    if (room.status === 'available' && (property.adminSuspended || isAccountSuspended || isBlockedFromPublishing)) {
-      // Force draft if landlord/property is restricted
-      room = { ...room, status: 'draft' };
-      if (property.adminSuspended) toast.error('Alojamento suspenso pelo admin. Quarto guardado como rascunho.');
-      else toast.error('Conta restringida. Quarto guardado como rascunho.');
-    }
-    addRoom(room);
-    updateProperty(property.id, {
-      totalRooms: property.totalRooms + 1,
-      roomIds: [...property.roomIds, room.id],
-      // If the new room is published and the property is still draft, activate it
-      ...(room.status === 'available' && property.status === 'draft' ? { status: 'active' as const } : {}),
-    });
-    setShowAddRoomModal(false);
-    if (room.status !== 'draft') {
-      toast.success(`Quarto "${room.title}" publicado com sucesso!`);
-    } else {
-      toast.info(`Quarto "${room.title}" guardado como rascunho.`);
+  const handleAddRoom = async (draft: RoomDraft) => {
+    try {
+      const restricted = property.adminSuspended || isAccountSuspended || isBlockedFromPublishing;
+      let status: Room['status'] = 'available';
+      if (status === 'available' && restricted) {
+        status = 'draft';
+        if (property.adminSuspended) toast.error('Alojamento suspenso pelo admin. Quarto guardado como rascunho.');
+        else toast.error('Conta restringida. Quarto guardado como rascunho.');
+      }
+
+      const roomId = crypto.randomUUID();
+      const now = new Date();
+      // Images were already uploaded eagerly inside RoomFormModal — only pass through https: URLs.
+      const uploadedImages = (draft.images ?? []).filter(u => u.startsWith('https://'));
+
+      const newRoom: Room = {
+        id: roomId,
+        propertyId: property.id,
+        landlordId: property.landlordId,
+        roomNumber: `Q${rooms.length + 1}`,
+        title: draft.title,
+        description: `${draft.roomType === 'private' ? 'Quarto privado' : draft.roomType === 'shared' ? 'Quarto partilhado' : 'Estúdio'}${draft.privateBathroom ? ' com WC privativo' : ''}${draft.size ? `, ${draft.size}m²` : ''}.`,
+        images: uploadedImages,
+        size: draft.size ? Number(draft.size) : undefined,
+        roomType: draft.roomType,
+        maxOccupants: draft.roomType === 'shared' ? 2 : 1,
+        privateBathroom: draft.privateBathroom,
+        balcony: false,
+        desk: true,
+        wardrobe: true,
+        airConditioning: false,
+        price: draft.price,
+        utilities: draft.utilities > 0 ? draft.utilities : undefined,
+        availableFrom: draft.availableFrom ? new Date(draft.availableFrom) : now,
+        minimumStay: 6,
+        status,
+        createdAt: now,
+        updatedAt: now,
+        views: 0,
+      };
+
+      await addRoom(newRoom);
+      await updateProperty(property.id, {
+        totalRooms: property.totalRooms + 1,
+        roomIds: [...property.roomIds, newRoom.id],
+        ...(status === 'available' && property.status === 'draft' ? { status: 'active' as const } : {}),
+      });
+      setShowAddRoomModal(false);
+      if (status !== 'draft') {
+        toast.success(`Quarto "${newRoom.title}" publicado com sucesso!`);
+      } else {
+        toast.info(`Quarto "${newRoom.title}" guardado como rascunho.`);
+      }
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : 'Não foi possível adicionar o quarto.';
+      toast.error('Falha ao adicionar quarto', { description: message });
     }
   };
 
@@ -2038,12 +1840,10 @@ export function LandlordPropertyDetail() {
 
       {/* Add room modal */}
       {showAddRoomModal && (
-        <AddRoomModal
-          propertyId={property.id}
-          landlordId={property.landlordId}
-          existingRoomsCount={rooms.length}
+        <RoomFormModal
           onClose={() => setShowAddRoomModal(false)}
-          onAdd={handleAddRoom}
+          onSave={handleAddRoom}
+          uploadContext={{ landlordId: property.landlordId, propertyId: property.id }}
         />
       )}
 

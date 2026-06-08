@@ -24,6 +24,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { findOrCreateConversation } from '../hooks/useMessages';
 import { supabase } from '../lib/supabase';
+import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { dbToApplication } from '../hooks/useDb';
 import { Application, ApplicationStatus } from '../types/accommodation';
 import { Button } from '../components/Button';
@@ -311,30 +312,45 @@ export function Applications() {
       return;
     }
 
-    const { error: insertError } = await supabase.from('active_homes').insert({
-      id: crypto.randomUUID(),
-      student_id: user.id,
-      landlord_id: confirmStayApp.landlordId,
-      property_id: confirmStayApp.propertyId,
-      room_id: confirmStayApp.roomId || null,
-      application_id: confirmStayApp.id,
-      move_in_date: confirmStayApp.moveInDate
-        ? new Date(confirmStayApp.moveInDate).toISOString().slice(0, 10)
-        : null,
-    });
-    if (insertError) {
-      console.error('[ACTIVE_HOMES] insert failed', insertError);
-      toast.error('Não foi possível confirmar a estadia.', { description: insertError.message });
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token ?? publicAnonKey;
+    const confirmRes = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-08c694dc/active-homes/confirm`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          applicationId: confirmStayApp.id,
+          landlordId: confirmStayApp.landlordId,
+          propertyId: confirmStayApp.propertyId,
+          roomId: confirmStayApp.roomId || null,
+          moveInDate: confirmStayApp.moveInDate
+            ? new Date(confirmStayApp.moveInDate).toISOString().slice(0, 10)
+            : null,
+        }),
+      }
+    );
+    const confirmData = await confirmRes.json();
+    if (!confirmRes.ok) {
+      if (confirmData?.error === 'already_has_active_home') {
+        toast.error('Já tens uma casa ativa.');
+        setConfirmStayApp(null);
+        setTimeout(() => navigate('/my-home'), 600);
+        return;
+      }
+      console.error('[ACTIVE_HOMES] confirm-stay failed', confirmData);
+      toast.error('Não foi possível confirmar a estadia.', { description: confirmData?.error });
       return;
     }
 
+    // Application update is handled server-side; keep a local fallback for status refresh
     const { error: updateError } = await supabase
       .from('applications')
-      .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+      .select('id')
       .eq('id', confirmStayApp.id)
-      .eq('user_id', user.id);
+      .limit(1);
     if (updateError) {
-      console.error('[ACTIVE_HOMES] application update failed', updateError);
+      console.error('[ACTIVE_HOMES] post-confirm select failed', updateError);
       toast.error('Estadia criada mas não foi possível atualizar a candidatura.', {
         description: updateError.message,
       });
@@ -564,7 +580,7 @@ export function Applications() {
                         </div>
                       )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr]">
+                      <div className={`grid grid-cols-1 ${coverImage ? 'md:grid-cols-[240px_1fr]' : ''}`}>
                         {coverImage && (
                           <button
                             type="button"
@@ -580,7 +596,7 @@ export function Applications() {
                         )}
 
                         <div className="p-5 min-w-0">
-                          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-4">
+                          <div className="flex flex-row items-start justify-between gap-4 mb-4">
                             <div className="min-w-0 flex-1">
                               <button
                                 onClick={() => handleViewTarget(application)}
@@ -626,7 +642,7 @@ export function Applications() {
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4 mb-4">
+                          <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-4 mb-4">
                             <div>
                               {application.message ? (
                                 <div className="rounded-xl bg-muted/40 border border-border px-4 py-3 mb-4">
@@ -645,7 +661,7 @@ export function Applications() {
                                 </div>
                               )}
 
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="grid grid-cols-3 gap-3">
                                 <div className="rounded-xl bg-muted/30 p-3">
                                   <p className="text-xs text-muted-foreground mb-1">Preço base</p>
                                   <p className="font-bold text-foreground">€{price}/mês</p>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ImgWithFallback } from './ImgWithFallback';
 
 interface ImageGalleryProps {
   images: string[];
@@ -22,7 +23,7 @@ export function ImageGallery({ images, title }: ImageGalleryProps) {
     <div className="space-y-4">
       {/* Main Image */}
       <div className="relative aspect-video bg-muted rounded-xl overflow-hidden group cursor-pointer" onClick={() => setShowFullscreen(true)}>
-        <img
+        <ImgWithFallback
           src={images[currentIndex]}
           alt={`${title} - Imagem ${currentIndex + 1}`}
           className="w-full h-full object-cover"
@@ -63,7 +64,7 @@ export function ImageGallery({ images, title }: ImageGalleryProps) {
                 currentIndex === index ? 'border-primary scale-95' : 'border-transparent hover:border-border'
               }`}
             >
-              <img src={image} alt={`Miniatura ${index + 1}`} className="w-full h-full object-cover" />
+              <ImgWithFallback src={image} alt={`Miniatura ${index + 1}`} className="w-full h-full object-cover" />
             </button>
           ))}
         </div>
@@ -79,7 +80,7 @@ export function ImageGallery({ images, title }: ImageGalleryProps) {
             <X className="w-6 h-6" />
           </button>
 
-          <img
+          <ImgWithFallback
             src={images[currentIndex]}
             alt={`${title} - Fullscreen`}
             className="max-w-[90vw] max-h-[90vh] object-contain"

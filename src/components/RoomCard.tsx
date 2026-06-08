@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 import { useNavigate } from 'react-router';
+import { ImgWithFallback } from './ImgWithFallback';
 import {
   MapPin,
   Home,
@@ -182,7 +183,7 @@ export function RoomCard({
       >
         <div className="flex">
           <div className="relative w-36 sm:w-44 flex-shrink-0 overflow-hidden bg-muted">
-            <img
+            <ImgWithFallback
               src={room.images[0] || property.images[0]}
               alt={room.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -379,7 +380,7 @@ export function RoomCard({
       onClick={handleClick}
     >
       <div className={`relative ${imageHeight} overflow-hidden bg-muted`}>
-        <img
+        <ImgWithFallback
           src={room.images[0] || property.images[0]}
           alt={room.title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

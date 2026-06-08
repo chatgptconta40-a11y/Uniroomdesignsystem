@@ -1,5 +1,6 @@
 import { MapPin, BedDouble, Eye, Edit, Pause, Play, Trash2, Navigation, Wifi, Car, Check } from 'lucide-react';
 import { Property } from '../types/property';
+import { ImgWithFallback } from './ImgWithFallback';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { Card } from './Card';
@@ -55,7 +56,7 @@ export function PropertyCard({
   return (
     <Card className="overflow-hidden hover:shadow-2xl transition-all duration-300 border-border">
       <div className="relative h-48 bg-muted">
-        <img
+        <ImgWithFallback
           src={property.images[0]}
           alt={property.title}
           className="w-full h-full object-cover"

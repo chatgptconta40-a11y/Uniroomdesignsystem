@@ -243,31 +243,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: signUp, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password: data.password,
-        options: {
-          data: { full_name: data.name, type: data.type },
-        },
+        options: { data: { full_name: data.name, type: data.type } },
       });
-      if (error || !signUp.user) {
-        return { success: false, error: translateAuthError(error?.message) };
-      }
+      if (error) return { success: false, error: translateAuthError(error.message) };
+      if (!signUp.user) return { success: false, error: 'Não foi possível criar a conta. Tenta novamente.' };
+
+      // Try to create profile row — log failure but don't abort (RLS may block on some projects)
       try {
         await upsertProfileRow(signUp.user.id, { ...data, email: normalizedEmail });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Erro ao gravar perfil.';
-        return { success: false, error: msg };
+        console.error('[REGISTER] profile upsert failed:', err);
       }
-      // Profile row may take a moment to be readable after upsert — retry briefly.
-      let profile: User | null = null;
-      for (let i = 0; i < 3; i++) {
-        profile = await fetchProfileById(signUp.user.id);
-        if (profile) break;
-        if (i < 2) await new Promise(r => setTimeout(r, 700));
+
+      // Sign in immediately to get a session (requires email confirmation OFF in Supabase dashboard)
+      const { data: signIn, error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password: data.password,
+      });
+      if (signInError) {
+        // Account created but can't sign in yet — likely email confirmation is required
+        if (signInError.message.toLowerCase().includes('email not confirmed')) {
+          return { success: false, error: 'Confirma o email antes de iniciar sessão. Ou desativa a confirmação de email no dashboard do Supabase em Authentication → Settings.' };
+        }
+        return { success: false, error: translateAuthError(signInError.message) };
+      }
+      if (!signIn.user) return { success: false, error: 'Conta criada. Tenta iniciar sessão.' };
+
+      // Fetch profile, or build a minimal one from auth metadata if table is empty
+      let profile = await fetchProfileById(signIn.user.id);
+      if (!profile) {
+        // Fallback: try to insert via upsert one more time (in case there was a race)
+        try {
+          await upsertProfileRow(signIn.user.id, { ...data, email: normalizedEmail });
+          await new Promise(r => setTimeout(r, 500));
+          profile = await fetchProfileById(signIn.user.id);
+        } catch {
+          // ignore
+        }
       }
       if (!profile) {
-        return { success: false, error: 'Conta criada mas não foi possível carregar o perfil. Tenta iniciar sessão.' };
+        return { success: false, error: 'Conta criada mas perfil não encontrado. Verifica se a tabela profiles existe no Supabase.' };
       }
       setUser(profile);
       return { success: true, user: profile };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Erro inesperado.' };
     } finally {
       setLoading(false);
     }

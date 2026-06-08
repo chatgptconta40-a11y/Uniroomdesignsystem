@@ -27,10 +27,10 @@ interface PropertiesContextType {
 }
 
 const PROPERTIES_LIGHT_FIELDS =
-  'id, landlord_id, title, address, city, zone, distance_to_university, coordinates, total_rooms, whole_property_available, whole_property_price, status, verified, admin_suspended, views, created_at, updated_at';
+  'id, landlord_id, title, address, city, zone, distance_to_university, coordinates, total_rooms, whole_property_available, whole_property_price, status, verified, admin_suspended, views, images, created_at, updated_at';
 
 const ROOMS_LIGHT_FIELDS =
-  'id, property_id, landlord_id, title, room_number, price, utilities, room_type, status, available_from, size, private_bathroom, desk, wardrobe, balcony, created_at, updated_at';
+  'id, property_id, landlord_id, title, room_number, price, utilities, room_type, status, available_from, size, private_bathroom, desk, wardrobe, balcony, images, created_at, updated_at';
 
 const REFRESH_THROTTLE_MS = 120_000;
 
@@ -66,8 +66,13 @@ function asDateOnly(value: Date | string | undefined): string | undefined {
 }
 
 function normalizeImages(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter(Boolean).map(String);
-  if (typeof value === 'string' && value.trim()) return [value];
+  const isValid = (s: string) =>
+    s.startsWith('https://') &&
+    !s.startsWith('blob:') &&
+    !s.startsWith('data:') &&
+    s.trim().length > 0;
+  if (Array.isArray(value)) return value.filter(Boolean).map(String).filter(isValid);
+  if (typeof value === 'string' && isValid(value.trim())) return [value.trim()];
   return [];
 }
 

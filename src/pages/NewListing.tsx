@@ -28,7 +28,6 @@ import {
   GraduationCap,
   MapPin,
   Search,
-  Loader2,
   Lock,
   PartyPopper,
   PawPrint,
@@ -44,26 +43,16 @@ import { LocationPicker } from '../components/map/LocationPicker';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { useUserRestrictions } from '../hooks/useUserRestrictions';
+import { Loader2 } from 'lucide-react';
+import { uploadSingleImage, MAX_PROPERTY_IMAGES, type UploadImageOptions } from '../lib/uploadListingImages';
+import { validateImageFile } from '../lib/imageCompressor';
+import { supabase } from '../lib/supabase';
+import { publicAnonKey } from '/utils/supabase/info';
 import { toast } from 'sonner';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { RoomFormModal, emptyRoom, type RoomDraft } from '../components/listings/RoomFormModal';
 
-interface RoomDraft {
-  tempId: string;
-  title: string;
-  price: number;
-  utilities: number;
-  size: number | '';
-  roomType: 'private' | 'shared' | 'studio';
-  bedType: 'single' | 'double' | 'bunk';
-  privateBathroom: boolean;
-  furnished: boolean;
-  hasWindow: boolean;
-  availableFrom: string;
-  publishNow: boolean;
-  description: string;
-  images: string[];
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SchoolEntry {
   school: string;
@@ -143,58 +132,6 @@ const defaultRules: HouseRules = {
   visitorsPolicy: '',
   preferredGender: 'any',
 };
-
-const emptyRoom = (): RoomDraft => ({
-  tempId: Math.random().toString(36).slice(2),
-  title: '',
-  price: 0,
-  utilities: 0,
-  size: '',
-  roomType: 'private',
-  bedType: 'single',
-  privateBathroom: false,
-  furnished: true,
-  hasWindow: true,
-  availableFrom: '',
-  publishNow: false,
-  description: '',
-  images: [],
-});
-
-// Unsplash placeholder pools — used when saving locally-selected files.
-// Previews remain as blob: URLs (in-memory only); only these URLs reach the DB.
-const PROPERTY_PLACEHOLDER_URLS = [
-  'https://images.unsplash.com/photo-1533421821268-87e42c1d70b0?w=900&q=80',
-  'https://images.unsplash.com/photo-1558619524-086478df9951?w=900&q=80',
-  'https://images.unsplash.com/photo-1658846048865-14ddb020e0e1?w=900&q=80',
-  'https://images.unsplash.com/photo-1737154590392-bbe8d59474e6?w=900&q=80',
-  'https://images.unsplash.com/photo-1728819710538-df9dc00651de?w=900&q=80',
-  'https://images.unsplash.com/photo-1731445071203-a35dbaa1b7c3?w=900&q=80',
-];
-
-const ROOM_PLACEHOLDER_URLS = [
-  'https://images.unsplash.com/photo-1621891333885-66f833b348ba?w=900&q=80',
-  'https://images.unsplash.com/photo-1742226789249-32cfaac0ff5e?w=900&q=80',
-  'https://images.unsplash.com/photo-1697899131342-2f311347f1c5?w=900&q=80',
-  'https://images.unsplash.com/photo-1579632151052-92f741fb9b79?w=900&q=80',
-  'https://images.unsplash.com/photo-1621891334762-e186f94d3a1d?w=900&q=80',
-  'https://images.unsplash.com/photo-1552189864-e05b02af1697?w=900&q=80',
-];
-
-// Converts any blob: or data: URL to the next Unsplash placeholder.
-// External https: URLs pass through unchanged. Malformed URLs are dropped.
-function resolveImages(urls: string[], pool: string[]): string[] {
-  let idx = 0;
-  return urls.reduce<string[]>((acc, url) => {
-    if (url.startsWith('blob:') || url.startsWith('data:')) {
-      acc.push(pool[idx % pool.length]);
-      idx++;
-    } else if (url.startsWith('https://')) {
-      acc.push(url);
-    }
-    return acc;
-  }, []);
-}
 
 const STEPS: Array<{ number: StepNumber; title: string; icon: React.ElementType }> = [
   { number: 1, title: 'Propriedade', icon: Home },
@@ -280,293 +217,23 @@ function Toggle({
   );
 }
 
-// ─── Room modal ───────────────────────────────────────────────────────────────
-
-interface RoomFormModalProps {
-  initial?: RoomDraft;
-  onSave: (room: RoomDraft) => void;
-  onClose: () => void;
-}
-
-function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
-  const [form, setForm] = useState<RoomDraft>(initial ?? emptyRoom());
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const [roomPhotos, setRoomPhotos] = useState<string[]>(initial?.images ?? []);
-  const [selectedPhoto, setSelectedPhoto] = useState(0);
-
-  const todayIso = new Date().toISOString().split('T')[0];
-
-  const set = (updates: Partial<RoomDraft>) => {
-    setForm(prev => ({ ...prev, ...updates }));
-    const updatedKeys = Object.keys(updates);
-    if (updatedKeys.length > 0) {
-      setErrors(prev => {
-        const next = { ...prev };
-        updatedKeys.forEach(key => delete next[key]);
-        return next;
-      });
-    }
-  };
-
-  const validate = () => {
-    const errs: Record<string, string> = {};
-    const title = form.title.trim();
-    const size = form.size === '' ? undefined : Number(form.size);
-
-    if (title.length < 3) errs.title = 'Dá um nome claro ao quarto.';
-    if (!form.price) errs.price = 'Indica a renda mensal.';
-    else if (form.price < 100) errs.price = 'A renda parece demasiado baixa. Confirma o valor.';
-    else if (form.price > 1200) errs.price = 'A renda parece demasiado alta para quarto universitário.';
-
-    if (size !== undefined && (Number.isNaN(size) || size < 6 || size > 80)) {
-      errs.size = 'A área deve estar entre 6m² e 80m².';
-    }
-
-    if (!form.availableFrom) errs.availableFrom = 'Indica a data de disponibilidade.';
-    else if (form.availableFrom < todayIso) errs.availableFrom = 'A data não pode ser anterior a hoje.';
-
-    if (roomPhotos.length === 0) errs.photos = 'Adiciona pelo menos uma foto real do quarto antes de guardar.';
-
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleRoomPhotoUpload = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
-    if (validFiles.length === 0) return;
-    const previewUrls = validFiles.map(f => URL.createObjectURL(f));
-    setRoomPhotos(prev => {
-      const next = [...prev, ...previewUrls];
-      setSelectedPhoto(prev.length);
-      return next;
-    });
-  };
-
-  const removeRoomPhoto = (index: number) => {
-    setRoomPhotos(prev => {
-      const next = prev.filter((_, i) => i !== index);
-      setSelectedPhoto(cur => {
-        if (next.length === 0) return 0;
-        if (index === cur) return 0;
-        if (index < cur) return Math.max(0, cur - 1);
-        return Math.min(cur, next.length - 1);
-      });
-      return next;
-    });
-  };
-
-  const handleSave = () => {
-    if (!validate()) return;
-    const orderedUrls = roomPhotos.length > 0
-      ? [roomPhotos[selectedPhoto], ...roomPhotos.filter((_, i) => i !== selectedPhoto)]
-      : [];
-    onSave({ ...form, title: form.title.trim(), images: resolveImages(orderedUrls, ROOM_PLACEHOLDER_URLS) });
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/60 z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
-        <Card className="w-full max-w-2xl p-6 max-h-[92vh] overflow-y-auto relative">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-xl font-bold text-foreground">
-              {initial ? 'Editar quarto' : 'Adicionar quarto'}
-            </h2>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="space-y-5">
-            <div>
-              <FieldLabel required>Nome do quarto</FieldLabel>
-              <input
-                className={inputCls(errors.title)}
-                value={form.title}
-                onChange={e => set({ title: e.target.value })}
-                placeholder="Ex: Quarto 1, Suite, Quarto duplo..."
-              />
-              {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
-            </div>
-
-            <div>
-              <FieldLabel required>Renda (€/mês)</FieldLabel>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">€</span>
-                <input
-                  type="number"
-                  min={100}
-                  max={1200}
-                  className={`${inputCls(errors.price)} pl-7`}
-                  value={form.price || ''}
-                  onChange={e => set({ price: Number(e.target.value) })}
-                  placeholder="250"
-                />
-              </div>
-              {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price}</p>}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <FieldLabel>Área (m²)</FieldLabel>
-                <input
-                  type="number"
-                  min={6}
-                  max={80}
-                  className={inputCls(errors.size)}
-                  value={form.size || ''}
-                  onChange={e => set({ size: e.target.value ? Number(e.target.value) : '' })}
-                  placeholder="15"
-                />
-                {errors.size && <p className="text-xs text-red-500 mt-1">{errors.size}</p>}
-              </div>
-
-              <div>
-                <FieldLabel>Tipo</FieldLabel>
-                <select
-                  className={inputCls()}
-                  value={form.roomType}
-                  onChange={e => set({ roomType: e.target.value as RoomDraft['roomType'] })}
-                >
-                  <option value="private">Quarto privado</option>
-                  <option value="shared">Quarto partilhado</option>
-                  <option value="studio">Estúdio</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <FieldLabel>Cama</FieldLabel>
-                <select
-                  className={inputCls()}
-                  value={form.bedType}
-                  onChange={e => set({ bedType: e.target.value as RoomDraft['bedType'] })}
-                >
-                  <option value="single">Solteiro</option>
-                  <option value="double">Casal</option>
-                  <option value="bunk">Beliche</option>
-                </select>
-              </div>
-
-              <div>
-                <FieldLabel required>Disponível a partir de</FieldLabel>
-                <input
-                  type="date"
-                  className={inputCls(errors.availableFrom)}
-                  value={form.availableFrom}
-                  onChange={e => set({ availableFrom: e.target.value })}
-                  min={todayIso}
-                />
-                {errors.availableFrom && <p className="text-xs text-red-500 mt-1">{errors.availableFrom}</p>}
-              </div>
-            </div>
-
-            <div>
-              <FieldLabel>Características</FieldLabel>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { key: 'privateBathroom', label: 'WC privativo' },
-                  { key: 'furnished', label: 'Mobilado' },
-                  { key: 'hasWindow', label: 'Janela' },
-                ].map(opt => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => set({ [opt.key]: !form[opt.key as keyof RoomDraft] } as Partial<RoomDraft>)}
-                    className={`p-2.5 border-2 rounded-lg text-xs font-medium transition-all ${
-                      form[opt.key as keyof RoomDraft]
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-border text-muted-foreground hover:border-primary/40'
-                    }`}
-                  >
-                    {form[opt.key as keyof RoomDraft] ? '✓ ' : ''}
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <FieldLabel>Notas adicionais</FieldLabel>
-              <textarea
-                className={`${inputCls()} resize-none`}
-                rows={3}
-                value={form.description}
-                onChange={e => set({ description: e.target.value })}
-                placeholder="Ex: Vista para jardim, secretária grande, boa luminosidade natural..."
-              />
-            </div>
-
-            <div>
-              <FieldLabel required>Fotos do quarto</FieldLabel>
-              <p className="text-xs text-muted-foreground mb-2">
-                Carrega fotografias reais do quarto. A selecionada será a imagem principal.
-              </p>
-              {errors.photos && <p className="text-xs text-red-500 mb-2">{errors.photos}</p>}
-              <div className="flex gap-3 flex-wrap">
-                {roomPhotos.map((url, i) => (
-                  <div
-                    key={`${url}-${i}`}
-                    className={`group relative w-24 h-16 rounded-lg overflow-hidden border-2 transition-all ${
-                      selectedPhoto === i ? 'border-primary ring-2 ring-primary/30' : 'border-border'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPhoto(i)}
-                      className="w-full h-full"
-                    >
-                      <img src={url} alt="" className="w-full h-full object-cover" />
-                    </button>
-                    {selectedPhoto === i && (
-                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center pointer-events-none">
-                        <Check className="w-4 h-4 text-white drop-shadow" />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeRoomPhoto(i)}
-                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-
-                <label className="w-24 h-16 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary cursor-pointer">
-                  <Camera className="w-4 h-4" />
-                  <span className="text-[10px] font-medium">Adicionar</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={e => handleRoomPhotoUpload(e.target.files)}
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
-            <Button variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button onClick={handleSave}>{initial ? 'Guardar alterações' : 'Adicionar quarto'}</Button>
-          </div>
-        </Card>
-      </div>
-    </>
-  );
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+interface PropertyPhoto {
+  id: string;
+  preview: string;
+  uploadedUrl: string | null;
+  uploading: boolean;
+}
 
 export function NewListing() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { addProperty, addRoom } = useProperties();
+
+  // Generate the property ID once so photo uploads can reference it immediately.
+  const [propertyId] = useState(() => crypto.randomUUID());
 
   const [step, setStep] = useState<StepNumber>(1);
   const [property, setProperty] = useState<PropertyDraft>(defaultProperty);
@@ -575,7 +242,7 @@ export function NewListing() {
   const [propertyErrors, setPropertyErrors] = useState<Record<string, string>>({});
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<RoomDraft | null>(null);
-  const [propertyPhotoOptions, setPropertyPhotoOptions] = useState<string[]>([]);
+  const [propertyPhotos, setPropertyPhotos] = useState<PropertyPhoto[]>([]);
   const [selectedPropertyPhoto, setSelectedPropertyPhoto] = useState(0);
   const [saving, setSaving] = useState(false);
   const [geocodeLoading, setGeocodeLoading] = useState(false);
@@ -648,7 +315,7 @@ export function NewListing() {
     if (property.zone.trim().length < 2) errs.zone = 'Indica a zona ou bairro para melhorar a pesquisa.';
     if (!property.city.trim()) errs.city = 'Indica a cidade.';
     if (!isValidCoords(property.coordinates) || !property.locationConfirmed) errs.coordinates = 'Confirma a localização no mapa antes de avançar.';
-    if (propertyPhotoOptions.length === 0) errs.photos = 'Adiciona pelo menos uma foto real da propriedade.';
+    if (propertyPhotos.filter(p => p.uploadedUrl).length === 0) errs.photos = 'Adiciona pelo menos uma foto real da propriedade.';
     const firstSchool = property.nearbySchools[0];
     if (!firstSchool?.school.trim()) errs.school = 'Seleciona pelo menos uma escola.';
     if (!firstSchool?.distanceKm) errs.distanceToSchool = 'Indica a distância à escola principal.';
@@ -711,34 +378,78 @@ export function NewListing() {
     toast.success(`"${duplicate.title}" duplicado — fica em rascunho`);
   };
 
-  const handlePropertyPhotoUpload = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-    if (validFiles.length === 0) {
-      toast.error('Escolhe ficheiros de imagem válidos.');
+  const propertyUploadingCount = propertyPhotos.filter(p => p.uploading).length;
+
+  const handlePropertyPhotoUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !user) return;
+
+    const validFiles: File[] = [];
+    for (const f of Array.from(files)) {
+      const err = validateImageFile(f);
+      if (err) { toast.error(err); continue; }
+      validFiles.push(f);
+    }
+    if (validFiles.length === 0) return;
+
+    const remaining = MAX_PROPERTY_IMAGES - propertyPhotos.length;
+    if (remaining <= 0) {
+      toast.error(`Máximo ${MAX_PROPERTY_IMAGES} fotos por alojamento.`);
       return;
     }
-    const previewUrls = validFiles.map(f => URL.createObjectURL(f));
-    setPropertyPhotoOptions(prev => {
-      const next = [...prev, ...previewUrls];
-      setSelectedPropertyPhoto(prev.length);
+    const toUpload = validFiles.slice(0, remaining);
+    if (toUpload.length < validFiles.length) {
+      toast.info(`Só foram adicionadas ${toUpload.length} foto${toUpload.length > 1 ? 's' : ''} (limite atingido).`);
+    }
+
+    const newEntries: PropertyPhoto[] = toUpload.map(f => ({
+      id: crypto.randomUUID(),
+      preview: URL.createObjectURL(f),
+      uploadedUrl: null,
+      uploading: true,
+    }));
+    setPropertyPhotos(prev => {
+      const next = [...prev, ...newEntries];
+      if (prev.length === 0) setSelectedPropertyPhoto(0);
       return next;
     });
-    toast.success(
-      validFiles.length === 1
-        ? 'Foto adicionada ao alojamento'
-        : `${validFiles.length} fotos adicionadas ao alojamento`,
+
+    const opts: UploadImageOptions = {
+      type: 'property',
+      landlordId: user.id,
+      propertyId,
+    };
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? publicAnonKey;
+
+    await Promise.all(
+      toUpload.map(async (file, i) => {
+        const entry = newEntries[i];
+        try {
+          const url = await uploadSingleImage(file, opts, token);
+          setPropertyPhotos(prev =>
+            prev.map(p => p.id === entry.id ? { ...p, uploadedUrl: url, uploading: false } : p),
+          );
+          if (entry.preview.startsWith('blob:')) URL.revokeObjectURL(entry.preview);
+        } catch (err) {
+          toast.error(`Upload falhou: ${err instanceof Error ? err.message : String(err)}`);
+          setPropertyPhotos(prev => prev.filter(p => p.id !== entry.id));
+          if (entry.preview.startsWith('blob:')) URL.revokeObjectURL(entry.preview);
+        }
+      }),
     );
   };
 
-  const removePropertyPhoto = (index: number) => {
-    setPropertyPhotoOptions(prev => {
-      const next = prev.filter((_, i) => i !== index);
-      setSelectedPropertyPhoto(current => {
+  const removePropertyPhoto = (id: string) => {
+    setPropertyPhotos(prev => {
+      const idx = prev.findIndex(p => p.id === id);
+      const entry = prev[idx];
+      if (entry?.preview.startsWith('blob:')) URL.revokeObjectURL(entry.preview);
+      const next = prev.filter(p => p.id !== id);
+      setSelectedPropertyPhoto(cur => {
         if (next.length === 0) return 0;
-        if (index === current) return 0;
-        if (index < current) return Math.max(0, current - 1);
-        return Math.min(current, next.length - 1);
+        if (idx === cur) return 0;
+        if (idx < cur) return Math.max(0, cur - 1);
+        return Math.min(cur, next.length - 1);
       });
       return next;
     });
@@ -795,7 +506,13 @@ export function NewListing() {
         return;
       }
 
-      if (propertyPhotoOptions.length === 0) {
+      if (propertyUploadingCount > 0) {
+        setStep(1);
+        toast.error('Aguarda o upload das fotos da propriedade antes de publicar.');
+        return;
+      }
+
+      if (propertyPhotos.filter(p => p.uploadedUrl).length === 0) {
         setStep(1);
         toast.error('Adiciona pelo menos uma foto real da propriedade antes de publicar.');
         return;
@@ -818,10 +535,11 @@ export function NewListing() {
 
     let saveSucceeded = false;
     try {
-      const propertyId = crypto.randomUUID();
+      // propertyId was generated on mount so photo uploads could reference it.
       const now = new Date();
 
       const roomIds: string[] = [];
+      // Room images were already uploaded eagerly — just take the stored URLs.
       const roomsToCreate = rooms.map((room, index) => {
         const roomId = crypto.randomUUID();
         roomIds.push(roomId);
@@ -838,7 +556,7 @@ export function NewListing() {
           roomNumber: `Q${index + 1}`,
           title: room.title,
           description: `${room.roomType === 'private' ? 'Quarto privado' : room.roomType === 'shared' ? 'Quarto partilhado' : 'Estúdio'}${room.privateBathroom ? ' com WC privativo' : ''}${room.size ? `, ${room.size}m²` : ''}.`,
-          images: room.images ?? [],
+          images: (room.images ?? []).filter(u => u.startsWith('https://')),
           size: room.size ? Number(room.size) : undefined,
           roomType: room.roomType,
           maxOccupants: room.roomType === 'shared' ? 2 : 1,
@@ -859,11 +577,14 @@ export function NewListing() {
       });
 
       const propertyStatus = mode === 'draft' ? 'draft' as const : 'active' as const;
-      const orderedPropertyImages = propertyPhotoOptions.length > 0
-        ? resolveImages(
-            [propertyPhotoOptions[selectedPropertyPhoto] ?? propertyPhotoOptions[0], ...propertyPhotoOptions.filter((_, i) => i !== selectedPropertyPhoto)],
-            PROPERTY_PLACEHOLDER_URLS,
-          )
+
+      // Property images were already uploaded eagerly — put the selected one first.
+      const readyPropertyPhotos = propertyPhotos.filter(p => p.uploadedUrl).map(p => p.uploadedUrl!);
+      const orderedPropertyImages = readyPropertyPhotos.length > 0
+        ? [
+            readyPropertyPhotos[selectedPropertyPhoto] ?? readyPropertyPhotos[0],
+            ...readyPropertyPhotos.filter((_, i) => i !== selectedPropertyPhoto),
+          ]
         : [];
 
       const newProperty = {
@@ -961,7 +682,7 @@ export function NewListing() {
   if (!isValidCoords(property.coordinates) || !property.locationConfirmed) missingFields.push('Localização confirmada no mapa');
   if (!property.nearbySchools[0]?.school.trim()) missingFields.push('Escola');
   if (!property.nearbySchools[0]?.distanceKm) missingFields.push('Distância à escola');
-  if (propertyPhotoOptions.length === 0) missingFields.push('Pelo menos uma foto da propriedade');
+  if (propertyPhotos.filter(p => p.uploadedUrl).length === 0) missingFields.push('Pelo menos uma foto da propriedade');
   if (rooms.length === 0) missingFields.push('Pelo menos um quarto');
 
   const AMENITY_OPTIONS = [
@@ -1316,54 +1037,76 @@ export function NewListing() {
 
               <div>
                 <FieldLabel>Fotos da casa/apartamento</FieldLabel>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Carrega fotografias reais do alojamento. A foto selecionada será usada como imagem principal.
+                <p className="text-xs text-muted-foreground mb-1">
+                  JPG, PNG ou WebP · máx. 8 MB por foto · máx. {MAX_PROPERTY_IMAGES} fotos.
+                  A foto selecionada será usada como imagem principal.
                 </p>
+                {propertyUploadingCount > 0 && (
+                  <p className="text-xs text-primary mb-2 flex items-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    A fazer upload de {propertyUploadingCount} imagem{propertyUploadingCount > 1 ? 'ns' : ''}…
+                  </p>
+                )}
 
-                <div className="flex gap-3 flex-wrap">
-                  {propertyPhotoOptions.map((url, index) => (
+                <div className="flex gap-3 flex-wrap mt-2">
+                  {propertyPhotos.map((p, index) => (
                     <div
-                      key={`${url}-${index}`}
+                      key={p.id}
                       className={`group relative w-32 h-20 rounded-xl overflow-hidden border-2 transition-all ${
-                        selectedPropertyPhoto === index ? 'border-primary ring-2 ring-primary/30' : 'border-border'
+                        selectedPropertyPhoto === index && !p.uploading ? 'border-primary ring-2 ring-primary/30' : 'border-border'
                       }`}
                     >
                       <button
                         type="button"
-                        onClick={() => setSelectedPropertyPhoto(index)}
+                        onClick={() => !p.uploading && setSelectedPropertyPhoto(index)}
                         className="w-full h-full"
+                        disabled={p.uploading}
                       >
-                        <img src={url} alt="" className="w-full h-full object-cover" />
+                        <img
+                          src={p.preview}
+                          alt=""
+                          className={`w-full h-full object-cover transition-opacity ${p.uploading ? 'opacity-50' : ''}`}
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                        {p.uploading && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                            <Loader2 className="w-5 h-5 text-white animate-spin" />
+                          </div>
+                        )}
                       </button>
 
-                      {selectedPropertyPhoto === index && (
+                      {selectedPropertyPhoto === index && !p.uploading && (
                         <div className="absolute inset-0 bg-primary/20 flex items-center justify-center pointer-events-none">
                           <Check className="w-5 h-5 text-white drop-shadow" />
                         </div>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => removePropertyPhoto(index)}
-                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                        title="Remover foto"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      {!p.uploading && (
+                        <button
+                          type="button"
+                          onClick={() => removePropertyPhoto(p.id)}
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                          title="Remover foto"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
 
-                  <label className="w-32 h-20 rounded-xl border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary cursor-pointer">
-                    <Camera className="w-5 h-5" />
-                    <span className="text-[11px] font-medium">Adicionar fotos</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={event => handlePropertyPhotoUpload(event.target.files)}
-                    />
-                  </label>
+                  {propertyPhotos.length < MAX_PROPERTY_IMAGES && (
+                    <label className="w-32 h-20 rounded-xl border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary cursor-pointer">
+                      <Camera className="w-5 h-5" />
+                      <span className="text-[11px] font-medium">Adicionar fotos</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        multiple
+                        className="hidden"
+                        onChange={event => handlePropertyPhotoUpload(event.target.files)}
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
 
@@ -1689,11 +1432,12 @@ export function NewListing() {
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">O que os estudantes vão ver</p>
                 <div className="border border-border rounded-xl overflow-hidden">
                   <div className="relative h-36">
-                    {propertyPhotoOptions.length > 0 ? (
+                    {propertyPhotos.filter(p => p.uploadedUrl || p.uploading).length > 0 ? (
                       <img
-                        src={propertyPhotoOptions[selectedPropertyPhoto] ?? propertyPhotoOptions[0]}
+                        src={propertyPhotos[selectedPropertyPhoto]?.preview ?? propertyPhotos[0]?.preview}
                         alt=""
                         className="w-full h-full object-cover"
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     ) : (
                       <div className="w-full h-full bg-muted flex items-center justify-center">
@@ -1930,18 +1674,20 @@ export function NewListing() {
         </Card>
       </div>
 
-      {showRoomModal && (
+      {showRoomModal && user && (
         <RoomFormModal
           onSave={handleAddRoom}
           onClose={() => setShowRoomModal(false)}
+          uploadContext={{ landlordId: user.id, propertyId }}
         />
       )}
 
-      {editingRoom && (
+      {editingRoom && user && (
         <RoomFormModal
           initial={editingRoom}
           onSave={handleEditRoom}
           onClose={() => setEditingRoom(null)}
+          uploadContext={{ landlordId: user.id, propertyId }}
         />
       )}
     </div>

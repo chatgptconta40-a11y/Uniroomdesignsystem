@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import {
   CalendarCheck,
@@ -7,9 +7,17 @@ import {
   XCircle,
   CheckCircle,
   Search,
+  CalendarDays,
+  Calendar,
+  Clock,
+  Sparkles,
+  MessageCircle,
+  User,
+  Mail,
 } from 'lucide-react';
 import { useProperties } from '../context/PropertiesContext';
 import { useVisitRequests } from '../hooks/useVisitRequests';
+import { supabase } from '../lib/supabase';
 import type { VisitRequestStatus } from '../types/accommodation';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -42,12 +50,32 @@ function fmtDatetime(d: Date): string {
   );
 }
 
+type FilterStatus = 'active' | VisitRequestStatus;
+
 export function StudentVisitRequests() {
   const navigate = useNavigate();
   const { getRoom, getProperty } = useProperties();
   const [confirmCancelVisitId, setConfirmCancelVisitId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>('active');
+  const [landlordProfiles, setLandlordProfiles] = useState<Record<string, { name?: string; email?: string }>>({});
 
   const { visitRequests, loading, cancelVisitRequest, acceptVisitRequest } = useVisitRequests();
+
+  useEffect(() => {
+    const ids = [...new Set(visitRequests.map(r => r.landlordId).filter(Boolean) as string[])];
+    if (ids.length === 0) return;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, name, email')
+        .in('id', ids);
+      if (data) {
+        const map: Record<string, { name?: string; email?: string }> = {};
+        for (const row of data) map[row.id] = { name: row.name ?? undefined, email: row.email ?? undefined };
+        setLandlordProfiles(map);
+      }
+    })();
+  }, [visitRequests]);
 
   const handleCancelVisit = async () => {
     if (!confirmCancelVisitId) return;
@@ -63,23 +91,101 @@ export function StudentVisitRequests() {
     else toast.error('Não foi possível aceitar. Tenta novamente.');
   };
 
+  const ACTIVE_STATUSES: VisitRequestStatus[] = ['pending', 'counter_proposed', 'accepted'];
+
+  const filtered = visitRequests.filter(r =>
+    statusFilter === 'active' ? ACTIVE_STATUSES.includes(r.status) : r.status === statusFilter
+  );
+
+  const count = (s: VisitRequestStatus) => visitRequests.filter(r => r.status === s).length;
+  const activeCount = visitRequests.filter(r => ACTIVE_STATUSES.includes(r.status)).length;
+
+  const filterTabs: Array<{ key: FilterStatus; label: string; count: number }> = [
+    { key: 'active', label: 'Ativos', count: activeCount },
+    { key: 'pending', label: 'Pendentes', count: count('pending') },
+    { key: 'counter_proposed', label: 'Contrapropostas', count: count('counter_proposed') },
+    { key: 'accepted', label: 'Confirmadas', count: count('accepted') },
+    { key: 'completed', label: 'Realizadas', count: count('completed') },
+    { key: 'rejected', label: 'Recusadas', count: count('rejected') },
+    { key: 'cancelled', label: 'Canceladas', count: count('cancelled') },
+  ].filter(t => t.key === 'active' || t.count > 0);
+
+  const getStatusBorder = (s: VisitRequestStatus): string => {
+    if (s === 'counter_proposed') return 'ring-2 ring-amber-300 border-amber-200';
+    if (s === 'accepted') return 'ring-2 ring-green-200 border-green-200';
+    if (s === 'pending') return 'ring-2 ring-blue-200 border-blue-200';
+    if (s === 'completed') return 'border-emerald-200';
+    if (s === 'rejected') return 'border-red-200';
+    return '';
+  };
+
   return (
     <div className="min-h-screen bg-background py-8">
-      <div className="max-w-4xl mx-auto px-4 md:px-6">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
+
+        {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-              <CalendarCheck className="w-6 h-6" />
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                <CalendarCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-foreground">Pedidos de Visita</h1>
+                <p className="text-muted-foreground">
+                  {loading
+                    ? 'A carregar…'
+                    : visitRequests.length === 0
+                    ? 'Ainda não pediste visitas'
+                    : `${visitRequests.length} ${visitRequests.length === 1 ? 'pedido' : 'pedidos'} no total`}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Pedidos de Visita</h1>
-              <p className="text-muted-foreground">
-                Acompanha as visitas que pediste antes de te candidatares.
-              </p>
+
+            <div className="grid grid-cols-3 gap-3 min-w-full lg:min-w-[420px]">
+              <Card className="p-4">
+                <p className="text-xs text-muted-foreground mb-1">Pendentes</p>
+                <p className="text-2xl font-bold text-blue-700">{count('pending')}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs text-muted-foreground mb-1">Confirmadas</p>
+                <p className="text-2xl font-bold text-green-700">{count('accepted')}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs text-muted-foreground mb-1">Realizadas</p>
+                <p className="text-2xl font-bold text-emerald-700">{count('completed')}</p>
+              </Card>
             </div>
           </div>
         </div>
 
+        {/* Filter tabs */}
+        {visitRequests.length > 0 && (
+          <div className="mb-6 flex gap-1 border-b overflow-x-auto pb-px">
+            {filterTabs.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setStatusFilter(tab.key)}
+                className={`px-4 py-3 font-medium text-sm border-b-2 whitespace-nowrap transition-all ${
+                  statusFilter === tab.key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                    statusFilter === tab.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Content */}
         {loading ? (
           <Card className="p-12 text-center">
             <p className="text-muted-foreground">A carregar pedidos de visita…</p>
@@ -96,9 +202,13 @@ export function StudentVisitRequests() {
               Procurar quartos
             </Button>
           </Card>
+        ) : filtered.length === 0 ? (
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground">Nenhum pedido nesta categoria.</p>
+          </Card>
         ) : (
           <div className="space-y-4">
-            {visitRequests.map(req => {
+            {filtered.map(req => {
               const room = req.roomId ? getRoom(req.roomId) : undefined;
               const property = req.propertyId
                 ? getProperty(req.propertyId)
@@ -109,31 +219,48 @@ export function StudentVisitRequests() {
               const city = property?.city || '';
               const zone = property?.zone || '';
               const isCounterProposed = req.status === 'counter_proposed';
+              const isPending = req.status === 'pending';
+              const isAccepted = req.status === 'accepted';
               const isActive = !['cancelled', 'rejected', 'completed'].includes(req.status);
               const dateToShow = isCounterProposed && req.proposedAt ? req.proposedAt : req.requestedAt;
               const dateLabel = isCounterProposed && req.proposedAt ? 'Data proposta pelo senhorio' : 'Data pedida';
+              const landlord = req.landlordId ? landlordProfiles[req.landlordId] : undefined;
+              const landlordName = landlord?.name || 'Senhorio';
+              const landlordEmail = landlord?.email;
 
               return (
                 <Card
                   key={req.id}
-                  className={`overflow-hidden ${isCounterProposed ? 'ring-2 ring-amber-300 border-amber-200' : ''}`}
+                  className={`overflow-hidden transition-all ${getStatusBorder(req.status)}`}
                 >
                   {isCounterProposed && (
                     <div className="bg-amber-50 border-b border-amber-200 px-5 py-3 flex items-center gap-3">
-                      <CalendarCheck className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                      <Calendar className="w-5 h-5 text-amber-600 flex-shrink-0" />
                       <div className="flex-1">
                         <span className="font-semibold text-amber-800">O senhorio propôs uma nova data.</span>
                         <span className="text-sm text-amber-700 ml-2">Aceita ou cancela o pedido.</span>
                       </div>
                     </div>
                   )}
+                  {isPending && (
+                    <div className="bg-blue-50 border-b border-blue-200 px-5 py-3 flex items-center gap-3">
+                      <Clock className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                      <span className="font-semibold text-blue-800">A aguardar resposta do senhorio</span>
+                    </div>
+                  )}
+                  {isAccepted && (
+                    <div className="bg-green-50 border-b border-green-200 px-5 py-3 flex items-center gap-3">
+                      <Sparkles className="w-5 h-5 text-green-600 flex-shrink-0" />
+                      <span className="font-semibold text-green-800">Visita confirmada — prepara-te para o encontro!</span>
+                    </div>
+                  )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-[200px_1fr]">
+                  <div className={`grid grid-cols-1 ${coverImage ? 'md:grid-cols-[240px_1fr]' : ''}`}>
                     {coverImage && (
                       <button
                         type="button"
                         onClick={() => room && navigate(`/room/${room.id}`)}
-                        className="w-full h-48 md:h-full min-h-[200px] overflow-hidden bg-muted cursor-pointer"
+                        className="w-full h-56 md:h-full min-h-[240px] cursor-pointer overflow-hidden bg-muted text-left"
                       >
                         <img
                           src={coverImage}
@@ -143,55 +270,75 @@ export function StudentVisitRequests() {
                       </button>
                     )}
 
-                    <div className="p-5">
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
-                        <div>
+                    <div className="p-5 min-w-0">
+                      {/* Title row */}
+                      <div className="flex flex-row items-start justify-between gap-4 mb-4">
+                        <div className="min-w-0 flex-1">
                           <button
                             onClick={() => room && navigate(`/room/${room.id}`)}
-                            className="text-lg font-bold text-foreground hover:text-primary text-left block mb-1"
+                            className="text-xl font-bold text-foreground hover:text-primary text-left block line-clamp-1 mb-1"
                           >
                             {roomTitle}
                           </button>
                           {propTitle && (
-                            <p className="text-sm font-semibold text-primary mb-1">{propTitle}</p>
+                            <p className="text-sm font-semibold text-primary mb-1 line-clamp-1">{propTitle}</p>
                           )}
-                          {(zone || city) && (
-                            <p className="text-sm text-muted-foreground flex items-center gap-1">
-                              <MapPin className="w-3.5 h-3.5" />
-                              {zone}{zone && city ? ', ' : ''}{city}
-                            </p>
-                          )}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                            {(zone || city) && (
+                              <span className="inline-flex items-center gap-1.5">
+                                <MapPin className="w-4 h-4" />
+                                {zone}{zone && city ? ', ' : ''}{city}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1.5">
+                              <CalendarDays className="w-4 h-4" />
+                              Pedido em {req.createdAt.toLocaleDateString('pt-PT')}
+                            </span>
+                          </div>
                         </div>
-                        <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex-shrink-0 ${VISIT_STATUS_COLOR[req.status]}`}>
+                        <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex-shrink-0 w-fit ${VISIT_STATUS_COLOR[req.status]}`}>
                           {VISIT_STATUS_LABEL[req.status]}
                         </span>
                       </div>
 
+                      {/* Info grid: landlord + visit date */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                        <div className="rounded-xl bg-muted/30 p-3">
-                          <p className="text-xs text-muted-foreground mb-1">{dateLabel}</p>
-                          <p className="text-sm font-semibold">{fmtDatetime(dateToShow)}</p>
+                        <div className="rounded-xl border border-border bg-muted/30 p-3">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5" /> Senhorio
+                          </p>
+                          <p className="text-sm font-semibold text-foreground line-clamp-1">{landlordName}</p>
+                          {landlordEmail && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 line-clamp-1">
+                              <Mail className="w-3 h-3 flex-shrink-0" /> {landlordEmail}
+                            </p>
+                          )}
                         </div>
-                        <div className="rounded-xl bg-muted/30 p-3">
-                          <p className="text-xs text-muted-foreground mb-1">Pedido em</p>
-                          <p className="text-sm font-semibold">{req.createdAt.toLocaleDateString('pt-PT')}</p>
+                        <div className={`rounded-xl border p-3 ${isCounterProposed ? 'bg-amber-50/60 border-amber-200' : 'bg-muted/30 border-border'}`}>
+                          <p className={`text-xs font-semibold uppercase tracking-wide mb-1.5 flex items-center gap-1.5 ${isCounterProposed ? 'text-amber-700' : 'text-muted-foreground'}`}>
+                            <Calendar className="w-3.5 h-3.5" /> {dateLabel}
+                          </p>
+                          <p className={`text-sm font-semibold ${isCounterProposed ? 'text-amber-900' : 'text-foreground'}`}>
+                            {fmtDatetime(dateToShow)}
+                          </p>
                         </div>
                       </div>
 
+                      {/* Messages */}
                       {req.studentMessage && (
-                        <div className="rounded-xl bg-muted/40 border border-border px-4 py-3 mb-4">
-                          <p className="text-xs font-semibold text-muted-foreground mb-1">Mensagem enviada</p>
+                        <div className="rounded-xl bg-muted/40 border border-border px-4 py-3 mb-3">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Mensagem enviada</p>
                           <p className="text-sm text-foreground italic">"{req.studentMessage}"</p>
                         </div>
                       )}
-
                       {req.landlordMessage && (
-                        <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 mb-4">
-                          <p className="text-xs font-semibold text-blue-700 mb-1">Resposta do senhorio</p>
+                        <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 mb-3">
+                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Resposta do senhorio</p>
                           <p className="text-sm text-blue-900">"{req.landlordMessage}"</p>
                         </div>
                       )}
 
+                      {/* Actions */}
                       <div className="flex flex-wrap gap-2">
                         {isCounterProposed && (
                           <Button
@@ -209,6 +356,10 @@ export function StudentVisitRequests() {
                             Ver quarto
                           </Button>
                         )}
+                        <Button size="sm" variant="outline" onClick={() => navigate('/messages')}>
+                          <MessageCircle className="w-4 h-4 mr-2" />
+                          Mensagens
+                        </Button>
                         {isActive && (
                           <Button
                             size="sm"
