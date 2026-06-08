@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   MapPin,
@@ -31,6 +31,8 @@ import { Card } from '../components/Card';
 import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAccommodations } from '../context/AccommodationsContext';
+import { useProperties } from '../context/PropertiesContext';
+import type { Property } from '../types/property';
 import { usePropertyExtras } from '../hooks/usePropertyExtras';
 import { useReviews } from '../hooks/useTrust';
 import { calculateComfortScore } from '../utils/compatibility';
@@ -59,6 +61,7 @@ export function AccommodationDetail() {
   const { user, studentProfile } = useAuth();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { accommodations } = useAccommodations();
+  const { fetchPropertyDetail } = useProperties();
 
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [showConversationModal, setShowConversationModal] = useState(false);
@@ -69,6 +72,39 @@ export function AccommodationDetail() {
   const isCurrentHome = user?.id === 'estudante' && id === '2';
 
   const accommodation = accommodations.find(item => item.id === id);
+  const [detailProperty, setDetailProperty] = useState<Property | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const detailFetchId = accommodation?.propertyId ?? accommodation?.id ?? '';
+
+  useEffect(() => {
+    if (!detailFetchId) return;
+    setDetailLoading(true);
+    fetchPropertyDetail(detailFetchId)
+      .then(prop => { if (prop) setDetailProperty(prop); })
+      .finally(() => setDetailLoading(false));
+  }, [detailFetchId]);
+
+  const displayAcc = useMemo(() => {
+    if (!accommodation) return null;
+    if (!detailProperty) return accommodation;
+    return {
+      ...accommodation,
+      images: detailProperty.images.length > 0 ? detailProperty.images : accommodation.images,
+      description: detailProperty.description || accommodation.description,
+      amenities: {
+        ...accommodation.amenities,
+        wifi: detailProperty.amenities.wifi,
+        parking: detailProperty.amenities.parking,
+        washingMachine: detailProperty.amenities.laundry,
+        kitchen: detailProperty.amenities.kitchen,
+        airConditioning: detailProperty.amenities.airConditioning,
+        heating: detailProperty.amenities.heating,
+        elevator: detailProperty.amenities.elevator,
+      },
+    };
+  }, [accommodation, detailProperty]);
+
   const isLandlordOwner = user?.type === 'landlord' && accommodation?.landlordId === user?.id;
   const propertyId = accommodation?.propertyId ?? accommodation?.id;
   const { roommates, houseRules } = usePropertyExtras(propertyId);
@@ -139,7 +175,12 @@ export function AccommodationDetail() {
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <ImageGallery images={accommodation.images} title={accommodation.title} />
+          {detailLoading && !detailProperty && (
+            <div className="h-1 bg-primary/20 rounded-full overflow-hidden mb-2">
+              <div className="h-full bg-primary/50 animate-pulse rounded-full" />
+            </div>
+          )}
+          <ImageGallery images={displayAcc?.images ?? []} title={accommodation.title} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -179,7 +220,7 @@ export function AccommodationDetail() {
                 </div>
               </div>
 
-              <p className="text-foreground leading-relaxed">{accommodation.description}</p>
+              <p className="text-foreground leading-relaxed">{displayAcc?.description ?? accommodation.description}</p>
 
               <div className="flex flex-wrap items-center gap-2 mt-4">
                 <Badge>
@@ -283,63 +324,63 @@ export function AccommodationDetail() {
 
               <Card className="p-6">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {accommodation.amenities.furnished && (
+                  {(displayAcc ?? accommodation).amenities.furnished && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Mobilado</span>
                     </div>
                   )}
 
-                  {accommodation.amenities.wifi && (
+                  {(displayAcc ?? accommodation).amenities.wifi && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Wi-Fi</span>
                     </div>
                   )}
 
-                  {accommodation.amenities.parking && (
+                  {(displayAcc ?? accommodation).amenities.parking && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Estacionamento</span>
                     </div>
                   )}
 
-                  {accommodation.amenities.washingMachine && (
+                  {(displayAcc ?? accommodation).amenities.washingMachine && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Máquina de lavar</span>
                     </div>
                   )}
 
-                  {accommodation.amenities.kitchen && (
+                  {(displayAcc ?? accommodation).amenities.kitchen && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Cozinha</span>
                     </div>
                   )}
 
-                  {accommodation.amenities.airConditioning && (
+                  {(displayAcc ?? accommodation).amenities.airConditioning && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Ar condicionado</span>
                     </div>
                   )}
 
-                  {accommodation.amenities.heating && (
+                  {(displayAcc ?? accommodation).amenities.heating && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Aquecimento</span>
                     </div>
                   )}
 
-                  {accommodation.amenities.elevator && (
+                  {(displayAcc ?? accommodation).amenities.elevator && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Elevador</span>
                     </div>
                   )}
 
-                  {accommodation.amenities.balcony && (
+                  {(displayAcc ?? accommodation).amenities.balcony && (
                     <div className="flex items-center gap-2 text-foreground">
                       <Check className="w-5 h-5 text-green-500" />
                       <span>Varanda</span>

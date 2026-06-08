@@ -161,13 +161,39 @@ const emptyRoom = (): RoomDraft => ({
   images: [],
 });
 
-function readImageFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
+// Unsplash placeholder pools — used when saving locally-selected files.
+// Previews remain as blob: URLs (in-memory only); only these URLs reach the DB.
+const PROPERTY_PLACEHOLDER_URLS = [
+  'https://images.unsplash.com/photo-1533421821268-87e42c1d70b0?w=900&q=80',
+  'https://images.unsplash.com/photo-1558619524-086478df9951?w=900&q=80',
+  'https://images.unsplash.com/photo-1658846048865-14ddb020e0e1?w=900&q=80',
+  'https://images.unsplash.com/photo-1737154590392-bbe8d59474e6?w=900&q=80',
+  'https://images.unsplash.com/photo-1728819710538-df9dc00651de?w=900&q=80',
+  'https://images.unsplash.com/photo-1731445071203-a35dbaa1b7c3?w=900&q=80',
+];
+
+const ROOM_PLACEHOLDER_URLS = [
+  'https://images.unsplash.com/photo-1621891333885-66f833b348ba?w=900&q=80',
+  'https://images.unsplash.com/photo-1742226789249-32cfaac0ff5e?w=900&q=80',
+  'https://images.unsplash.com/photo-1697899131342-2f311347f1c5?w=900&q=80',
+  'https://images.unsplash.com/photo-1579632151052-92f741fb9b79?w=900&q=80',
+  'https://images.unsplash.com/photo-1621891334762-e186f94d3a1d?w=900&q=80',
+  'https://images.unsplash.com/photo-1552189864-e05b02af1697?w=900&q=80',
+];
+
+// Converts any blob: or data: URL to the next Unsplash placeholder.
+// External https: URLs pass through unchanged. Malformed URLs are dropped.
+function resolveImages(urls: string[], pool: string[]): string[] {
+  let idx = 0;
+  return urls.reduce<string[]>((acc, url) => {
+    if (url.startsWith('blob:') || url.startsWith('data:')) {
+      acc.push(pool[idx % pool.length]);
+      idx++;
+    } else if (url.startsWith('https://')) {
+      acc.push(url);
+    }
+    return acc;
+  }, []);
 }
 
 const STEPS: Array<{ number: StepNumber; title: string; icon: React.ElementType }> = [
@@ -306,20 +332,16 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
     return Object.keys(errs).length === 0;
   };
 
-  const handleRoomPhotoUpload = async (files: FileList | null) => {
+  const handleRoomPhotoUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
     if (validFiles.length === 0) return;
-    try {
-      const dataUrls = await Promise.all(validFiles.map(readImageFile));
-      setRoomPhotos(prev => {
-        const next = [...prev, ...dataUrls];
-        setSelectedPhoto(prev.length);
-        return next;
-      });
-    } catch {
-      // silently ignore
-    }
+    const previewUrls = validFiles.map(f => URL.createObjectURL(f));
+    setRoomPhotos(prev => {
+      const next = [...prev, ...previewUrls];
+      setSelectedPhoto(prev.length);
+      return next;
+    });
   };
 
   const removeRoomPhoto = (index: number) => {
@@ -337,10 +359,10 @@ function RoomFormModal({ initial, onSave, onClose }: RoomFormModalProps) {
 
   const handleSave = () => {
     if (!validate()) return;
-    const selectedImages = roomPhotos.length > 0
+    const orderedUrls = roomPhotos.length > 0
       ? [roomPhotos[selectedPhoto], ...roomPhotos.filter((_, i) => i !== selectedPhoto)]
       : [];
-    onSave({ ...form, title: form.title.trim(), images: selectedImages });
+    onSave({ ...form, title: form.title.trim(), images: resolveImages(orderedUrls, ROOM_PLACEHOLDER_URLS) });
   };
 
   return (
@@ -689,33 +711,24 @@ export function NewListing() {
     toast.success(`"${duplicate.title}" duplicado — fica em rascunho`);
   };
 
-  const handlePropertyPhotoUpload = async (files: FileList | null) => {
+  const handlePropertyPhotoUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-
     const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-
     if (validFiles.length === 0) {
       toast.error('Escolhe ficheiros de imagem válidos.');
       return;
     }
-
-    try {
-      const uploadedImages = await Promise.all(validFiles.map(readImageFile));
-
-      setPropertyPhotoOptions(prev => {
-        const next = [...prev, ...uploadedImages];
-        setSelectedPropertyPhoto(prev.length);
-        return next;
-      });
-
-      toast.success(
-        validFiles.length === 1
-          ? 'Foto adicionada ao alojamento'
-          : `${validFiles.length} fotos adicionadas ao alojamento`,
-      );
-    } catch {
-      toast.error('Não foi possível carregar a imagem.');
-    }
+    const previewUrls = validFiles.map(f => URL.createObjectURL(f));
+    setPropertyPhotoOptions(prev => {
+      const next = [...prev, ...previewUrls];
+      setSelectedPropertyPhoto(prev.length);
+      return next;
+    });
+    toast.success(
+      validFiles.length === 1
+        ? 'Foto adicionada ao alojamento'
+        : `${validFiles.length} fotos adicionadas ao alojamento`,
+    );
   };
 
   const removePropertyPhoto = (index: number) => {
@@ -847,7 +860,10 @@ export function NewListing() {
 
       const propertyStatus = mode === 'draft' ? 'draft' as const : 'active' as const;
       const orderedPropertyImages = propertyPhotoOptions.length > 0
-        ? [propertyPhotoOptions[selectedPropertyPhoto] ?? propertyPhotoOptions[0], ...propertyPhotoOptions.filter((_, i) => i !== selectedPropertyPhoto)]
+        ? resolveImages(
+            [propertyPhotoOptions[selectedPropertyPhoto] ?? propertyPhotoOptions[0], ...propertyPhotoOptions.filter((_, i) => i !== selectedPropertyPhoto)],
+            PROPERTY_PLACEHOLDER_URLS,
+          )
         : [];
 
       const newProperty = {

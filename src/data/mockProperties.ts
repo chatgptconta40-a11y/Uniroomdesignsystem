@@ -16,9 +16,9 @@ export const mockProperties: Property[] = [
     distanceToUniversity: 0.8,
     coordinates: { lat: 40.6582, lng: -7.9138 },
     images: [
-      "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
-      "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688",
-      "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2",
+      "https://images.unsplash.com/photo-1663939385000-7334cf87dd51?w=900&q=80",
+      "https://images.unsplash.com/photo-1775595224346-5df1ebaf1f22?w=900&q=80",
+      "https://images.unsplash.com/photo-1775486133989-365f979d0aaa?w=900&q=80",
     ],
     amenities: {
       wifi: true,
@@ -67,8 +67,8 @@ export const mockProperties: Property[] = [
     zone: "Zona Universitária",
     distanceToUniversity: 0.3,
     images: [
-      "https://images.unsplash.com/photo-1570129477492-45c003edd2be",
-      "https://images.unsplash.com/photo-1564013799919-ab600027ffc6",
+      "https://images.unsplash.com/photo-1773429963191-9067803abf88?w=900&q=80",
+      "https://images.unsplash.com/photo-1639663742190-1b3dba2eebcf?w=900&q=80",
     ],
     amenities: {
       wifi: true,
@@ -116,8 +116,8 @@ export const mockProperties: Property[] = [
     distanceToUniversity: 0.4,
     coordinates: { lat: 40.6610, lng: -7.9090 },
     images: [
-      "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80",
-      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&q=80",
+      "https://images.unsplash.com/photo-1763976284798-4ce1a02678c3?w=900&q=80",
+      "https://images.unsplash.com/photo-1774311237295-a65a4c1ff38a?w=900&q=80",
     ],
     amenities: {
       wifi: true,
@@ -164,8 +164,8 @@ export const mockRooms: Room[] = [
     description:
       "Quarto espaçoso com casa de banho privativa, varanda com vista para a cidade e roupeiro embutido.",
     images: [
-      "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af",
-      "https://images.unsplash.com/photo-1540518614846-7eded433c457",
+      "https://images.unsplash.com/photo-1638454668466-e8dbd5462f20?w=900&q=80",
+      "https://images.unsplash.com/photo-1772944780860-e99bd902d59a?w=900&q=80",
     ],
     size: 18,
     roomType: "private",
@@ -196,7 +196,7 @@ export const mockRooms: Room[] = [
     description:
       "Quarto acolhedor com varanda, secretária e roupeiro. Casa de banho partilhada.",
     images: [
-      "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85",
+      "https://images.unsplash.com/photo-1541586655971-3ef599c4ba77?w=900&q=80",
     ],
     size: 14,
     roomType: "private",
@@ -225,7 +225,7 @@ export const mockRooms: Room[] = [
     description:
       "Quarto funcional com o essencial. Ótima relação qualidade/preço.",
     images: [
-      "https://images.unsplash.com/photo-1556020685-ae41abfc9365",
+      "https://images.unsplash.com/photo-1728356633026-51d0bec74ad3?w=900&q=80",
     ],
     size: 12,
     roomType: "private",
@@ -254,7 +254,7 @@ export const mockRooms: Room[] = [
     description:
       "Quarto grande com vista para o jardim, muito iluminado e arejado.",
     images: [
-      "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af",
+      "https://images.unsplash.com/photo-1580152213601-87df3d2c56e6?w=900&q=80",
     ],
     size: 16,
     roomType: "private",
@@ -284,7 +284,7 @@ export const mockRooms: Room[] = [
     title: "Quarto Acolhedor",
     description: "Quarto confortável perfeito para estudar.",
     images: [
-      "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85",
+      "https://images.unsplash.com/photo-1655276588918-fe4730b4227c?w=900&q=80",
     ],
     size: 13,
     roomType: "private",
@@ -312,7 +312,7 @@ export const mockRooms: Room[] = [
     title: "Quarto Standard",
     description: "Quarto com tudo o que precisas.",
     images: [
-      "https://images.unsplash.com/photo-1556020685-ae41abfc9365",
+      "https://images.unsplash.com/photo-1603527413520-73e05f787ee3?w=900&q=80",
     ],
     size: 12,
     roomType: "private",
@@ -343,7 +343,7 @@ export const mockRooms: Room[] = [
     title: "Suite com WC Privativo",
     description: "Quarto suite espaçoso com casa de banho privativa, cama de casal e roupeiro embutido. Muito iluminado, com janela para o pátio interno.",
     images: [
-      "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80",
+      "https://images.unsplash.com/photo-1638454668466-e8dbd5462f20?w=900&q=80",
     ],
     size: 20,
     roomType: "private",
@@ -371,7 +371,7 @@ export const mockRooms: Room[] = [
     title: "Quarto Standard",
     description: "Quarto privado mobilado com cama de solteiro, secretária, roupeiro e janela com boa luz natural. Casa de banho partilhada com outro quarto.",
     images: [
-      "https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=600&q=80",
+      "https://images.unsplash.com/photo-1772944780860-e99bd902d59a?w=900&q=80",
     ],
     size: 14,
     roomType: "private",
@@ -399,7 +399,7 @@ export const mockRooms: Room[] = [
     title: "Quarto Standard",
     description: "Quarto privado mobilado com cama de solteiro, secretária e roupeiro. Casa de banho partilhada. Acesso direto à cozinha e sala comum.",
     images: [
-      "https://images.unsplash.com/photo-1540518614846-7eded433c457?w=600&q=80",
+      "https://images.unsplash.com/photo-1728356633026-51d0bec74ad3?w=900&q=80",
     ],
     size: 13,
     roomType: "private",
@@ -429,7 +429,7 @@ export const mockRooms: Room[] = [
     description:
       "Quarto mais pequeno, ideal para orçamentos apertados.",
     images: [
-      "https://images.unsplash.com/photo-1556020685-ae41abfc9365",
+      "https://images.unsplash.com/photo-1592839656073-833413ae8874?w=900&q=80",
     ],
     size: 10,
     roomType: "private",

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft,
@@ -30,6 +30,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ESTGVRouteSection } from '../components/ESTGVRouteSection';
 import { RoomCard } from '../components/RoomCard';
+import type { Property } from '../types/property';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { useStudentProfile } from '../hooks/useDb';
@@ -88,11 +89,23 @@ export function PropertyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { getProperty, getRoomsByProperty } = useProperties();
+  const { getProperty, getRoomsByProperty, fetchPropertyDetail } = useProperties();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const property = getProperty(id || '');
+  const lightProperty = getProperty(id || '');
+  const [detailProperty, setDetailProperty] = useState<Property | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    setDetailLoading(true);
+    fetchPropertyDetail(id)
+      .then(detail => { if (detail) setDetailProperty(detail); })
+      .finally(() => setDetailLoading(false));
+  }, [id]);
+
+  const property = detailProperty ?? lightProperty;
   const rooms = property ? getRoomsByProperty(property.id) : [];
   const publicRooms = rooms.filter(room => room.status !== 'draft');
   const availableRooms = publicRooms.filter(room => room.status === 'available');
@@ -140,11 +153,21 @@ export function PropertyDetail() {
   if (!property) {
     return (
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-10">
-        <Card className="p-8 text-center">
-          <h1 className="text-2xl font-bold text-foreground mb-2">Casa não encontrada</h1>
-          <p className="text-muted-foreground mb-5">Esta página pode ter sido removida ou arquivada.</p>
-          <Button onClick={() => navigate('/search')}>Voltar à pesquisa</Button>
-        </Card>
+        {detailLoading ? (
+          <Card className="p-8">
+            <div className="animate-pulse space-y-4">
+              <div className="h-8 bg-muted rounded w-2/3" />
+              <div className="h-4 bg-muted rounded w-1/2" />
+              <div className="h-64 bg-muted rounded-3xl mt-4" />
+            </div>
+          </Card>
+        ) : (
+          <Card className="p-8 text-center">
+            <h1 className="text-2xl font-bold text-foreground mb-2">Casa não encontrada</h1>
+            <p className="text-muted-foreground mb-5">Esta página pode ter sido removida ou arquivada.</p>
+            <Button onClick={() => navigate('/search')}>Voltar à pesquisa</Button>
+          </Card>
+        )}
       </div>
     );
   }
@@ -329,6 +352,8 @@ export function PropertyDetail() {
                 </button>
               )}
             </div>
+          ) : detailLoading ? (
+            <div className="h-64 md:h-[360px] rounded-3xl bg-muted animate-pulse" />
           ) : (
             <div className="h-64 rounded-3xl bg-muted flex items-center justify-center text-muted-foreground">
               Sem fotos disponíveis

@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { useProperties } from '../context/PropertiesContext';
 import { Accommodation } from '../types/accommodation';
+import type { Property, Room } from '../types/property';
 import { useReviews } from '../hooks/useTrust';
 import { supabase } from '../lib/supabase';
 import { useProfile } from '../hooks/useProfile';
@@ -28,7 +29,7 @@ export function RoomDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isFavorite, toggleFavorite } = useFavorites();
-  const { getRoom, getProperty, getRoomsByProperty, updatePropertyStatus } = useProperties();
+  const { getRoom, getProperty, getRoomsByProperty, updatePropertyStatus, fetchPropertyDetail, fetchRoomDetail } = useProperties();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -41,8 +42,27 @@ export function RoomDetail() {
   const [existingVisit, setExistingVisit] = useState<{ id: string; status: string; requestedAt: string; proposedAt?: string | null } | null>(null);
   const [visitRefreshKey, setVisitRefreshKey] = useState(0);
 
-  const room = getRoom(id || '');
-  const property = room ? getProperty(room.propertyId) : null;
+  const lightRoom = getRoom(id || '');
+  const lightProperty = lightRoom ? getProperty(lightRoom.propertyId) : null;
+  const [detailRoom, setDetailRoom] = useState<Room | null>(null);
+  const [detailProperty, setDetailProperty] = useState<Property | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    setDetailLoading(true);
+    fetchRoomDetail(id)
+      .then(async detail => {
+        if (!detail) return;
+        setDetailRoom(detail);
+        const prop = await fetchPropertyDetail(detail.propertyId);
+        if (prop) setDetailProperty(prop);
+      })
+      .finally(() => setDetailLoading(false));
+  }, [id]);
+
+  const room = detailRoom ?? lightRoom;
+  const property = detailProperty ?? lightProperty;
   const otherRooms = room ? getRoomsByProperty(room.propertyId).filter(r => r.id !== room.id) : [];
   const galleryImages = room && property
     ? Array.from(new Set([...room.images, ...property.images]))
@@ -127,10 +147,18 @@ export function RoomDetail() {
   if (!room || !property) {
     return (
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold mb-4">Quarto não encontrado</h1>
-          <Button onClick={() => navigate('/search')}>Voltar à pesquisa</Button>
-        </div>
+        {detailLoading ? (
+          <div className="animate-pulse space-y-4">
+            <div className="h-96 bg-muted rounded-xl" />
+            <div className="h-8 bg-muted rounded w-2/3" />
+            <div className="h-4 bg-muted rounded w-1/2" />
+          </div>
+        ) : (
+          <div className="text-center">
+            <h1 className="text-2xl font-semibold mb-4">Quarto não encontrado</h1>
+            <Button onClick={() => navigate('/search')}>Voltar à pesquisa</Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -292,11 +320,17 @@ export function RoomDetail() {
           <div className="lg:col-span-2 space-y-6">
             <div className="space-y-3">
               <div className="relative overflow-hidden rounded-xl bg-muted">
-                <img
-                  src={galleryImages[selectedImageIndex] || room.images[0] || property.images[0]}
-                  alt={room.title}
-                  className="w-full h-96 object-cover rounded-xl"
-                />
+                {galleryImages.length > 0 ? (
+                  <img
+                    src={galleryImages[selectedImageIndex] || ''}
+                    alt={room.title}
+                    className="w-full h-96 object-cover rounded-xl"
+                  />
+                ) : (
+                  <div className={`w-full h-96 rounded-xl ${detailLoading ? 'animate-pulse bg-muted' : 'bg-muted flex items-center justify-center text-sm text-muted-foreground'}`}>
+                    {!detailLoading && 'Sem fotos disponíveis'}
+                  </div>
+                )}
                 <div className="absolute left-4 top-4 flex flex-wrap gap-2">
                   <Badge className="bg-white/95 text-foreground border border-white shadow-sm">
                     {room.roomNumber}
