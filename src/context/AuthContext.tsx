@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, AuthContextType, RegisterData, UserType } from '../types/auth';
 import { StudentProfile } from '../types/profile';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { upsertStudentProfileToDb } from '../db/profilesDb';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -69,61 +69,41 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
-function isTransientAuthError(message?: string): boolean {
-  if (!message) return false;
-  return /statement timeout|canceling statement|failed to fetch|networkerror|load failed|connection/i.test(message);
-}
 
-async function fetchProfileById(userId: string, maxAttempts = 2): Promise<User | null> {
+async function fetchProfileById(userId: string, maxAttempts = 3): Promise<User | null> {
   if (!isSupabaseConfigured || !supabase) return null;
+  const SERVER_BASE = `${supabaseUrl}/functions/v1/make-server-08c694dc`;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const timeoutMs = 5000;
     try {
-      const { data, error } = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('id,email,full_name,type,status,verified,onboarding_completed,profile_completeness,created_at')
-          .eq('id', userId)
-          .maybeSingle(),
-        timeoutMs,
+      // Get session token for the server request
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? supabaseAnonKey;
+
+      const res = await withTimeout(
+        fetch(`${SERVER_BASE}/profiles/${encodeURIComponent(userId)}`, {
+          headers: { Authorization: `Bearer ${token}`, apikey: supabaseAnonKey },
+        }),
+        15000,
         'profiles select',
       );
-      if (error) {
-        if (/column .*verified.* does not exist/i.test(error.message)) {
-          const fallback = await withTimeout(
-            supabase
-              .from('profiles')
-              .select('id,email,full_name,type,status,onboarding_completed,profile_completeness,created_at')
-              .eq('id', userId)
-              .maybeSingle(),
-            timeoutMs,
-            'profiles select (no verified)',
-          );
-          if (fallback.error) {
-            console.error('[UniRoom] Profile fetch error:', fallback.error.message);
-            return null;
-          }
-          return fallback.data ? mapDbProfile(fallback.data as DbProfile) : null;
-        }
-        if (isTransientAuthError(error.message) && attempt < maxAttempts) {
-          await new Promise(r => setTimeout(r, 300));
-          continue;
-        }
-        console.error('[UniRoom] Profile fetch error:', error.message);
+      if (!res.ok) {
+        if (attempt < maxAttempts) { await new Promise(r => setTimeout(r, attempt * 500)); continue; }
+        console.error(`[AUTH] fetchProfileById HTTP ${res.status}`);
         return null;
       }
-      return data ? mapDbProfile(data as DbProfile) : null;
+      const json = await res.json();
+      const data = json.data as DbProfile | null;
+      if (!data) return null;
+      return mapDbProfile(data);
     } catch (err) {
-      if (attempt < maxAttempts) {
-        await new Promise(r => setTimeout(r, 300));
-        continue;
-      }
+      if (attempt < maxAttempts) { await new Promise(r => setTimeout(r, attempt * 500)); continue; }
       console.error('[AUTH] fetchProfileById failed:', err);
       return null;
     }
   }
   return null;
 }
+
 
 async function upsertProfileRow(userId: string, data: RegisterData): Promise<void> {
   if (!supabase) throw new Error('Supabase não configurado.');
