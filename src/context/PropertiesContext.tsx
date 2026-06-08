@@ -20,9 +20,19 @@ interface PropertiesContextType {
   getRoom: (id: string) => Room | undefined;
   getRoomsByProperty: (propertyId: string) => Room[];
   refreshProperties: () => Promise<void>;
+  fetchPropertyDetail: (id: string) => Promise<Property | null>;
+  fetchRoomDetail: (id: string) => Promise<Room | null>;
   adminSuspendProperty: (id: string, reason: string, adminName: string) => Promise<void>;
   liftAdminSuspension: (id: string) => Promise<void>;
 }
+
+const PROPERTIES_LIGHT_FIELDS =
+  'id, landlord_id, title, address, city, zone, distance_to_university, coordinates, total_rooms, whole_property_available, whole_property_price, status, verified, admin_suspended, views, created_at, updated_at';
+
+const ROOMS_LIGHT_FIELDS =
+  'id, property_id, landlord_id, title, room_number, price, utilities, room_type, status, available_from, size, private_bathroom, desk, wardrobe, balcony, created_at, updated_at';
+
+const REFRESH_THROTTLE_MS = 120_000;
 
 const PropertiesContext = createContext<PropertiesContextType | undefined>(undefined);
 
@@ -226,9 +236,10 @@ async function fetchRemoteProperties(): Promise<Property[]> {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      if (attempt === 1) console.log('[fetch] properties light');
       const { data, error } = await supabase
         .from('properties')
-        .select('*')
+        .select(PROPERTIES_LIGHT_FIELDS)
         .order('created_at', { ascending: false });
       if (error) {
         if (isTransientError(error.message) && attempt < maxAttempts) {
@@ -252,9 +263,10 @@ async function fetchRemoteRooms(): Promise<Room[]> {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      if (attempt === 1) console.log('[fetch] rooms light');
       const { data, error } = await supabase
         .from('rooms')
-        .select('*')
+        .select(ROOMS_LIGHT_FIELDS)
         .order('created_at', { ascending: false });
       if (error) {
         if (isTransientError(error.message) && attempt < maxAttempts) {
@@ -271,6 +283,30 @@ async function fetchRemoteRooms(): Promise<Room[]> {
     }
   }
   return [];
+}
+
+async function fetchPropertyDetailRemote(id: string): Promise<Property | null> {
+  if (!isSupabaseConfigured) return null;
+  console.log('[fetch] property detail', id);
+  const { data, error } = await supabase
+    .from('properties')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return normalizeProperty(data);
+}
+
+async function fetchRoomDetailRemote(id: string): Promise<Room | null> {
+  if (!isSupabaseConfigured) return null;
+  console.log('[fetch] room detail', id);
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return normalizeRoom(data);
 }
 
 async function syncPropertyToSupabase(property: Property): Promise<void> {
@@ -319,21 +355,34 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     notifyPropertiesChanged();
   }, []);
 
+  const lastRefreshAtRef = useRef<number>(0);
+  const inflightRefreshRef = useRef<Promise<void> | null>(null);
+
   const refreshProperties = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    try {
-      const [remoteProperties, remoteRooms] = await Promise.all([
-        fetchRemoteProperties(),
-        fetchRemoteRooms(),
-      ]);
-      applyToState(remoteProperties, remoteRooms);
-    } finally {
-      setLoading(false);
-    }
+    if (inflightRefreshRef.current) return inflightRefreshRef.current;
+    const now = Date.now();
+    if (now - lastRefreshAtRef.current < REFRESH_THROTTLE_MS) return;
+
+    const run = (async () => {
+      setLoading(true);
+      try {
+        const [remoteProperties, remoteRooms] = await Promise.all([
+          fetchRemoteProperties(),
+          fetchRemoteRooms(),
+        ]);
+        applyToState(remoteProperties, remoteRooms);
+        lastRefreshAtRef.current = Date.now();
+      } finally {
+        setLoading(false);
+        inflightRefreshRef.current = null;
+      }
+    })();
+    inflightRefreshRef.current = run;
+    return run;
   }, [applyToState]);
 
   useEffect(() => {
@@ -414,24 +463,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       void supabase.removeChannel(channel);
     };
   }, []);
-
-  useEffect(() => {
-    const handleFocus = () => void refreshProperties();
-    const handleVisibility = () => { if (!document.hidden) void refreshProperties(); };
-
-    /*
-      Não escutamos PROPERTIES_REFRESH_EVENT aqui porque este contexto
-      dispara esse evento dentro de applyToState — ouvir o próprio evento
-      criaria um loop infinito.
-    */
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [refreshProperties]);
 
   const addProperty = async (property: Property, options?: { skipRefresh?: boolean }) => {
     const nextProperty = normalizeProperty({
@@ -526,6 +557,8 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
         getRoom,
         getRoomsByProperty,
         refreshProperties,
+        fetchPropertyDetail: fetchPropertyDetailRemote,
+        fetchRoomDetail: fetchRoomDetailRemote,
         adminSuspendProperty,
         liftAdminSuspension,
       }}

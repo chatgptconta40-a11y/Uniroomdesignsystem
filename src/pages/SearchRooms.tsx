@@ -696,7 +696,7 @@ function FilterSidebar({
 }
 
 export function SearchRooms() {
-  const { rooms, properties, refreshProperties } = useProperties();
+  const { rooms, properties } = useProperties();
   const { isInCompare, toggleCompare, compareItems } = useCompare();
   const { statusMap: verificationStatusMap } = useAllVerificationStatuses();
   const { user } = useAuth();
@@ -721,10 +721,6 @@ export function SearchRooms() {
     setFilters(current => ({ ...current, ...updates }));
 
   const universityLabel = UNIVERSITIES.find(university => university.value === filters.university)?.label ?? filters.university;
-
-  useEffect(() => {
-    void refreshProperties();
-  }, [refreshProperties, user?.id, user?.type]);
 
   useEffect(() => {
     if (canShowCompatibility) return;
