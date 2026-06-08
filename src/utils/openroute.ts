@@ -1,6 +1,6 @@
 import { ESTGV, type LatLng } from './estgv';
 
-const ORS_BASE = 'https://api.openrouteservice.org';
+const ORS_BASE = 'https://api.heigit.org/openrouteservice';
 
 /** True when VITE_ORS_API_KEY is present in the build environment. */
 export const ORS_KEY_CONFIGURED = !!(import.meta.env.VITE_ORS_API_KEY as string | undefined);

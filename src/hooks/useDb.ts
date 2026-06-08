@@ -842,8 +842,14 @@ export function useLandlordApplications(landlordId?: string) {
 
     const studentIds = [...new Set(apps.map(a => a.user_id))];
     const [profilesResult, personalsResult] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, email').in('id', studentIds),
-      supabase.from('personal_profiles').select('user_id, course, institution, year_of_study').in('user_id', studentIds),
+      supabase
+        .from('profiles')
+        .select('id, full_name, email, avatar_url, created_at, verified')
+        .in('id', studentIds),
+      supabase
+        .from('personal_profiles')
+        .select('user_id, course, institution, year_of_study, age, hometown, bio, photo_url')
+        .in('user_id', studentIds),
     ]);
 
     if (profilesResult.error) {

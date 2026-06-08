@@ -8,21 +8,17 @@ import {
   Car,
   Bike,
   ExternalLink,
-  Lock,
   Info,
-  Loader2,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { PropertyRouteMap } from './map/PropertyRouteMap';
-import { useLocationAccess } from '../hooks/useLocationAccess';
 import { useRoute, type TravelMode } from '../hooks/useRoute';
-import { ORS_KEY_CONFIGURED } from '../utils/openroute';
 import {
   ESTGV,
   commuteContext,
   googleMapsUrls,
   haversineKm,
-  approximateCoords,
   walkMinutesFromDistance,
   type LatLng,
 } from '../utils/estgv';
@@ -118,9 +114,9 @@ function TransportCard({
   const isTransit = key === 'transit';
 
   // Only show ORS result when a real route was actually calculated
-  const showRoute = isSelectedMode && !isTransit && !!routeResult && ORS_KEY_CONFIGURED;
-  const showLoading = isSelectedMode && !isTransit && routeLoading && ORS_KEY_CONFIGURED;
-  const showError = isSelectedMode && !isTransit && !!routeError && ORS_KEY_CONFIGURED;
+  const showRoute = isSelectedMode && !isTransit && !!routeResult;
+  const showLoading = isSelectedMode && !isTransit && routeLoading;
+  const showError = isSelectedMode && !isTransit && !!routeError;
 
   // Heuristic fallback times (km-based estimates)
   const fallbackMin =
@@ -205,11 +201,6 @@ function TransportCard({
 
 export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const access = useLocationAccess({
-    id: property.id,
-    landlordId: property.landlordId,
-    publicAddress: property.publicAddress,
-  });
 
   const hasCoords = isValidCoords(property.coordinates);
 
@@ -220,22 +211,13 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
     return property.distanceToUniversity ?? 0;
   }, [hasCoords, property.coordinates, property.distanceToUniversity]);
 
-  // Coordinates to render on the map, respecting the access/privacy level
+  // Map always uses the real property coordinates
   const mapCoords = useMemo((): LatLng | null => {
     if (!hasCoords) return null;
-    if (access.showFullAddress) return property.coordinates!;
-    // Approximate: stable small offset so the pin doesn't reveal the exact address
-    return approximateCoords(property.id, property.coordinates!) ?? property.coordinates!;
-  }, [hasCoords, property.coordinates, property.id, access.showFullAddress]);
+    return property.coordinates!;
+  }, [hasCoords, property.coordinates]);
 
-  const isApproximate = !!mapCoords && !access.showFullAddress;
-
-  // ORS routes: key + any valid coords (mapCoords already applies privacy masking).
-  // We do NOT require showFullAddress — routing from approximate coords is safe
-  // because it doesn't reveal the exact address beyond what the pin already shows.
-  const orsOrigin = ORS_KEY_CONFIGURED && mapCoords ? mapCoords : null;
-
-  const { selectedMode, routeResult, routeLoading, routeError, setMode } = useRoute(orsOrigin);
+  const { selectedMode, routeResult, routeLoading, routeError, setMode } = useRoute(mapCoords);
 
   const walkMin = walkMinutesFromDistance(distanceKm);
   const context = room ? commuteContext(walkMin) : null;
@@ -249,13 +231,12 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
           city: property.city,
           coordinates: property.coordinates,
         },
-        access.level,
+        'full',
       ),
-    [property.address, property.zone, property.city, property.coordinates, access.level],
+    [property.address, property.zone, property.city, property.coordinates],
   );
 
-  const showFull = access.showFullAddress;
-  const displayLabel = showFull && property.address
+  const displayLabel = property.address
     ? property.address
     : [property.zone, property.city].filter(Boolean).join(', ');
 
@@ -271,16 +252,19 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
 
   // focusTrigger: incrementing causes PropertyRouteMap to flyTo the property pin.
   const [focusTrigger, setFocusTrigger] = useState(0);
-  // Brief inline notices for edge-case user actions.
+  // fitTrigger: incrementing causes PropertyRouteMap to fit property + ESTGV bounds.
+  const [fitTrigger, setFitTrigger] = useState(0);
+  // Whether the dashed estimated line between property and ESTGV is shown.
+  const [showEstimatedLine, setShowEstimatedLine] = useState(false);
+  // Brief inline notice when coords are missing.
   const [noCoordNotice, setNoCoordNotice] = useState(false);
-  const [transitSwitchedNotice, setTransitSwitchedNotice] = useState(false);
 
   function showNoticeFor(setter: (v: boolean) => void) {
     setter(true);
     setTimeout(() => setter(false), 3500);
   }
 
-  // "Abrir no mapa": centers the internal Leaflet map on the property pin.
+  // "Centrar no mapa": centers the internal Leaflet map on the property pin.
   const handleAbrirNoMapa = useCallback(() => {
     if (!mapCoords) {
       showNoticeFor(setNoCoordNotice);
@@ -290,20 +274,17 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
     setFocusTrigger(n => n + 1);
   }, [mapCoords]);
 
-  // "Ver percurso": draws the real ORS route on the Leaflet map.
-  // If transit is active, auto-switches to walking and notifies.
-  // Falls back to opening Google Maps only when no ORS key AND no coords.
+  // "Ver percurso no mapa": reveal dashed line and fit both pins inside the Leaflet map.
   const handleVerPercurso = useCallback(() => {
     if (!mapCoords) {
       showNoticeFor(setNoCoordNotice);
       return;
     }
-    if (selectedMode === 'transit') {
-      setMode('walking');
-      showNoticeFor(setTransitSwitchedNotice);
-    }
     mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [mapCoords, selectedMode, setMode]);
+    setShowEstimatedLine(true);
+    setFitTrigger(n => n + 1);
+  }, [mapCoords]);
+
 
   return (
     <section className="space-y-4 min-w-0 overflow-hidden">
@@ -312,7 +293,7 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-foreground">Localização e percurso até à ESTGV</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Quanto demoras desde {showFull ? 'a casa' : 'a zona'} até à universidade.
+            Os tempos são estimativas. Confirma o percurso real antes da visita.
           </p>
         </div>
         {context && (
@@ -323,26 +304,17 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
         )}
       </header>
 
-      {/* ORS notice — shown once, unobtrusively, only when key is missing */}
-      {!ORS_KEY_CONFIGURED && hasCoords && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          <Info className="h-3.5 w-3.5 shrink-0" />
-          <span>
-            Configure <code className="font-mono font-semibold">VITE_ORS_API_KEY</code> para rotas reais.
-            Os tempos abaixo são estimativas.
-          </span>
-        </div>
-      )}
-
       {/* Map + destination summary side-by-side on lg */}
       <div ref={mapContainerRef} className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_220px]">
         {mapCoords ? (
           <PropertyRouteMap
             coords={mapCoords}
-            isApproximate={isApproximate}
+            isApproximate={false}
             routeResult={mapRoute}
             heightClass="h-52 lg:h-full lg:min-h-[200px]"
             focusTrigger={focusTrigger}
+            fitTrigger={fitTrigger}
+            showEstimatedLine={showEstimatedLine}
           />
         ) : (
           <div className="h-52 lg:h-full lg:min-h-[200px] rounded-2xl border border-border bg-muted flex items-center justify-center">
@@ -368,7 +340,7 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
 
           <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 p-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary">
-              {showFull ? <MapPin className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+              <MapPin className="h-4 w-4" />
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -409,15 +381,19 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
           Localização ainda não disponível para esta propriedade.
         </div>
       )}
-      {transitSwitchedNotice && (
-        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-          <Info className="h-3.5 w-3.5 shrink-0" />
-          Transporte público não tem rota interna — a mostrar percurso a pé. Para horários, usa "Abrir direções externas".
-        </div>
-      )}
-
       {/* Action buttons */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {/* Primary CTA: draws estimated line inside the internal Leaflet map */}
+        <button
+          type="button"
+          onClick={handleVerPercurso}
+          disabled={!mapCoords}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Navigation className="h-4 w-4 shrink-0" />
+          Ver percurso no mapa
+        </button>
+
         {/* Focuses the internal Leaflet map on the property pin */}
         <button
           type="button"
@@ -428,56 +404,23 @@ export function ESTGVRouteSection({ property, room }: ESTGVRouteSectionProps) {
           <MapPin className="h-4 w-4 shrink-0" />
           Centrar no mapa
         </button>
+      </div>
 
-        {/* External fallback — clearly labelled as leaving the app */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground italic">
+          Ligação visual estimada. Confirma o percurso real antes da visita.
+        </p>
+        {/* Discreet external fallback */}
         <a
           href={urls.directions}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-bold text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary hover:underline"
         >
-          <ExternalLink className="h-4 w-4 shrink-0" />
-          Abrir direções externas
+          <ExternalLink className="h-3 w-3 shrink-0" />
+          Confirmar externamente
         </a>
-
-        {/* Primary CTA: draws ORS route on internal Leaflet map */}
-        <button
-          type="button"
-          onClick={handleVerPercurso}
-          disabled={!mapCoords}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 lg:col-span-1"
-        >
-          {routeLoading ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-          ) : (
-            <GraduationCap className="h-4 w-4 shrink-0" />
-          )}
-          Ver percurso até à ESTGV
-        </button>
       </div>
-
-      {/* Approximate location notice */}
-      {isApproximate && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            A localização exata está protegida. O pin no mapa é aproximado.
-            {access.notice ? ` ${access.notice}` : ''}
-          </span>
-        </div>
-      )}
-
-      {/* Privacy notice from access hook */}
-      {!isApproximate && access.notice && (
-        <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-          <span>{access.notice}</span>
-        </div>
-      )}
-
-      <p className="text-xs text-muted-foreground italic">
-        Os tempos podem variar conforme trânsito, horários e ritmo a pé.
-      </p>
     </section>
   );
 }

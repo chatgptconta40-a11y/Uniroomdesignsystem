@@ -72,15 +72,19 @@ const APPROX_PIN = L.divIcon({
 function BoundsFitter({
   polyline,
   propertyCoords,
+  fitTrigger = 0,
 }: {
   polyline: [number, number][] | null;
   propertyCoords: LatLng;
+  fitTrigger?: number;
 }) {
   const map = useMap();
   const prevKeyRef = useRef<string>('');
 
   useEffect(() => {
-    const key = polyline ? `route-${polyline.length}` : `pair-${propertyCoords.lat}-${propertyCoords.lng}`;
+    const key = polyline
+      ? `route-${polyline.length}`
+      : `pair-${propertyCoords.lat}-${propertyCoords.lng}-${fitTrigger}`;
     if (key === prevKeyRef.current) return;
     prevKeyRef.current = key;
 
@@ -105,6 +109,10 @@ interface PropertyRouteMapProps {
   heightClass?: string;
   /** Increment this number to trigger an animated flyTo on the property pin. */
   focusTrigger?: number;
+  /** When true, draw a dashed straight line between the property and ESTGV. */
+  showEstimatedLine?: boolean;
+  /** Increment this number to re-fit the map to property + ESTGV bounds. */
+  fitTrigger?: number;
 }
 
 export function PropertyRouteMap({
@@ -113,6 +121,8 @@ export function PropertyRouteMap({
   routeResult,
   heightClass = 'h-52 lg:min-h-[180px] lg:h-full',
   focusTrigger = 0,
+  showEstimatedLine = false,
+  fitTrigger = 0,
 }: PropertyRouteMapProps) {
   const center: [number, number] = [
     (coords.lat + ESTGV.lat) / 2,
@@ -150,9 +160,26 @@ export function PropertyRouteMap({
           />
         )}
 
+        {/* Estimated (straight, dashed) line — only when no real route is drawn */}
+        {!routeResult && showEstimatedLine && (
+          <Polyline
+            positions={[
+              [coords.lat, coords.lng],
+              [ESTGV.lat, ESTGV.lng],
+            ]}
+            pathOptions={{
+              color: '#7c3aed',
+              weight: 4,
+              opacity: 0.85,
+              dashArray: '8 6',
+            }}
+          />
+        )}
+
         <BoundsFitter
           polyline={routeResult?.polyline ?? null}
           propertyCoords={coords}
+          fitTrigger={fitTrigger}
         />
         <MapFocuser coords={coords} trigger={focusTrigger} />
       </MapContainer>

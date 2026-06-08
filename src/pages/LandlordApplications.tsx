@@ -31,6 +31,12 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { TrustPill, trustLevelToPill } from '../components/TrustPill';
+import {
+  computeCompatibility,
+  computeTrust,
+  type CompatibilityResult,
+} from '../utils/applicationScoring';
+import type { LifestyleProfile, AccommodationPreferences } from '../types/profile';
 import { toast } from 'sonner';
 
 interface DetailedApplication extends Application {
@@ -40,8 +46,11 @@ interface DetailedApplication extends Application {
   applicantUniversity: string;
   applicantYear: number;
   compatibilityScore: number;
+  compatibility: CompatibilityResult;
   trustScore: number;
   trustLevel: 'new' | 'confirmed' | 'trusted';
+  trustLabel: string;
+  trustIsFallback: boolean;
   verificationLevel: 'none' | 'bronze' | 'silver' | 'gold';
   verificationLabel: string;
   verificationPending: boolean;
@@ -82,7 +91,18 @@ export function LandlordApplications() {
 
   const [baseApplications, setBaseApplications] = useState<Application[]>([]);
   const [profileEnrichment, setProfileEnrichment] = useState<Map<string, {
-    name: string; email: string; course: string; university: string; year: number;
+    name: string;
+    email: string;
+    course: string;
+    university: string;
+    year: number;
+    verified: boolean;
+    onboardingCompleted: boolean;
+    status?: string | null;
+    lifestyle?: LifestyleProfile | null;
+    preferences?: AccommodationPreferences | null;
+    trust?: { score: number; level: string } | null;
+    verificationLevel?: 'none' | 'bronze' | 'silver' | 'gold';
   }>>(new Map());
 
   useEffect(() => {
@@ -110,25 +130,120 @@ export function LandlordApplications() {
     if (!baseApplications.length) return;
     const userIds = [...new Set(baseApplications.map(a => a.userId))];
     (async () => {
-      const [profilesResult, personalsResult] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, email').in('id', userIds),
-        supabase.from('personal_profiles').select('user_id, course, institution, year_of_study').in('user_id', userIds),
+      const [
+        profilesResult,
+        personalsResult,
+        lifestyleResult,
+        preferencesResult,
+        trustResult,
+        verificationResult,
+      ] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, full_name, email, avatar_url, created_at, verified, onboarding_completed, status')
+          .in('id', userIds),
+        supabase
+          .from('personal_profiles')
+          .select('user_id, course, institution, year_of_study, age, hometown, bio, photo_url')
+          .in('user_id', userIds),
+        supabase
+          .from('lifestyle_profiles')
+          .select('*')
+          .in('user_id', userIds),
+        supabase
+          .from('accommodation_preferences')
+          .select('*')
+          .in('user_id', userIds),
+        supabase
+          .from('trust_scores')
+          .select('user_id, score, level, reviews_count, average_rating')
+          .in('user_id', userIds),
+        supabase
+          .from('verification_status')
+          .select('user_id, level')
+          .in('user_id', userIds),
       ]);
+
       if (profilesResult.error) {
         console.error('[UniRoom] Student profiles fetch error:', profilesResult.error.message);
       }
       if (personalsResult.error) {
         console.error('[UniRoom] Student personal profiles fetch error:', personalsResult.error.message);
       }
+      if (lifestyleResult.error) {
+        console.warn('[UniRoom] Lifestyle fetch error:', lifestyleResult.error.message);
+      }
+      if (preferencesResult.error) {
+        console.warn('[UniRoom] Preferences fetch error:', preferencesResult.error.message);
+      }
+      if (trustResult.error) {
+        console.warn('[UniRoom] Trust score fetch error:', trustResult.error.message);
+      }
+      if (verificationResult.error) {
+        console.warn('[UniRoom] Verification fetch error:', verificationResult.error.message);
+      }
+
       const pMap = new Map((profilesResult.data ?? []).map(p => [p.id, p]));
       const perMap = new Map((personalsResult.data ?? []).map(p => [p.user_id, p]));
-      const enrichment = new Map(userIds.map(id => [id, {
-        name: pMap.get(id)?.full_name ?? '',
-        email: pMap.get(id)?.email ?? '',
-        course: perMap.get(id)?.course ?? '',
-        university: perMap.get(id)?.institution ?? '',
-        year: perMap.get(id)?.year_of_study ?? 0,
-      }]));
+      const lifeMap = new Map((lifestyleResult.data ?? []).map(l => [l.user_id, l]));
+      const prefMap = new Map((preferencesResult.data ?? []).map(p => [p.user_id, p]));
+      const trustMap = new Map((trustResult.data ?? []).map(t => [t.user_id, t]));
+      const verifMap = new Map((verificationResult.data ?? []).map(v => [v.user_id, v]));
+
+      const enrichment = new Map(userIds.map(id => {
+        const life = lifeMap.get(id);
+        const pref = prefMap.get(id);
+        const trust = trustMap.get(id);
+        const verif = verifMap.get(id);
+
+        const lifestyle: LifestyleProfile | null = life
+          ? {
+              userId: id,
+              bedtime: life.bedtime ?? undefined,
+              wakeupTime: life.wakeup_time ?? undefined,
+              schedule: life.schedule ?? undefined,
+              cleanliness: life.cleanliness ?? undefined,
+              cleaningFrequency: life.cleaning_frequency ?? undefined,
+              noiseTolerance: life.noise_tolerance ?? undefined,
+              musicVolume: life.music_volume ?? undefined,
+              guestsFrequency: life.guests_frequency ?? undefined,
+              guestsAcceptance: life.guests_acceptance ?? undefined,
+              smoking: life.smoking ?? undefined,
+              pets: life.pets ?? undefined,
+              cooking: life.cooking ?? undefined,
+              personality: life.personality ?? undefined,
+              socialPreference: life.social_preference ?? undefined,
+            }
+          : null;
+
+        const preferences: AccommodationPreferences | null = pref
+          ? {
+              userId: id,
+              maxBudget: pref.max_budget ?? undefined,
+              preferredCities: pref.preferred_cities ?? [],
+              maxDistanceFromUniversity: pref.max_distance_from_university ?? undefined,
+              moveInDate: pref.move_in_date ? new Date(pref.move_in_date) : undefined,
+              stayDuration: pref.stay_duration ?? undefined,
+              roomType: pref.room_type ?? undefined,
+              amenities: pref.amenities ?? undefined,
+            }
+          : null;
+
+        return [id, {
+          name: pMap.get(id)?.full_name ?? '',
+          email: pMap.get(id)?.email ?? '',
+          course: perMap.get(id)?.course ?? '',
+          university: perMap.get(id)?.institution ?? '',
+          year: perMap.get(id)?.year_of_study ?? 0,
+          verified: !!pMap.get(id)?.verified,
+          onboardingCompleted: !!pMap.get(id)?.onboarding_completed,
+          status: pMap.get(id)?.status ?? null,
+          lifestyle,
+          preferences,
+          trust: trust ? { score: Number(trust.score ?? 0), level: trust.level ?? 'new' } : null,
+          verificationLevel: (verif?.level as 'none' | 'bronze' | 'silver' | 'gold') ?? 'none',
+        }];
+      }));
       setProfileEnrichment(enrichment);
     })();
   }, [baseApplications]);
@@ -147,6 +262,26 @@ export function LandlordApplications() {
       const roomLabel = room?.title || 'Quarto';
       const propertyLabel = property?.title || 'Alojamento';
       const enriched = profileEnrichment.get(app.userId);
+
+      const compatibility = computeCompatibility({
+        lifestyle: enriched?.lifestyle,
+        preferences: enriched?.preferences,
+        room,
+        property,
+        moveInDate: app.moveInDate ?? null,
+      });
+
+      const trust = computeTrust({
+        trust: enriched?.trust,
+        profile: {
+          verified: enriched?.verified,
+          onboardingCompleted: enriched?.onboardingCompleted,
+          status: enriched?.status,
+        },
+      });
+
+      const verificationLevel = enriched?.verificationLevel ?? 'none';
+
       return {
         ...app,
         applicantName: enriched?.name || '',
@@ -154,11 +289,14 @@ export function LandlordApplications() {
         applicantCourse: enriched?.course || '',
         applicantUniversity: enriched?.university || '',
         applicantYear: enriched?.year || 0,
-        compatibilityScore: 0,
-        trustScore: 0,
-        trustLevel: 'new',
-        verificationLevel: 'none',
-        verificationLabel: 'Não verificado',
+        compatibilityScore: compatibility.score,
+        compatibility,
+        trustScore: trust.score,
+        trustLevel: trust.level,
+        trustLabel: trust.label,
+        trustIsFallback: trust.isFallback,
+        verificationLevel,
+        verificationLabel: verificationLevel === 'none' ? 'Não verificado' : 'Verificado',
         verificationPending: false,
         listingTitle: room ? `${roomLabel} · ${propertyLabel}` : propertyLabel,
         listingPrice: room?.price || 0,
@@ -841,9 +979,23 @@ function ApplicationDetailModal({
               <Star className="w-4 h-4" />
             </div>
             <p className="text-3xl font-bold">{app.compatibilityScore}%</p>
-            <p className="text-xs mt-1 opacity-75">
-              {app.compatibilityScore >= 80 ? 'Excelente match' : app.compatibilityScore >= 60 ? 'Bom match' : 'Match moderado'}
-            </p>
+            <p className="text-xs mt-1 opacity-75">{app.compatibility?.label ?? 'Match moderado'}</p>
+            {((app.compatibility?.reasons?.length ?? 0) > 0 || (app.compatibility?.conflicts?.length ?? 0) > 0) && (
+              <ul className="mt-2 space-y-0.5 text-[11px] opacity-90">
+                {(app.compatibility?.conflicts ?? []).slice(0, 3).map(c => (
+                  <li key={`c-${c}`} className="flex items-start gap-1">
+                    <span aria-hidden>•</span>
+                    <span>{c}</span>
+                  </li>
+                ))}
+                {(app.compatibility?.reasons ?? []).slice(0, 3 - Math.min(3, app.compatibility?.conflicts?.length ?? 0)).map(r => (
+                  <li key={`r-${r}`} className="flex items-start gap-1">
+                    <span aria-hidden>•</span>
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className={`p-4 rounded-xl ${getTrustColor(app.trustScore)}`}>
@@ -852,9 +1004,10 @@ function ApplicationDetailModal({
               <Shield className="w-4 h-4" />
             </div>
             <p className="text-3xl font-bold">{app.trustScore}</p>
-            <p className="text-xs mt-1 opacity-75">
-              {app.trustScore >= 75 ? 'Muito confiável' : app.trustScore >= 50 ? 'Confiável' : 'Perfil recente'}
-            </p>
+            <p className="text-xs mt-1 opacity-75">{app.trustLabel ?? 'Perfil recente'}</p>
+            {app.trustIsFallback && (
+              <p className="text-[11px] mt-1 opacity-70">Estimativa com base no perfil</p>
+            )}
           </div>
         </div>
 
@@ -874,8 +1027,12 @@ function ApplicationDetailModal({
             <div>
               <p className="text-xs text-muted-foreground">Curso</p>
               <p className="text-sm font-medium text-foreground">
-                {app.applicantCourse || 'Não preenchido'}
-                {app.applicantYear ? ` · ${app.applicantYear}º ano` : ''}
+                {app.applicantCourse || 'Não indicado'}
+                {' · '}
+                {app.applicantYear ? `${app.applicantYear}º ano` : 'Não indicado'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {app.applicantUniversity || 'Instituição não indicada'}
               </p>
             </div>
           </div>
