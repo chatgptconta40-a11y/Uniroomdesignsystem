@@ -234,13 +234,22 @@ function sleep(ms: number): Promise<void> {
 
 // ─── Server helpers ───────────────────────────────────────────────────────────
 
+async function getSessionToken(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? supabaseAnonKey;
+}
+
 async function serverGet<T>(path: string): Promise<T[]> {
   if (!isSupabaseConfigured) return [];
+  const token = await getSessionToken();
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const res = await fetch(`${SERVER_BASE}${path}`, {
-        headers: { Authorization: `Bearer ${supabaseAnonKey}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: supabaseAnonKey,
+        },
       });
       if (!res.ok) {
         const msg = `HTTP ${res.status}`;
@@ -261,9 +270,13 @@ async function serverGet<T>(path: string): Promise<T[]> {
 
 async function serverGetOne<T>(path: string): Promise<T | null> {
   if (!isSupabaseConfigured) return null;
+  const token = await getSessionToken();
   try {
     const res = await fetch(`${SERVER_BASE}${path}`, {
-      headers: { Authorization: `Bearer ${supabaseAnonKey}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: supabaseAnonKey,
+      },
     });
     if (!res.ok) return null;
     const json = await res.json();
@@ -279,7 +292,11 @@ async function serverPost(path: string, body: unknown): Promise<void> {
   const token = session.session?.access_token ?? supabaseAnonKey;
   const res = await fetch(`${SERVER_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      apikey: supabaseAnonKey,
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {

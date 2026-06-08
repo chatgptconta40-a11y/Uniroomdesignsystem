@@ -470,7 +470,7 @@ app.delete("/make-server-08c694dc/images/cleanup", async (c) => {
   }
 });
 
-// ─── Properties & Rooms (admin client — bypasses RLS) ────────────────────────
+// ─── Properties & Rooms (admin client — bypasses RLS, v3) ────────────────────
 
 const PROPERTIES_SELECT =
   "id, landlord_id, title, description, address, city, zone, distance_to_university, coordinates, total_rooms, whole_property_available, whole_property_price, whole_property_utilities, whole_property_minimum_stay, status, verified, admin_suspended, admin_suspension_reason, admin_suspended_at, admin_suspended_by, views, images, amenities, house_rules, created_at, updated_at";
@@ -478,13 +478,39 @@ const PROPERTIES_SELECT =
 const ROOMS_SELECT =
   "id, property_id, landlord_id, title, room_number, description, price, utilities, room_type, status, available_from, size, area, private_bathroom, desk, wardrobe, balcony, air_conditioning, max_occupants, minimum_stay, images, reserved_by, occupied_by, move_in_date, compatibility_score, views, created_at, updated_at";
 
+type CallerRole = { role: "admin" | "landlord" | "student" | "public"; userId: string | null };
+
+async function getCallerRole(authHeader: string | null): Promise<CallerRole> {
+  if (!authHeader) return { role: "public", userId: null };
+  const authed = await getAuthedUser(authHeader);
+  if (!authed) return { role: "public", userId: null };
+  const db = adminClient();
+  const { data: profile } = await db.from("profiles").select("type").eq("id", authed.user.id).maybeSingle();
+  const type = (profile?.type ?? "student") as CallerRole["role"];
+  return { role: type, userId: authed.user.id };
+}
+
+// Supabase PostgREST `or` filter string for "public or own" queries
+function propertyVisibilityFilter(userId: string): string {
+  return `status.eq.active,landlord_id.eq.${userId}`;
+}
+function roomVisibilityFilter(userId: string): string {
+  return `status.eq.available,landlord_id.eq.${userId}`;
+}
+
 app.get("/make-server-08c694dc/properties", async (c) => {
   try {
-    const supabase = adminClient();
-    const { data, error } = await supabase
-      .from("properties")
-      .select(PROPERTIES_SELECT)
-      .order("created_at", { ascending: false });
+    const caller = await getCallerRole(c.req.header("Authorization"));
+    const db = adminClient();
+    let query = db.from("properties").select(PROPERTIES_SELECT).order("created_at", { ascending: false });
+    if (caller.role === "admin") {
+      // no filter — admin sees everything
+    } else if (caller.role === "landlord" && caller.userId) {
+      query = query.or(propertyVisibilityFilter(caller.userId));
+    } else {
+      query = query.eq("status", "active");
+    }
+    const { data, error } = await query;
     if (error) { console.log(`[properties] list error: ${error.message}`); return c.json({ error: error.message }, 500); }
     return c.json({ data: data ?? [] });
   } catch (err) { console.log(`[properties] list exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
@@ -493,10 +519,16 @@ app.get("/make-server-08c694dc/properties", async (c) => {
 app.get("/make-server-08c694dc/properties/:id", async (c) => {
   try {
     const id = c.req.param("id");
-    const supabase = adminClient();
-    const { data, error } = await supabase.from("properties").select("*").eq("id", id).maybeSingle();
+    const caller = await getCallerRole(c.req.header("Authorization"));
+    const db = adminClient();
+    const { data, error } = await db.from("properties").select("*").eq("id", id).maybeSingle();
     if (error) return c.json({ error: error.message }, 500);
     if (!data) return c.json({ error: "Not found" }, 404);
+    const visible =
+      caller.role === "admin" ||
+      data.status === "active" ||
+      (caller.role === "landlord" && data.landlord_id === caller.userId);
+    if (!visible) return c.json({ error: "Not found" }, 404);
     return c.json({ data });
   } catch (err) { console.log(`[properties/:id] exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
 });
@@ -509,8 +541,8 @@ app.post("/make-server-08c694dc/properties", async (c) => {
     if (body.landlord_id && body.landlord_id !== authed.user.id) {
       return c.json({ error: "Forbidden: landlord_id mismatch" }, 403);
     }
-    const supabase = adminClient();
-    const { error } = await supabase.from("properties").upsert(body, { onConflict: "id" });
+    const db = adminClient();
+    const { error } = await db.from("properties").upsert(body, { onConflict: "id" });
     if (error) { console.log(`[properties] upsert error: ${error.message}`); return c.json({ error: error.message }, 500); }
     return c.json({ success: true });
   } catch (err) { console.log(`[properties] upsert exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
@@ -518,11 +550,17 @@ app.post("/make-server-08c694dc/properties", async (c) => {
 
 app.get("/make-server-08c694dc/rooms", async (c) => {
   try {
-    const supabase = adminClient();
-    const { data, error } = await supabase
-      .from("rooms")
-      .select(ROOMS_SELECT)
-      .order("created_at", { ascending: false });
+    const caller = await getCallerRole(c.req.header("Authorization"));
+    const db = adminClient();
+    let query = db.from("rooms").select(ROOMS_SELECT).order("created_at", { ascending: false });
+    if (caller.role === "admin") {
+      // no filter — admin sees everything
+    } else if (caller.role === "landlord" && caller.userId) {
+      query = query.or(roomVisibilityFilter(caller.userId));
+    } else {
+      query = query.eq("status", "available");
+    }
+    const { data, error } = await query;
     if (error) { console.log(`[rooms] list error: ${error.message}`); return c.json({ error: error.message }, 500); }
     return c.json({ data: data ?? [] });
   } catch (err) { console.log(`[rooms] list exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
@@ -531,10 +569,16 @@ app.get("/make-server-08c694dc/rooms", async (c) => {
 app.get("/make-server-08c694dc/rooms/:id", async (c) => {
   try {
     const id = c.req.param("id");
-    const supabase = adminClient();
-    const { data, error } = await supabase.from("rooms").select("*").eq("id", id).maybeSingle();
+    const caller = await getCallerRole(c.req.header("Authorization"));
+    const db = adminClient();
+    const { data, error } = await db.from("rooms").select("*").eq("id", id).maybeSingle();
     if (error) return c.json({ error: error.message }, 500);
     if (!data) return c.json({ error: "Not found" }, 404);
+    const visible =
+      caller.role === "admin" ||
+      data.status === "available" ||
+      (caller.role === "landlord" && data.landlord_id === caller.userId);
+    if (!visible) return c.json({ error: "Not found" }, 404);
     return c.json({ data });
   } catch (err) { console.log(`[rooms/:id] exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
 });
@@ -547,8 +591,15 @@ app.post("/make-server-08c694dc/rooms", async (c) => {
     if (body.landlord_id && body.landlord_id !== authed.user.id) {
       return c.json({ error: "Forbidden: landlord_id mismatch" }, 403);
     }
-    const supabase = adminClient();
-    const { error } = await supabase.from("rooms").upsert(body, { onConflict: "id" });
+    if (body.property_id) {
+      const db = adminClient();
+      const { data: prop } = await db.from("properties").select("landlord_id").eq("id", body.property_id).maybeSingle();
+      if (!prop || prop.landlord_id !== authed.user.id) {
+        return c.json({ error: "Forbidden: property_id does not belong to this landlord" }, 403);
+      }
+    }
+    const db = adminClient();
+    const { error } = await db.from("rooms").upsert(body, { onConflict: "id" });
     if (error) { console.log(`[rooms] upsert error: ${error.message}`); return c.json({ error: error.message }, 500); }
     return c.json({ success: true });
   } catch (err) { console.log(`[rooms] upsert exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
