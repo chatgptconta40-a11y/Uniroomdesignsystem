@@ -1,16 +1,14 @@
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { supabaseUrl, supabase, publicAnonKey } from './supabase';
 import { compressToWebP, validateImageFile } from './imageCompressor';
 
 export const MAX_PROPERTY_IMAGES = 8;
 export const MAX_ROOM_IMAGES = 6;
 
-const SERVER = `https://${projectId}.supabase.co/functions/v1/make-server-08c694dc`;
+const SERVER = `${supabaseUrl}/functions/v1/make-server-08c694dc`;
 
 async function getAccessToken(): Promise<string> {
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const sb = createClient(`https://${projectId}.supabase.co`, publicAnonKey);
-    const { data } = await sb.auth.getSession();
+    const { data } = await supabase.auth.getSession();
     return data.session?.access_token ?? publicAnonKey;
   } catch {
     return publicAnonKey;

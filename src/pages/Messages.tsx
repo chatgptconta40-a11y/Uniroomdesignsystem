@@ -32,8 +32,19 @@ export function Messages() {
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { conversations } = useConversations();
-  const { messages, sendMessage: sendMsg, markConversationRead } = useMessages(selectedConversationId);
+  const { conversations, loading: conversationsLoading } = useConversations();
+  const { messages, sendMessage: sendMsg, markConversationRead, loading: messagesLoading } = useMessages(selectedConversationId);
+
+  // Keep selectedConversationId in sync with the URL ?conversation= param.
+  // This handles the case where the user is navigated to /messages?conversation=ID
+  // from another page (e.g. StartConversationModal after creating a conversation)
+  // while the Messages page is already mounted.
+  const urlConversationId = searchParams.get('conversation');
+  useEffect(() => {
+    if (urlConversationId !== selectedConversationId) {
+      setSelectedConversationId(urlConversationId);
+    }
+  }, [urlConversationId, selectedConversationId]);
 
   const selectedConversation = conversations.find(conversation => conversation.id === selectedConversationId);
   const otherParticipant = selectedConversation?.participants.find(participant => participant.id !== user?.id);
@@ -162,8 +173,8 @@ export function Messages() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <div className="bg-card border-b border-border px-4 py-3 sm:py-4">
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <div className="bg-card border-b border-border px-4 py-3 sm:py-4 flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
           <div className="flex items-center gap-4">
             <MessageCircle className="w-7 h-7 sm:w-8 sm:h-8 text-primary" />
@@ -177,10 +188,10 @@ export function Messages() {
         </div>
       </div>
 
-      <div className="flex-1">
-        <div className="max-w-7xl mx-auto px-0 sm:px-4 md:px-6 lg:px-8 h-[calc(100dvh-116px)] sm:h-[calc(100vh-140px)]">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="max-w-7xl mx-auto px-0 sm:px-4 md:px-6 lg:px-8 h-full">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-full sm:border-x border-border">
-            <div className={`lg:col-span-1 bg-card lg:border-r border-border flex-col h-full ${selectedConversation ? 'hidden lg:flex' : 'flex'}`}>
+            <div className={`lg:col-span-1 bg-card lg:border-r border-border flex flex-col h-full ${selectedConversationId ? 'hidden lg:flex' : 'flex'}`}>
               <div className="p-4 border-b border-border">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -292,8 +303,15 @@ export function Messages() {
               </div>
             </div>
 
-            <div className={`lg:col-span-2 bg-card flex-col h-full ${selectedConversation ? 'flex' : 'hidden lg:flex'}`}>
-              {selectedConversation && (otherParticipant || isGroupChat) ? (
+            <div className={`lg:col-span-2 bg-card flex flex-col h-full ${selectedConversationId ? 'flex' : 'hidden lg:flex'}`}>
+              {selectedConversationId && (conversationsLoading || messagesLoading || !selectedConversation) ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center text-muted-foreground">
+                    <MessageCircle className="w-10 h-10 mx-auto mb-3 animate-pulse text-primary/40" />
+                    <p className="text-sm">A carregar conversa…</p>
+                  </div>
+                </div>
+              ) : selectedConversation && (otherParticipant || isGroupChat) ? (
                 <>
                   <div className="px-3 sm:px-6 py-3 sm:py-4 border-b border-border flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">

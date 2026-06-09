@@ -47,7 +47,7 @@ import { Loader2 } from 'lucide-react';
 import { uploadSingleImage, MAX_PROPERTY_IMAGES, type UploadImageOptions } from '../lib/uploadListingImages';
 import { validateImageFile } from '../lib/imageCompressor';
 import { supabase } from '../lib/supabase';
-import { publicAnonKey } from '/utils/supabase/info';
+import { publicAnonKey } from '../lib/supabase';
 import { toast } from 'sonner';
 
 import { RoomFormModal, emptyRoom, type RoomDraft } from '../components/listings/RoomFormModal';

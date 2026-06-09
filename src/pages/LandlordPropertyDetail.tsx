@@ -58,6 +58,7 @@ import { useUserRestrictions } from '../hooks/useUserRestrictions';
 import { Room, RoomStatus, Property } from '../types/property';
 import { normalizeRoomStatus, getRoomStatusLabel, getRoomStatusBadgeClasses } from '../utils/roomStatus';
 import { useLandlordApplications } from '../hooks/useDb';
+import { findOrCreateConversation } from '../hooks/useMessages';
 import type { ApplicationStatus } from '../types/accommodation';
 
 // Re-export the type alias used internally
@@ -1727,9 +1728,29 @@ export function LandlordPropertyDetail() {
                             roomAlreadyReserved={roomReservedByOther}
                             onAccept={() => handleAcceptCandidate(candidate.id)}
                             onReject={() => handleRejectCandidate(candidate.id)}
-                            onContact={() => {
-                              navigate('/messages');
-                              toast.info(`A abrir conversa com ${candidate.studentName}`);
+                            onContact={async () => {
+                              if (!user || !property) return;
+                              const targetRoom = rooms.find(r => r.id === candidate.roomId);
+                              try {
+                                const conversationId = await findOrCreateConversation({
+                                  studentId: candidate.studentId,
+                                  studentName: candidate.studentName,
+                                  landlordId: user.id,
+                                  landlordName: user.name || 'Senhorio',
+                                  roomId: candidate.roomId,
+                                  propertyId: property.id,
+                                  accommodationTitle: targetRoom?.title || property.title,
+                                  accommodationPrice: targetRoom?.price,
+                                  accommodationImage: targetRoom?.images?.[0] || property.images?.[0],
+                                  initialMessage: `Olá, ${candidate.studentName}! Obrigado pela tua candidatura${targetRoom ? ` para ${targetRoom.title}` : ''}. Gostava de falar contigo sobre os próximos passos.`,
+                                  initialSenderId: user.id,
+                                  initialSenderName: user.name || 'Senhorio',
+                                });
+                                navigate(`/messages?conversation=${conversationId}`);
+                              } catch (err) {
+                                console.error('[LandlordPropertyDetail] contact candidate error', err);
+                                toast.error('Erro ao abrir conversa. Tenta novamente.');
+                              }
                             }}
                             onScheduleVisit={() => setVisitCandidate(candidate)}
                           />

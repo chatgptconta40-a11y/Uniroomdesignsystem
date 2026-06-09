@@ -171,7 +171,7 @@ export function SearchLeafletMap({ results, heightClass = 'h-[520px]' }: SearchL
   }
 
   return (
-    <div className={`relative ${heightClass} w-full`}>
+    <div className={`relative ${heightClass} w-full isolate`}>
       <MapContainer
         center={[ESTGV.lat, ESTGV.lng]}
         zoom={13}

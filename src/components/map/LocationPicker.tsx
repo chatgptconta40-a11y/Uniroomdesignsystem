@@ -58,7 +58,7 @@ export function LocationPicker({ value, onChange, heightClass = 'h-64' }: Locati
 
   return (
     <div className="space-y-2">
-      <div className={`relative ${heightClass} w-full overflow-hidden rounded-2xl border-2 border-dashed border-primary/30 bg-muted`}>
+      <div className={`relative ${heightClass} w-full overflow-hidden rounded-2xl border-2 border-dashed border-primary/30 bg-muted isolate`}>
         <MapContainer
           center={center}
           zoom={15}

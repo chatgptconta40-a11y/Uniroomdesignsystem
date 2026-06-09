@@ -133,7 +133,7 @@ export function PropertyRouteMap({
   const routeColor = routeResult ? routeColors[routeResult.mode] ?? '#7c3aed' : '#7c3aed';
 
   return (
-    <div className={`${heightClass} w-full overflow-hidden rounded-2xl border border-border bg-muted`}>
+    <div className={`${heightClass} w-full overflow-hidden rounded-2xl border border-border bg-muted isolate`}>
       <MapContainer
         center={center}
         zoom={13}

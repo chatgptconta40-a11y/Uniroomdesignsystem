@@ -53,6 +53,18 @@ async function ensureProfile(userId: string, fallback: { email?: string; name?: 
 
 app.get("/make-server-08c694dc/health", (c) => c.json({ status: "ok" }));
 
+// Public config endpoint — exposes the anon key (a public key) so the frontend
+// can bootstrap itself when the connected Supabase project changes.
+// No auth check: the anon key is intentionally public.
+app.get("/make-server-08c694dc/public-config", (c) => {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const anonKey =
+    Deno.env.get("SUPABASE_ANON_KEY") ??
+    Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") ??
+    "";
+  return c.json({ supabaseUrl, anonKey });
+});
+
 app.post("/make-server-08c694dc/auth/register", async (c) => {
   try {
     const { email, password, name, type } = await c.req.json();

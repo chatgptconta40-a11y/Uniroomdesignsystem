@@ -72,12 +72,15 @@ function dbToConversation(row: any, messages: Message[], currentUserId: string):
 export function useConversations() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!user) {
       setConversations([]);
+      setLoading(false);
       return;
     }
+    setLoading(true);
 
     const { data: convRows, error: convErr } = await supabase
       .from('conversations')
@@ -86,12 +89,20 @@ export function useConversations() {
       .order('last_message_at', { ascending: false, nullsFirst: false });
 
     if (convErr) {
-      console.error('Conversations fetch error:', convErr.message);
+      console.error('[MESSAGES] conversations fetch error', {
+        message: convErr.message,
+        code: convErr.code,
+        details: convErr.details,
+        hint: convErr.hint,
+        userId: user.id,
+      });
+      setLoading(false);
       return;
     }
 
     if (!convRows || convRows.length === 0) {
       setConversations([]);
+      setLoading(false);
       return;
     }
 
@@ -109,6 +120,7 @@ export function useConversations() {
 
     const messages = (msgRows ?? []).map(dbToMessage);
     setConversations(convRows.map(row => dbToConversation(row, messages, user.id)));
+    setLoading(false);
   }, [user]);
 
   useEffect(() => {
@@ -124,13 +136,16 @@ export function useConversations() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
         void refresh();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
+        void refresh();
+      })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [user, refresh]);
 
   const totalUnreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
-  return { conversations, totalUnreadCount, refresh };
+  return { conversations, loading, totalUnreadCount, refresh };
 }
 
 // ─── useMessages ─────────────────────────────────────────────
@@ -138,12 +153,15 @@ export function useConversations() {
 export function useMessages(conversationId: string | null) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState<boolean>(!!conversationId);
 
   const refresh = useCallback(async () => {
     if (!conversationId || !user) {
       setMessages([]);
+      setLoading(false);
       return;
     }
+    setLoading(true);
 
     const { data, error } = await supabase
       .from('messages')
@@ -152,11 +170,19 @@ export function useMessages(conversationId: string | null) {
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('Messages fetch error:', error.message);
+      console.error('[MESSAGES] messages fetch error', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        conversationId,
+      });
+      setLoading(false);
       return;
     }
 
     setMessages((data ?? []).map(dbToMessage));
+    setLoading(false);
   }, [conversationId, user]);
 
   useEffect(() => {
@@ -220,9 +246,16 @@ export function useMessages(conversationId: string | null) {
     });
 
     if (msgErr) {
-      console.error('Send message error:', msgErr.message);
+      console.error('[MESSAGES] message insert error (sendMessage)', {
+        message: msgErr.message,
+        code: msgErr.code,
+        details: msgErr.details,
+        hint: msgErr.hint,
+        conversationId,
+        senderId: user.id,
+      });
       setMessages(prev => prev.filter(m => m.id !== id));
-      return;
+      throw new Error(msgErr.message);
     }
 
     // Update conversation timestamps
@@ -250,7 +283,7 @@ export function useMessages(conversationId: string | null) {
     );
   }, [conversationId, user]);
 
-  return { messages, sendMessage, markConversationRead, refresh };
+  return { messages, sendMessage, markConversationRead, refresh, loading };
 }
 
 // ─── findOrCreateConversation ─────────────────────────────────
@@ -284,7 +317,8 @@ export async function findOrCreateConversation(params: FindOrCreateParams): Prom
     if (!initialMessage.trim()) return;
     const now = new Date().toISOString();
     const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    await supabase.from('messages').insert({
+    console.log('[MESSAGES] inserting message', { conversationId: convId, senderId: initialSenderId });
+    const { error: msgErr } = await supabase.from('messages').insert({
       id: msgId,
       conversation_id: convId,
       sender_id: initialSenderId,
@@ -292,7 +326,32 @@ export async function findOrCreateConversation(params: FindOrCreateParams): Prom
       content: initialMessage.trim(),
       type: 'text',
     });
-    await supabase.from('conversations').update({ last_message_at: now, updated_at: now }).eq('id', convId);
+    if (msgErr) {
+      console.error('[MESSAGES] message insert error', {
+        message: msgErr.message,
+        code: msgErr.code,
+        details: msgErr.details,
+        hint: msgErr.hint,
+        conversationId: convId,
+        senderId: initialSenderId,
+      });
+      throw new Error(`message insert: ${msgErr.message}`);
+    }
+    console.log('[MESSAGES] message inserted', { id: msgId });
+    const { error: updErr } = await supabase
+      .from('conversations')
+      .update({ last_message_at: now, updated_at: now })
+      .eq('id', convId);
+    if (updErr) {
+      console.error('[MESSAGES] conversation timestamp update error', {
+        message: updErr.message,
+        code: updErr.code,
+        details: updErr.details,
+        hint: updErr.hint,
+        conversationId: convId,
+      });
+      // Not fatal — message was already inserted.
+    }
   };
 
   // Find an existing conversation for this (student, landlord) pair.
@@ -312,9 +371,15 @@ export async function findOrCreateConversation(params: FindOrCreateParams): Prom
     return data?.id ?? null;
   };
 
+  console.log('[MESSAGES] creating conversation', {
+    studentId, landlordId, roomId, propertyId, initialSenderId,
+  });
+
   const existingId = await findExisting();
   if (existingId) {
+    console.log('[MESSAGES] reusing existing conversation', { id: existingId });
     await insertMsg(existingId);
+    console.log('[MESSAGES] navigating to conversation', { id: existingId });
     return existingId;
   }
 
@@ -337,17 +402,27 @@ export async function findOrCreateConversation(params: FindOrCreateParams): Prom
   });
 
   if (convErr) {
+    console.error('[MESSAGES] conversation insert error', {
+      message: convErr.message,
+      code: convErr.code,
+      details: convErr.details,
+      hint: convErr.hint,
+      studentId, landlordId, roomId, propertyId,
+    });
     // Race condition — another insert won; find and reuse it.
     if (convErr.code === '23505') {
       const fallbackId = await findExisting();
       if (fallbackId) {
         await insertMsg(fallbackId);
+        console.log('[MESSAGES] navigating to conversation', { id: fallbackId });
         return fallbackId;
       }
     }
-    throw new Error(convErr.message);
+    throw new Error(`conversation insert: ${convErr.message}`);
   }
 
+  console.log('[MESSAGES] conversation created', { id: convId });
   await insertMsg(convId);
+  console.log('[MESSAGES] navigating to conversation', { id: convId });
   return convId;
 }

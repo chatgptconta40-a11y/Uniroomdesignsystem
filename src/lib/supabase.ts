@@ -1,16 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
+import { projectId as infoProjectId, publicAnonKey as infoAnonKey } from '../../utils/supabase/info';
 
-export const supabaseUrl = 'https://wgkromwdktxibnamjdwr.supabase.co';
+export const projectId = infoProjectId;
+export const supabaseUrl = `https://${projectId}.supabase.co`;
 
-export const supabaseAnonKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indna3JvbXdka3R4aWJuYW1qZHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5Mjg1MTUsImV4cCI6MjA5NjUwNDUxNX0.2YNdERUXHprJAa_zXeKaWjWMZgCjPE2iXLS_Sl4h37c';
+export let supabaseAnonKey = infoAnonKey;
+export let publicAnonKey = infoAnonKey;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(supabaseUrl, infoAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
   },
 });
+
+export const isSupabaseConfigured = true;

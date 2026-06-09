@@ -4,7 +4,7 @@ import { Card } from '../Card';
 import { Button } from '../Button';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
-import { publicAnonKey } from '/utils/supabase/info';
+import { publicAnonKey } from '../../lib/supabase';
 import { uploadSingleImage, MAX_ROOM_IMAGES, type UploadImageOptions } from '../../lib/uploadListingImages';
 import { validateImageFile } from '../../lib/imageCompressor';
 

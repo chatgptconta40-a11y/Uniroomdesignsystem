@@ -75,8 +75,10 @@ export function StartConversationModal({
       toast.success('Mensagem enviada!');
       onClose();
       navigate(`/messages?conversation=${conversationId}`);
-    } catch {
-      toast.error('Erro ao enviar mensagem. Tenta novamente.');
+    } catch (err) {
+      console.error('[StartConversationModal] send error', err);
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      toast.error(`Erro ao enviar mensagem: ${message}`);
     }
   };
 

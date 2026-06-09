@@ -24,7 +24,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { findOrCreateConversation } from '../hooks/useMessages';
 import { supabase } from '../lib/supabase';
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { supabaseUrl, publicAnonKey } from '../lib/supabase';
 import { dbToApplication } from '../hooks/useDb';
 import { Application, ApplicationStatus } from '../types/accommodation';
 import { Button } from '../components/Button';
@@ -315,7 +315,7 @@ export function Applications() {
     const { data: { session } } = await supabase.auth.getSession();
     const accessToken = session?.access_token ?? publicAnonKey;
     const confirmRes = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-08c694dc/active-homes/confirm`,
+      `${supabaseUrl}/functions/v1/make-server-08c694dc/active-homes/confirm`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
@@ -404,7 +404,8 @@ export function Applications() {
         initialSenderName: user?.name || 'Estudante',
       });
       navigate(`/messages?conversation=${conversationId}`);
-    } catch {
+    } catch (err) {
+      console.error('[Applications] handleContactLandlord error', err);
       toast.error('Erro ao abrir conversa. Tenta novamente.');
     }
   };
