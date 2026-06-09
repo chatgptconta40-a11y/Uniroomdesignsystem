@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
+import { findOrCreateConversation } from '../hooks/useMessages';
 import { Application, ApplicationStatus } from '../types/accommodation';
 import { supabase } from '../lib/supabase';
 import { dbToApplication } from '../hooks/useDb';
@@ -436,6 +437,36 @@ export function LandlordApplications() {
     setConfirmRejectApp(app);
   };
 
+  const handleContactStudent = useCallback(async (app: DetailedApplication) => {
+    if (!user) return;
+    const room = app.roomId ? getRoom(app.roomId) : undefined;
+    const propertyId = app.propertyId || room?.propertyId;
+    const property = propertyId ? getProperty(propertyId) : undefined;
+
+    const contextMsg = `Olá, ${app.applicantName || 'estudante'}! Obrigado pela tua candidatura${room ? ` para ${room.title}` : ''}. Gostava de falar contigo sobre os próximos passos.`;
+
+    try {
+      const conversationId = await findOrCreateConversation({
+        studentId: app.userId,
+        studentName: app.applicantName || 'Estudante',
+        landlordId: user.id,
+        landlordName: user.name || 'Senhorio',
+        roomId: room?.id,
+        propertyId: property?.id,
+        accommodationTitle: room?.title || property?.title,
+        accommodationPrice: room?.price,
+        accommodationImage: room?.images[0] || property?.images[0],
+        initialMessage: contextMsg,
+        initialSenderId: user.id,
+        initialSenderName: user.name || 'Senhorio',
+      });
+      navigate(`/messages?conversation=${conversationId}`);
+    } catch (err) {
+      console.error('[LandlordApplications] handleContactStudent:', err);
+      toast.error('Erro ao criar conversa. Tenta novamente.');
+    }
+  }, [user, getRoom, getProperty, navigate]);
+
   const handleRejectConfirm = async () => {
     if (!confirmRejectApp) return;
 
@@ -761,7 +792,7 @@ export function LandlordApplications() {
           onClose={() => setSelectedApp(null)}
           onAccept={() => setConfirmAcceptApp(selectedApp)}
           onReject={() => handleReject(selectedApp)}
-          onMessage={() => navigate('/messages')}
+          onMessage={() => { void handleContactStudent(selectedApp); }}
           getCompatColor={getCompatColor}
           getTrustColor={getTrustColor}
           statusLabel={statusLabel}

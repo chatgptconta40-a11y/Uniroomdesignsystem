@@ -266,6 +266,9 @@ export interface FindOrCreateParams {
   accommodationPrice?: number;
   accommodationImage?: string;
   initialMessage: string;
+  /** The authenticated user who is actually sending the first message. */
+  initialSenderId: string;
+  initialSenderName: string;
 }
 
 export async function findOrCreateConversation(params: FindOrCreateParams): Promise<string> {
@@ -273,38 +276,46 @@ export async function findOrCreateConversation(params: FindOrCreateParams): Prom
     studentId, studentName, landlordId, landlordName,
     roomId, propertyId,
     accommodationTitle, accommodationPrice, accommodationImage,
-    initialMessage,
+    initialMessage, initialSenderId, initialSenderName,
   } = params;
 
-  // Try to find existing conversation for this (student, landlord, room) triplet
-  if (roomId) {
-    const { data: existing } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('student_id', studentId)
-      .eq('landlord_id', landlordId)
-      .eq('room_id', roomId)
-      .maybeSingle();
+  // Insert a message into an existing conversation and bump timestamps.
+  const insertMsg = async (convId: string) => {
+    if (!initialMessage.trim()) return;
+    const now = new Date().toISOString();
+    const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    await supabase.from('messages').insert({
+      id: msgId,
+      conversation_id: convId,
+      sender_id: initialSenderId,
+      sender_name: initialSenderName,
+      content: initialMessage.trim(),
+      type: 'text',
+    });
+    await supabase.from('conversations').update({ last_message_at: now, updated_at: now }).eq('id', convId);
+  };
 
-    if (existing) {
-      if (initialMessage.trim()) {
-        const now = new Date().toISOString();
-        const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        await supabase.from('messages').insert({
-          id: msgId,
-          conversation_id: existing.id,
-          sender_id: studentId,
-          sender_name: studentName,
-          content: initialMessage.trim(),
-          type: 'text',
-        });
-        await supabase
-          .from('conversations')
-          .update({ last_message_at: now, updated_at: now })
-          .eq('id', existing.id);
-      }
-      return existing.id;
+  // Find an existing conversation for this (student, landlord) pair.
+  // Priority: roomId > propertyId > neither.
+  const findExisting = async (): Promise<string | null> => {
+    let q = supabase.from('conversations').select('id')
+      .eq('student_id', studentId)
+      .eq('landlord_id', landlordId);
+    if (roomId) {
+      q = q.eq('room_id', roomId);
+    } else if (propertyId) {
+      q = q.eq('property_id', propertyId).is('room_id', null);
+    } else {
+      q = q.is('room_id', null).is('property_id', null);
     }
+    const { data } = await q.maybeSingle();
+    return data?.id ?? null;
+  };
+
+  const existingId = await findExisting();
+  if (existingId) {
+    await insertMsg(existingId);
+    return existingId;
   }
 
   // Create new conversation
@@ -326,30 +337,17 @@ export async function findOrCreateConversation(params: FindOrCreateParams): Prom
   });
 
   if (convErr) {
-    // Handle unique constraint violation — race condition, fetch the existing row
-    if (convErr.code === '23505' && roomId) {
-      const { data: fallback } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('student_id', studentId)
-        .eq('landlord_id', landlordId)
-        .eq('room_id', roomId)
-        .maybeSingle();
-      if (fallback) return fallback.id;
+    // Race condition — another insert won; find and reuse it.
+    if (convErr.code === '23505') {
+      const fallbackId = await findExisting();
+      if (fallbackId) {
+        await insertMsg(fallbackId);
+        return fallbackId;
+      }
     }
     throw new Error(convErr.message);
   }
 
-  // Insert initial message
-  const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  await supabase.from('messages').insert({
-    id: msgId,
-    conversation_id: convId,
-    sender_id: studentId,
-    sender_name: studentName,
-    content: initialMessage.trim(),
-    type: 'text',
-  });
-
+  await insertMsg(convId);
   return convId;
 }

@@ -68,6 +68,8 @@ export function StartConversationModal({
         accommodationPrice: accommodation.price,
         accommodationImage: accommodation.images[0],
         initialMessage: message.trim(),
+        initialSenderId: user?.id || '',
+        initialSenderName: user?.name || '',
       });
 
       toast.success('Mensagem enviada!');

@@ -400,6 +400,8 @@ export function Applications() {
         accommodationPrice: room.price,
         accommodationImage: room.images[0] || property.images[0] || '',
         initialMessage: contextMsg,
+        initialSenderId: user?.id || '',
+        initialSenderName: user?.name || 'Estudante',
       });
       navigate(`/messages?conversation=${conversationId}`);
     } catch {
