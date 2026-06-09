@@ -529,17 +529,23 @@ function isPropPublic(p: { status: string; admin_suspended: boolean }): boolean 
   return p.status === "active" && !p.admin_suspended;
 }
 
+const LANDLORD_PROPERTY_STATUSES = ["active", "draft"];
+const LANDLORD_ROOM_STATUSES = ["available", "draft", "reserved", "occupied"];
+
 app.get("/make-server-08c694dc/properties", async (c) => {
   try {
     const caller = await getCallerRole(c.req.header("Authorization"));
     const db = adminClient();
     let query = db.from("properties").select(PROPERTIES_SELECT).order("created_at", { ascending: false });
     if (caller.role === "admin") {
-      // no filter
+      // no filter — sees paused too
     } else if (caller.role === "landlord" && caller.userId) {
-      // public (active + not suspended) OR own (any state)
-      query = query.or(`and(status.eq.active,admin_suspended.eq.false),landlord_id.eq.${caller.userId}`);
+      // public (active + not suspended) OR own active/draft (not paused)
+      query = query.or(
+        `and(status.eq.active,admin_suspended.eq.false),and(landlord_id.eq.${caller.userId},status.in.(${LANDLORD_PROPERTY_STATUSES.join(",")}))`
+      );
     } else {
+      // student/public: active + not suspended only
       query = query.eq("status", "active").eq("admin_suspended", false);
     }
     const { data, error } = await query;
@@ -559,7 +565,7 @@ app.get("/make-server-08c694dc/properties/:id", async (c) => {
     const visible =
       caller.role === "admin" ||
       isPropPublic(data) ||
-      (caller.role === "landlord" && data.landlord_id === caller.userId);
+      (caller.role === "landlord" && data.landlord_id === caller.userId && LANDLORD_PROPERTY_STATUSES.includes(data.status));
     if (!visible) return c.json({ error: "Not found" }, 404);
     return c.json({ data });
   } catch (err) { console.log(`[properties/:id] exception: ${err}`); return c.json({ error: "Internal server error" }, 500); }
@@ -597,11 +603,12 @@ app.get("/make-server-08c694dc/rooms", async (c) => {
     let query = db.from("rooms").select(ROOMS_SELECT).order("created_at", { ascending: false });
 
     if (caller.role === "landlord" && caller.userId) {
-      // Own rooms (any state) OR available rooms in public properties
+      // Own rooms in allowed statuses (not paused) OR available rooms in public properties
+      const ownFilter = `and(landlord_id.eq.${caller.userId},status.in.(${LANDLORD_ROOM_STATUSES.join(",")}))`;
       if (publicPropIds.length > 0) {
-        query = query.or(`landlord_id.eq.${caller.userId},and(status.eq.available,property_id.in.(${publicPropIds.join(",")}))`);
+        query = query.or(`${ownFilter},and(status.eq.available,property_id.in.(${publicPropIds.join(",")}))`);
       } else {
-        query = query.eq("landlord_id", caller.userId);
+        query = query.eq("landlord_id", caller.userId).in("status", LANDLORD_ROOM_STATUSES);
       }
     } else {
       // Public: available rooms in public properties only
@@ -625,7 +632,7 @@ app.get("/make-server-08c694dc/rooms/:id", async (c) => {
     if (!data) return c.json({ error: "Not found" }, 404);
 
     if (caller.role === "admin") return c.json({ data });
-    if (caller.role === "landlord" && data.landlord_id === caller.userId) return c.json({ data });
+    if (caller.role === "landlord" && data.landlord_id === caller.userId && LANDLORD_ROOM_STATUSES.includes(data.status)) return c.json({ data });
 
     // Public/student (or landlord viewing another landlord's room): available + property must be public
     if (data.status !== "available") return c.json({ error: "Not found" }, 404);
