@@ -32,10 +32,16 @@ function matchesUniversity(property: Property, university: string) {
 }
 
 export function FeaturedRoomsSection({ filters }: FeaturedRoomsSectionProps) {
-  const { rooms, properties } = useProperties();
+  const { rooms, properties, loading } = useProperties();
 
-  const activeProperties = properties.filter(property => property.status === 'active');
+  const activeProperties = properties.filter(
+    property => property.status === 'active' && !property.adminSuspended
+  );
   const propertyById = new Map(activeProperties.map(property => [property.id, property]));
+
+  console.log('[home] total properties:', properties.length);
+  console.log('[home] active properties:', activeProperties.length);
+  console.log('[home] total rooms:', rooms.length);
   const maxPrice = filters?.maxPrice ? Number(filters.maxPrice) : null;
 
   const featuredRooms: FeaturedRoom[] = rooms
@@ -56,6 +62,7 @@ export function FeaturedRoomsSection({ filters }: FeaturedRoomsSectionProps) {
       return true;
     })
     .sort((a, b) => {
+
       const propertyA = propertyById.get(a.propertyId)!;
       const propertyB = propertyById.get(b.propertyId)!;
 
@@ -78,6 +85,9 @@ export function FeaturedRoomsSection({ filters }: FeaturedRoomsSectionProps) {
       room,
       property: propertyById.get(room.propertyId)!,
     }));
+
+  console.log('[home] visible rooms:', featuredRooms.length);
+  console.log('[home] rendered cards:', featuredRooms.map(fr => fr.room.id));
 
   return (
     <section className="py-10 md:py-12 px-4 md:px-6 lg:px-8 bg-slate-50">
@@ -102,7 +112,13 @@ export function FeaturedRoomsSection({ filters }: FeaturedRoomsSectionProps) {
           </Link>
         </div>
 
-        {featuredRooms.length > 0 ? (
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="rounded-2xl border border-border bg-white animate-pulse h-72" />
+            ))}
+          </div>
+        ) : featuredRooms.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {featuredRooms.map(({ room, property }) => (
               <RoomCard
@@ -119,7 +135,9 @@ export function FeaturedRoomsSection({ filters }: FeaturedRoomsSectionProps) {
           <div className="rounded-2xl border border-dashed border-border bg-white p-8 text-center">
             <h3 className="text-xl font-bold text-foreground mb-2">Nenhum quarto encontrado</h3>
             <p className="text-muted-foreground">
-              Ajusta a cidade, o preço ou o tipo de quarto para veres mais resultados.
+              {filters
+                ? 'Ajusta a cidade, o preço ou o tipo de quarto para veres mais resultados.'
+                : 'Ainda não há quartos disponíveis. Volta em breve.'}
             </p>
           </div>
         )}

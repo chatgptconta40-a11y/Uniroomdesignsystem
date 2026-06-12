@@ -343,29 +343,8 @@ export function Applications() {
       return;
     }
 
-    // Application update is handled server-side; keep a local fallback for status refresh
-    const { error: updateError } = await supabase
-      .from('applications')
-      .select('id')
-      .eq('id', confirmStayApp.id)
-      .limit(1);
-    if (updateError) {
-      console.error('[ACTIVE_HOMES] post-confirm select failed', updateError);
-      toast.error('Estadia criada mas não foi possível atualizar a candidatura.', {
-        description: updateError.message,
-      });
-    }
-
-    if (confirmStayApp.roomId) {
-      const { error: roomUpdateError } = await supabase
-        .from('rooms')
-        .update({ status: 'occupied', updated_at: new Date().toISOString() })
-        .eq('id', confirmStayApp.roomId);
-      if (roomUpdateError) {
-        console.error('[ROOMS] room status update failed', roomUpdateError);
-      }
-    }
-
+    // Room status (occupied) and application status (confirmed) are both updated server-side
+    // in /active-homes/confirm using the admin client, so no direct Supabase calls needed here.
     refreshProperties();
     toast.success('Estadia confirmada! Bem-vindo/a à tua nova casa.');
     setConfirmStayApp(null);

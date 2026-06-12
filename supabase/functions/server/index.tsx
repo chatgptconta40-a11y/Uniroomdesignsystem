@@ -378,6 +378,23 @@ app.post("/make-server-08c694dc/active-homes/confirm", async (c) => {
       // Non-fatal: active home was created, just log it
     }
 
+    // Mark room as occupied (admin client bypasses RLS — student cannot do this directly)
+    if (roomId) {
+      const { error: roomError } = await supabase
+        .from("rooms")
+        .update({
+          status: "occupied",
+          occupied_by: authed.user.id,
+          move_in_date: moveInDate || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", roomId);
+      if (roomError) {
+        console.log(`[confirm-stay] room update error: ${roomError.message}`);
+        // Non-fatal: log but do not fail the request
+      }
+    }
+
     return c.json({ success: true });
   } catch (err) {
     console.log(`[confirm-stay] error: ${err}`);
@@ -526,23 +543,25 @@ async function getCallerRole(authHeader: string | null): Promise<CallerRole> {
   return { role: type, userId: authed.user.id };
 }
 
-// Returns IDs of properties that are publicly visible (active + not suspended)
+// Returns IDs of properties that are publicly visible (active + not suspended).
+// Treat admin_suspended = NULL the same as false so new properties without an
+// explicit value are still visible (avoids SQL NULL != false exclusion).
 async function getPublicPropertyIds(db: ReturnType<typeof adminClient>): Promise<string[]> {
   const { data } = await db
     .from("properties")
     .select("id")
     .eq("status", "active")
-    .eq("admin_suspended", false);
+    .or("admin_suspended.eq.false,admin_suspended.is.null");
   return (data ?? []).map((p: { id: string }) => p.id);
 }
 
 // Is a property publicly visible?
-function isPropPublic(p: { status: string; admin_suspended: boolean }): boolean {
+function isPropPublic(p: { status: string; admin_suspended: boolean | null }): boolean {
   return p.status === "active" && !p.admin_suspended;
 }
 
-const LANDLORD_PROPERTY_STATUSES = ["active", "draft"];
-const LANDLORD_ROOM_STATUSES = ["available", "draft", "reserved", "occupied"];
+const LANDLORD_PROPERTY_STATUSES = ["active", "draft", "paused"];
+const LANDLORD_ROOM_STATUSES = ["available", "draft", "reserved", "occupied", "paused"];
 
 app.get("/make-server-08c694dc/properties", async (c) => {
   try {
@@ -558,7 +577,8 @@ app.get("/make-server-08c694dc/properties", async (c) => {
       );
     } else {
       // student/public: active + not suspended only
-      query = query.eq("status", "active").eq("admin_suspended", false);
+      // Treat NULL admin_suspended as false (new properties may lack an explicit value)
+      query = query.eq("status", "active").or("admin_suspended.eq.false,admin_suspended.is.null");
     }
     const { data, error } = await query;
     if (error) { console.log(`[properties] list error: ${error.message}`); return c.json({ error: error.message }, 500); }
