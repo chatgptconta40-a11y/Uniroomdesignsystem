@@ -1,15 +1,17 @@
-import { useState, type ElementType } from 'react';
+import { useRef, useState, type ElementType } from 'react';
 import {
   AlertCircle,
   Droplets,
   Flame,
+  ImagePlus,
   KeyRound,
+  Loader2,
   Plus,
   Plug,
   Router,
   Sparkles,
   Trash2,
-  Upload,
+  X,
   Wrench,
   Zap,
 } from 'lucide-react';
@@ -18,7 +20,8 @@ import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl, publicAnonKey } from '../lib/supabase';
+import { validateImageFile, compressToWebP } from '../lib/imageCompressor';
 import { maintenanceUrgencyLabels } from '../types/maintenance';
 import type { MaintenanceCategory, MaintenanceUrgency } from '../types/maintenance';
 
@@ -36,6 +39,7 @@ type MaintenanceIssueDraft = {
   description: string;
   urgency: MaintenanceUrgency;
   photoUrl: string;
+  photoUploading: boolean;
 };
 
 const categories: {
@@ -61,6 +65,7 @@ function createEmptyIssue(): MaintenanceIssueDraft {
     description: '',
     urgency: 'medium',
     photoUrl: '',
+    photoUploading: false,
   };
 }
 
@@ -75,6 +80,10 @@ export function MaintenanceModal({
   const [issues, setIssues] = useState<MaintenanceIssueDraft[]>(() => [createEmptyIssue()]);
   const [activeIssueId, setActiveIssueId] = useState<string>(() => issues[0]?.id || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Tracks which issue the pending file picker belongs to
+  const pendingIssueIdRef = useRef<string>('');
 
   const activeIssue = issues.find(issue => issue.id === activeIssueId) || issues[0];
 
@@ -93,9 +102,7 @@ export function MaintenanceModal({
   const updateIssue = (issueId: string, updates: Partial<MaintenanceIssueDraft>) => {
     setIssues(prev =>
       prev.map(issue =>
-        issue.id === issueId
-          ? { ...issue, ...updates }
-          : issue,
+        issue.id === issueId ? { ...issue, ...updates } : issue,
       ),
     );
   };
@@ -105,7 +112,6 @@ export function MaintenanceModal({
       toast.info('Podes reportar no máximo 3 problemas de cada vez.');
       return;
     }
-
     const nextIssue = createEmptyIssue();
     setIssues(prev => [...prev, nextIssue]);
     setActiveIssueId(nextIssue.id);
@@ -116,12 +122,9 @@ export function MaintenanceModal({
       toast.info('Tens de manter pelo menos um problema.');
       return;
     }
-
     setIssues(prev => {
       const next = prev.filter(issue => issue.id !== issueId);
-      if (activeIssueId === issueId) {
-        setActiveIssueId(next[0]?.id || '');
-      }
+      if (activeIssueId === issueId) setActiveIssueId(next[0]?.id || '');
       return next;
     });
   };
@@ -129,19 +132,22 @@ export function MaintenanceModal({
   const validateIssues = () => {
     for (let index = 0; index < issues.length; index += 1) {
       const issue = issues[index];
-
       if (!issue.category || !issue.title.trim() || !issue.description.trim()) {
         setActiveIssueId(issue.id);
         toast.error(`Preenche todos os campos obrigatórios no problema ${index + 1}.`);
         return false;
       }
     }
-
     return true;
   };
 
   const handleSubmit = async () => {
     if (!validateIssues() || !user) return;
+
+    if (issues.some(i => i.photoUploading)) {
+      toast.info('Aguarda o upload da fotografia antes de enviar.');
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -169,26 +175,76 @@ export function MaintenanceModal({
     }
 
     toast.success(
-      issues.length === 1
-        ? 'Pedido de manutenção enviado!'
-        : `${issues.length} pedidos de manutenção enviados!`,
-      {
-        description: 'O senhorio foi notificado.',
-      },
+      issues.length === 1 ? 'Pedido de manutenção enviado!' : `${issues.length} pedidos de manutenção enviados!`,
+      { description: 'O senhorio foi notificado.' },
     );
-
     handleClose();
   };
 
-  const handleFileUpload = (issueId: string) => {
-    const samplePhotoUrl = 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=900&q=80';
-    updateIssue(issueId, { photoUrl: samplePhotoUrl });
-    toast.success('Fotografia anexada ao pedido.');
+  // Open native file picker for the given issue
+  const triggerFilePicker = (issueId: string) => {
+    pendingIssueIdRef.current = issueId;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const issueId = pendingIssueIdRef.current;
+    if (!issueId) return;
+
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    updateIssue(issueId, { photoUploading: true });
+
+    try {
+      const compressed = await compressToWebP(file);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? publicAnonKey;
+
+      const form = new FormData();
+      form.append('file', compressed, 'photo.webp');
+
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/make-server-08c694dc/images/upload-maintenance`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Falha no upload.');
+
+      updateIssue(issueId, { photoUrl: data.url as string, photoUploading: false });
+      toast.success('Fotografia adicionada.');
+    } catch (err) {
+      console.error('[MaintenanceModal] photo upload failed:', err);
+      toast.error('Não foi possível fazer upload da fotografia.', {
+        description: String(err instanceof Error ? err.message : err),
+      });
+      updateIssue(issueId, { photoUploading: false });
+    }
+  };
+
+  const removePhoto = (issueId: string) => {
+    updateIssue(issueId, { photoUrl: '' });
   };
 
   const completedIssues = issues.filter(issue =>
     issue.category && issue.title.trim() && issue.description.trim(),
   ).length;
+
+  const anyUploading = issues.some(i => i.photoUploading);
 
   return (
     <Modal
@@ -201,13 +257,15 @@ export function MaintenanceModal({
           <p className="text-xs text-muted-foreground">
             {completedIssues}/{issues.length} problema{issues.length === 1 ? '' : 's'} preenchido{issues.length === 1 ? '' : 's'}
           </p>
-
           <div className="flex items-center gap-3 justify-end">
             <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
               Cancelar
             </Button>
-
-            <Button variant="primary" onClick={handleSubmit} disabled={isSubmitting}>
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              disabled={isSubmitting || anyUploading}
+            >
               {isSubmitting
                 ? 'A enviar...'
                 : issues.length === 1
@@ -218,6 +276,15 @@ export function MaintenanceModal({
         </div>
       }
     >
+      {/* Hidden file input shared across all issues */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+
       <div className="space-y-6">
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
           <div className="flex items-start gap-3">
@@ -236,7 +303,6 @@ export function MaintenanceModal({
             <label className="block text-sm font-semibold text-foreground">
               Problemas a reportar
             </label>
-
             <Button
               type="button"
               variant="outline"
@@ -253,7 +319,6 @@ export function MaintenanceModal({
             {issues.map((issue, index) => {
               const selected = issue.id === activeIssueId;
               const complete = issue.category && issue.title.trim() && issue.description.trim();
-
               return (
                 <button
                   key={issue.id}
@@ -287,11 +352,8 @@ export function MaintenanceModal({
                 <h3 className="font-bold text-foreground">
                   Problema {issues.findIndex(issue => issue.id === activeIssue.id) + 1}
                 </h3>
-                <p className="text-xs text-muted-foreground">
-                  Preenche a informação deste problema.
-                </p>
+                <p className="text-xs text-muted-foreground">Preenche a informação deste problema.</p>
               </div>
-
               {issues.length > 1 && (
                 <Button
                   type="button"
@@ -307,16 +369,15 @@ export function MaintenanceModal({
               )}
             </div>
 
+            {/* Category */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-3">
                 Categoria do problema *
               </label>
-
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {categories.map(cat => {
                   const Icon = cat.icon;
                   const selected = activeIssue.category === cat.value;
-
                   return (
                     <button
                       key={cat.value}
@@ -336,6 +397,7 @@ export function MaintenanceModal({
               </div>
             </div>
 
+            {/* Title */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-3">
                 Título do problema *
@@ -349,6 +411,7 @@ export function MaintenanceModal({
               <p className="text-xs text-muted-foreground mt-1">{activeIssue.title.length}/100 caracteres</p>
             </div>
 
+            {/* Description */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-3">
                 Descrição *
@@ -364,15 +427,14 @@ export function MaintenanceModal({
               <p className="text-xs text-muted-foreground mt-1">{activeIssue.description.length}/500 caracteres</p>
             </div>
 
+            {/* Urgency */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-3">
                 Urgência *
               </label>
-
               <div className="grid grid-cols-3 gap-3">
                 {(['low', 'medium', 'high'] as const).map(level => {
                   const selected = activeIssue.urgency === level;
-
                   return (
                     <button
                       key={level}
@@ -407,30 +469,53 @@ export function MaintenanceModal({
               </div>
             </div>
 
+            {/* Photo upload */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-3">
                 Fotografia (opcional)
               </label>
 
-              <button
-                type="button"
-                onClick={() => handleFileUpload(activeIssue.id)}
-                className={`w-full p-6 border-2 border-dashed rounded-xl transition-all ${
-                  activeIssue.photoUrl
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary hover:bg-primary/5'
-                }`}
-              >
-                <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm font-medium text-foreground">
-                  {activeIssue.photoUrl ? 'Fotografia anexada' : 'Anexar fotografia'}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {activeIssue.photoUrl
-                    ? 'A fotografia será enviada com este problema.'
-                    : 'Adiciona uma imagem para ajudar o senhorio a identificar o problema.'}
-                </p>
-              </button>
+              {activeIssue.photoUrl ? (
+                /* Preview */
+                <div className="relative rounded-xl overflow-hidden border border-border">
+                  <img
+                    src={activeIssue.photoUrl}
+                    alt="Fotografia do problema"
+                    className="w-full h-48 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(activeIssue.id)}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors"
+                    title="Remover fotografia"
+                  >
+                    <X className="w-4 h-4 text-white" />
+                  </button>
+                  <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-gradient-to-t from-black/50 to-transparent">
+                    <p className="text-xs text-white font-medium">Fotografia adicionada</p>
+                  </div>
+                </div>
+              ) : activeIssue.photoUploading ? (
+                /* Uploading state */
+                <div className="w-full p-6 border-2 border-dashed border-primary/40 rounded-xl bg-primary/5 flex flex-col items-center gap-2">
+                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  <p className="text-sm font-medium text-foreground">A carregar fotografia…</p>
+                  <p className="text-xs text-muted-foreground">A comprimir e a fazer upload</p>
+                </div>
+              ) : (
+                /* Picker trigger */
+                <button
+                  type="button"
+                  onClick={() => triggerFilePicker(activeIssue.id)}
+                  className="w-full p-6 border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 rounded-xl transition-all flex flex-col items-center gap-2"
+                >
+                  <ImagePlus className="w-8 h-8 text-muted-foreground" />
+                  <p className="text-sm font-medium text-foreground">Adicionar fotografia</p>
+                  <p className="text-xs text-muted-foreground">
+                    JPG, PNG ou WebP · máx. 8 MB · guardado em WebP
+                  </p>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -442,7 +527,7 @@ export function MaintenanceModal({
             <ul className="space-y-1 text-xs text-muted-foreground">
               <li>• O senhorio será notificado de cada problema</li>
               <li>• Cada problema fica com estado próprio</li>
-              <li>• Podes acompanhar tudo em “Pedidos de manutenção”</li>
+              <li>• Podes acompanhar tudo em "Pedidos de manutenção"</li>
             </ul>
           </div>
         </div>

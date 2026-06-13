@@ -273,7 +273,7 @@ export function Applications() {
     toast.success('Candidatura cancelada.');
     setConfirmWithdrawId(null);
     setRefreshKey(key => key + 1);
-    refreshProperties();
+    await refreshProperties(true);
   };
 
   const handleConfirmStay = async () => {
@@ -291,6 +291,13 @@ export function Applications() {
     }
     if (!confirmStayApp.propertyId || !confirmStayApp.landlordId) {
       toast.error('Candidatura sem imóvel ou senhorio associados.');
+      setConfirmStayApp(null);
+      return;
+    }
+    if (!confirmStayApp.roomId) {
+      toast.error('Candidatura sem quarto associado', {
+        description: 'Não é possível confirmar a estadia sem um quarto definido (room_id em falta).',
+      });
       setConfirmStayApp(null);
       return;
     }
@@ -345,7 +352,7 @@ export function Applications() {
 
     // Room status (occupied) and application status (confirmed) are both updated server-side
     // in /active-homes/confirm using the admin client, so no direct Supabase calls needed here.
-    refreshProperties();
+    await refreshProperties(true);
     toast.success('Estadia confirmada! Bem-vindo/a à tua nova casa.');
     setConfirmStayApp(null);
     setRefreshKey(key => key + 1);

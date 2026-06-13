@@ -24,7 +24,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProperties } from '../context/PropertiesContext';
 import { findOrCreateConversation } from '../hooks/useMessages';
 import { Application, ApplicationStatus } from '../types/accommodation';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl } from '../lib/supabase';
 import { dbToApplication } from '../hooks/useDb';
 import { normalizeRoomStatus } from '../utils/roomStatus';
 import { Card } from '../components/Card';
@@ -413,20 +413,38 @@ export function LandlordApplications() {
       return;
     }
 
-    const { error } = await supabase
-      .from('applications')
-      .update({ status: 'accepted', reviewed_at: new Date().toISOString() })
-      .eq('id', app.id);
-
-    if (error) {
-      console.error('[APPLICATIONS] accept failed', error);
-      toast.error('Não foi possível atualizar a candidatura.', { description: error.message });
+    if (!app.roomId) {
+      toast.error('Candidatura sem quarto associado', {
+        description: 'Não é possível aceitar uma candidatura sem room_id definido.',
+      });
+      setConfirmAcceptApp(null);
       return;
     }
 
-    refreshProperties();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      toast.error('Sessão expirada. Inicia sessão novamente.');
+      return;
+    }
+
+    const res = await fetch(
+      `${supabaseUrl}/functions/v1/make-server-08c694dc/applications/${encodeURIComponent(app.id)}/accept`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    const result = await res.json();
+    if (!res.ok) {
+      console.error('[APPLICATIONS] accept failed', result);
+      toast.error('Não foi possível aceitar a candidatura.', { description: result?.error });
+      return;
+    }
+
+    await refreshProperties(true);
     toast.success(`Candidatura de ${app.applicantName || 'candidato'} aceite!`, {
-      description: 'O quarto foi marcado como reservado e o estudante foi notificado.',
+      description: 'O quarto foi marcado como reservado.',
     });
     setVersion(value => value + 1);
     setConfirmAcceptApp(null);
@@ -482,7 +500,7 @@ export function LandlordApplications() {
       return;
     }
 
-    refreshProperties();
+    await refreshProperties(true);
     toast.success('Candidatura rejeitada', {
       description: 'O estudante foi notificado da decisão.',
     });

@@ -45,7 +45,6 @@ function EditRoomModal({ room, onClose, onSave }: EditRoomModalProps) {
   const [formData, setFormData] = useState({
     title: room.title,
     price: room.price,
-    utilities: room.utilities || 0,
     description: room.description,
     roomType: room.roomType,
   });
@@ -80,29 +79,16 @@ function EditRoomModal({ room, onClose, onSave }: EditRoomModalProps) {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Preço (€ / mês)</label>
-                <input
-                  type="number"
-                  value={formData.price}
-                  onChange={(event) => setFormData({ ...formData, price: Number(event.target.value) })}
-                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Despesas (€ / mês)</label>
-                <input
-                  type="number"
-                  value={formData.utilities}
-                  onChange={(event) => setFormData({ ...formData, utilities: Number(event.target.value) })}
-                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  min="0"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Preço (€ / mês)</label>
+              <input
+                type="number"
+                value={formData.price}
+                onChange={(event) => setFormData({ ...formData, price: Number(event.target.value) })}
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                required
+                min="0"
+              />
             </div>
 
             <div>
@@ -254,23 +240,48 @@ export function LandlordListings() {
     group => group.property.status !== 'archived',
   );
 
-  // A group counts as "paused" if the property itself is paused OR if any of
-  // its rooms are individually paused (while the property stays active).
   const isPausedGroup = (group: { property: Property; propertyRooms: Room[] }) =>
     group.property.status === 'paused' ||
     group.propertyRooms.some(r => r.status === 'paused');
+
+  const isDraftGroup = (group: { property: Property; propertyRooms: Room[] }) =>
+    group.property.status === 'draft' ||
+    group.propertyRooms.some(r => r.status === 'draft');
 
   const filteredProperties = filter === 'all'
     ? visibleGroups
     : filter === 'paused'
       ? groupedProperties.filter(isPausedGroup)
-      : groupedProperties.filter(group => group.property.status === filter);
+      : filter === 'draft'
+        ? groupedProperties.filter(isDraftGroup)
+        : groupedProperties.filter(group => group.property.status === filter);
+
+  // Rooms shown inside a card's table depend on the active filter.
+  const getVisibleRooms = (property: Property, propertyRooms: Room[]): Room[] => {
+    switch (filter) {
+      case 'active':
+        // Hide individually-paused rooms from the active view.
+        return propertyRooms.filter(r => r.status !== 'paused');
+      case 'paused':
+        // If the whole property is paused, show all its rooms (they're all paused by context).
+        // If property is active but has individually-paused rooms, show only those.
+        if (property.status === 'paused') return propertyRooms;
+        return propertyRooms.filter(r => r.status === 'paused');
+      case 'draft':
+        // If the whole property is a draft, show all rooms.
+        // If property is active but has draft rooms, show only those.
+        if (property.status === 'draft') return propertyRooms;
+        return propertyRooms.filter(r => r.status === 'draft');
+      default:
+        return propertyRooms;
+    }
+  };
 
   const counts = {
     all: visibleGroups.length,
     active: groupedProperties.filter(group => group.property.status === 'active').length,
     paused: groupedProperties.filter(isPausedGroup).length,
-    draft: groupedProperties.filter(group => group.property.status === 'draft').length,
+    draft: groupedProperties.filter(isDraftGroup).length,
     archived: groupedProperties.filter(group => group.property.status === 'archived').length,
   };
 
@@ -528,7 +539,9 @@ export function LandlordListings() {
         ) : (
           <div className="space-y-5">
             {filteredProperties.map(({ property, propertyRooms }) => {
+              const visibleRooms = getVisibleRooms(property, propertyRooms);
               const statusBadge = getPropertyStatusBadge(property);
+              // Stats always reflect the full property (not filtered), so the card is informative.
               const availableRooms = propertyRooms.filter(room => room.status === 'available').length;
               const occupiedRooms = propertyRooms.filter(room => room.status === 'occupied' || room.status === 'reserved').length;
               const minPrice = propertyRooms.length > 0
@@ -747,6 +760,10 @@ export function LandlordListings() {
                           <PlusCircle className="w-3.5 h-3.5" />Adicionar quarto
                         </button>
                       </div>
+                    ) : visibleRooms.length === 0 ? (
+                      <div className="flex items-center justify-center py-6 border border-dashed border-border rounded-xl">
+                        <p className="text-sm text-muted-foreground">Nenhum quarto com este estado neste alojamento.</p>
+                      </div>
                     ) : (
                       <div className="rounded-2xl border border-border overflow-hidden">
 
@@ -759,7 +776,7 @@ export function LandlordListings() {
                         </div>
 
                         <div className="divide-y divide-border/60">
-                          {propertyRooms.map(room => {
+                          {visibleRooms.map(room => {
                             const roomBadge = getRoomStatusBadge(room, property);
                             const canPauseRoom = room.status === 'available' && property.status === 'active' && !property.adminSuspended;
                             const canReactivateRoom = room.status === 'paused' && property.status === 'active' && !property.adminSuspended && !isAccountSuspended;

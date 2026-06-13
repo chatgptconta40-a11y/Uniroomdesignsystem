@@ -321,6 +321,70 @@ async function seedDemoContent(ids: Record<string, string>) {
   console.log("Demo content seeded successfully");
 }
 
+// ─── Applications: landlord accept (atomic) ───────────────────────────────────
+
+app.post("/make-server-08c694dc/applications/:id/accept", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+
+    const applicationId = c.req.param("id");
+    const supabase = adminClient();
+
+    // Fetch the application
+    const { data: application, error: appErr } = await supabase
+      .from("applications")
+      .select("id, user_id, landlord_id, room_id, status")
+      .eq("id", applicationId)
+      .single();
+    if (appErr || !application) return c.json({ error: `Candidatura não encontrada: ${appErr?.message}` }, 404);
+
+    // Validate the caller is the landlord of this application
+    if (application.landlord_id !== authed.user.id) {
+      return c.json({ error: "Proibido: apenas o senhorio desta candidatura pode aceitá-la" }, 403);
+    }
+
+    // Block if room_id is missing
+    if (!application.room_id) {
+      return c.json({ error: "Esta candidatura não tem um quarto associado. Não é possível aceitar sem room_id." }, 400);
+    }
+
+    // Only actionable statuses can be accepted
+    if (!["pending", "under_review"].includes(application.status)) {
+      return c.json({ error: `Estado inválido para aceitar: ${application.status}` }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    // Atomic: update application status
+    const { error: appUpdateErr } = await supabase
+      .from("applications")
+      .update({ status: "accepted", reviewed_at: now })
+      .eq("id", applicationId);
+    if (appUpdateErr) {
+      console.log(`[accept] application update error: ${appUpdateErr.message}`);
+      return c.json({ error: `Erro ao atualizar candidatura: ${appUpdateErr.message}` }, 500);
+    }
+
+    // Atomic: mark room as reserved
+    const { error: roomErr } = await supabase
+      .from("rooms")
+      .update({ status: "reserved", reserved_by: application.user_id, updated_at: now })
+      .eq("id", application.room_id);
+    if (roomErr) {
+      console.log(`[accept] room update error: ${roomErr.message}`);
+      // Best-effort rollback
+      await supabase.from("applications").update({ status: application.status }).eq("id", applicationId);
+      return c.json({ error: `Erro ao reservar quarto: ${roomErr.message}` }, 500);
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[accept] error: ${err}`);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
 app.post("/make-server-08c694dc/active-homes/confirm", async (c) => {
   try {
     const authed = await getAuthedUser(c.req.header("Authorization"));
@@ -329,6 +393,9 @@ app.post("/make-server-08c694dc/active-homes/confirm", async (c) => {
     const { applicationId, landlordId, propertyId, roomId, moveInDate } = await c.req.json();
     if (!applicationId || !landlordId || !propertyId) {
       return c.json({ error: "Missing required fields: applicationId, landlordId, propertyId" }, 400);
+    }
+    if (!roomId) {
+      return c.json({ error: "Esta candidatura não tem um quarto associado (room_id em falta). Não é possível confirmar a estadia." }, 400);
     }
 
     const supabase = adminClient();
@@ -406,12 +473,13 @@ app.post("/make-server-08c694dc/active-homes/confirm", async (c) => {
 
 const PROPERTY_BUCKET = "make-08c694dc-property-images";
 const ROOM_BUCKET = "make-08c694dc-room-images";
+const MAINTENANCE_BUCKET = "make-08c694dc-maintenance-images";
 
 async function ensureImageBuckets() {
   const supabase = adminClient();
   const { data: buckets } = await supabase.storage.listBuckets();
   const names = new Set(buckets?.map(b => b.name) ?? []);
-  for (const name of [PROPERTY_BUCKET, ROOM_BUCKET]) {
+  for (const name of [PROPERTY_BUCKET, ROOM_BUCKET, MAINTENANCE_BUCKET]) {
     if (!names.has(name)) {
       const { error } = await supabase.storage.createBucket(name, { public: true });
       if (error) console.log(`[storage] failed to create bucket ${name}: ${error.message}`);
@@ -495,6 +563,37 @@ app.delete("/make-server-08c694dc/images/cleanup", async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.log(`[images] cleanup exception: ${err}`);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+app.post("/make-server-08c694dc/images/upload-maintenance", async (c) => {
+  try {
+    const authed = await getAuthedUser(c.req.header("Authorization"));
+    if (!authed) return c.json({ error: "Unauthorized" }, 401);
+
+    const formData = await c.req.formData();
+    const file = formData.get("file") as File | null;
+    if (!file) return c.json({ error: "Missing file" }, 400);
+
+    const imageId = crypto.randomUUID();
+    const path = `${authed.user.id}/${imageId}.webp`;
+
+    const buffer = await file.arrayBuffer();
+    const supabase = adminClient();
+    const { error: uploadError } = await supabase.storage
+      .from(MAINTENANCE_BUCKET)
+      .upload(path, buffer, { contentType: "image/webp", upsert: false });
+
+    if (uploadError) {
+      console.log(`[maintenance-images] upload error: ${uploadError.message}`);
+      return c.json({ error: `Storage upload failed: ${uploadError.message}` }, 500);
+    }
+
+    const { data: urlData } = supabase.storage.from(MAINTENANCE_BUCKET).getPublicUrl(path);
+    return c.json({ url: urlData.publicUrl });
+  } catch (err) {
+    console.log(`[maintenance-images] exception: ${err}`);
     return c.json({ error: "Internal server error" }, 500);
   }
 });
