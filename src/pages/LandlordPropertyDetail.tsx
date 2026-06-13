@@ -107,8 +107,10 @@ function CandidateCard({
     under_review: { label: 'Em análise', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
     accepted: { label: 'Aceite', cls: 'bg-green-50 text-green-700 border-green-200' },
     rejected: { label: 'Rejeitado', cls: 'bg-red-50 text-red-600 border-red-200' },
+    confirmed: { label: 'Confirmada', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    withdrawn: { label: 'Retirada', cls: 'bg-muted text-muted-foreground border-border' },
   };
-  const cfg = statusConfig[candidate.status];
+  const cfg = statusConfig[candidate.status] ?? { label: candidate.status, cls: 'bg-muted text-muted-foreground border-border' };
   const scoreColor = candidate.compatibilityScore >= 85 ? 'text-green-600' :
     candidate.compatibilityScore >= 70 ? 'text-amber-600' : 'text-muted-foreground';
 

@@ -744,7 +744,7 @@ export function LandlordApplications() {
                           </Button>
 
                           <Button
-                            onClick={() => navigate('/messages')}
+                            onClick={() => handleContactStudent(app)}
                             variant="outline"
                             className="sm:w-28 text-sm py-2"
                           >
@@ -767,7 +767,7 @@ export function LandlordApplications() {
                             {statusLabel[app.status]}
                           </div>
 
-                          <Button onClick={() => navigate('/messages')} variant="outline" className="sm:w-28 text-sm py-2">
+                          <Button onClick={() => handleContactStudent(app)} variant="outline" className="sm:w-28 text-sm py-2">
                             <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
                             Mensagem
                           </Button>

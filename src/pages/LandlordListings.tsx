@@ -254,14 +254,22 @@ export function LandlordListings() {
     group => group.property.status !== 'archived',
   );
 
+  // A group counts as "paused" if the property itself is paused OR if any of
+  // its rooms are individually paused (while the property stays active).
+  const isPausedGroup = (group: { property: Property; propertyRooms: Room[] }) =>
+    group.property.status === 'paused' ||
+    group.propertyRooms.some(r => r.status === 'paused');
+
   const filteredProperties = filter === 'all'
     ? visibleGroups
-    : groupedProperties.filter(group => group.property.status === filter);
+    : filter === 'paused'
+      ? groupedProperties.filter(isPausedGroup)
+      : groupedProperties.filter(group => group.property.status === filter);
 
   const counts = {
     all: visibleGroups.length,
     active: groupedProperties.filter(group => group.property.status === 'active').length,
-    paused: groupedProperties.filter(group => group.property.status === 'paused').length,
+    paused: groupedProperties.filter(isPausedGroup).length,
     draft: groupedProperties.filter(group => group.property.status === 'draft').length,
     archived: groupedProperties.filter(group => group.property.status === 'archived').length,
   };
@@ -274,13 +282,18 @@ export function LandlordListings() {
     { key: 'archived' as const, label: 'Arquivadas', count: counts.archived },
   ];
 
-  const handlePauseProperty = (propertyId: string) => {
-    updatePropertyStatus(propertyId, 'paused');
-    toast.success('Alojamento pausado com sucesso');
+  const handlePauseProperty = async (propertyId: string) => {
     setPausingPropertyId(null);
+    try {
+      await updatePropertyStatus(propertyId, 'paused');
+      toast.success('Alojamento pausado com sucesso');
+    } catch (err) {
+      toast.error('Erro ao pausar alojamento. Tenta novamente.');
+      console.error('[LandlordListings] pauseProperty:', err);
+    }
   };
 
-  const handleReactivateProperty = (property: Property) => {
+  const handleReactivateProperty = async (property: Property) => {
     if (property.adminSuspended) {
       toast.error('Este alojamento foi suspenso pela equipa UniRoom. Contacta o suporte para resolver.');
       return;
@@ -289,8 +302,13 @@ export function LandlordListings() {
       toast.error('A tua conta está suspensa. Não é possível reativar alojamentos.');
       return;
     }
-    updatePropertyStatus(property.id, 'active');
-    toast.success('Alojamento reativado com sucesso');
+    try {
+      await updatePropertyStatus(property.id, 'active');
+      toast.success('Alojamento reativado com sucesso');
+    } catch (err) {
+      toast.error('Erro ao reativar alojamento. Tenta novamente.');
+      console.error('[LandlordListings] reactivateProperty:', err);
+    }
   };
 
   const handlePublishProperty = (property: Property) => {
@@ -355,18 +373,28 @@ export function LandlordListings() {
     setEditingRoom(null);
   };
 
-  const handlePauseRoom = (room: Room) => {
-    updateRoomStatus(room.id, 'paused');
-    toast.success('Quarto pausado com sucesso');
+  const handlePauseRoom = async (room: Room) => {
+    try {
+      await updateRoomStatus(room.id, 'paused');
+      toast.success('Quarto pausado com sucesso');
+    } catch (err) {
+      toast.error('Erro ao pausar quarto. Tenta novamente.');
+      console.error('[LandlordListings] pauseRoom:', err);
+    }
   };
 
-  const handleReactivateRoom = (room: Room, property: Property) => {
+  const handleReactivateRoom = async (room: Room, property: Property) => {
     if (property.adminSuspended) {
       toast.error('Este alojamento foi suspenso pela equipa UniRoom. Não é possível reativar quartos.');
       return;
     }
-    updateRoomStatus(room.id, 'available');
-    toast.success('Quarto reativado com sucesso');
+    try {
+      await updateRoomStatus(room.id, 'available');
+      toast.success('Quarto reativado com sucesso');
+    } catch (err) {
+      toast.error('Erro ao reativar quarto. Tenta novamente.');
+      console.error('[LandlordListings] reactivateRoom:', err);
+    }
   };
 
   return (
