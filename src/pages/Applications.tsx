@@ -330,7 +330,7 @@ export function Applications() {
           applicationId: confirmStayApp.id,
           landlordId: confirmStayApp.landlordId,
           propertyId: confirmStayApp.propertyId,
-          roomId: confirmStayApp.roomId || null,
+          roomId: confirmStayApp.roomId,  // guaranteed truthy — guard above blocks if missing
           moveInDate: confirmStayApp.moveInDate
             ? new Date(confirmStayApp.moveInDate).toISOString().slice(0, 10)
             : null,

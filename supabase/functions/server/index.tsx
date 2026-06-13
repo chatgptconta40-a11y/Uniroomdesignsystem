@@ -392,25 +392,32 @@ app.post("/make-server-08c694dc/active-homes/confirm", async (c) => {
 
     const { applicationId, landlordId, propertyId, roomId, moveInDate } = await c.req.json();
     if (!applicationId || !landlordId || !propertyId) {
-      return c.json({ error: "Missing required fields: applicationId, landlordId, propertyId" }, 400);
+      return c.json({ error: "Campos obrigatórios em falta: applicationId, landlordId, propertyId" }, 400);
     }
     if (!roomId) {
-      return c.json({ error: "Esta candidatura não tem um quarto associado (room_id em falta). Não é possível confirmar a estadia." }, 400);
+      return c.json({ error: "room_id em falta — não é possível confirmar sem quarto associado" }, 400);
     }
 
     const supabase = adminClient();
+    const now = new Date().toISOString();
 
-    // Verify the application belongs to the authenticated user and is accepted
+    // Validate: application must belong to this user and be in 'accepted' state
     const { data: app_, error: appErr } = await supabase
       .from("applications")
       .select("id, user_id, status")
       .eq("id", applicationId)
       .single();
-    if (appErr || !app_) return c.json({ error: `Application not found: ${appErr?.message}` }, 404);
-    if (app_.user_id !== authed.user.id) return c.json({ error: "Forbidden: application belongs to another user" }, 403);
-    if (app_.status !== "accepted") return c.json({ error: "Application is not in accepted state" }, 400);
+    if (appErr || !app_) {
+      return c.json({ error: `Candidatura não encontrada: ${appErr?.message}` }, 404);
+    }
+    if (app_.user_id !== authed.user.id) {
+      return c.json({ error: "Proibido: candidatura não pertence a este utilizador" }, 403);
+    }
+    if (app_.status !== "accepted") {
+      return c.json({ error: `Estado inválido para confirmar: ${app_.status}` }, 400);
+    }
 
-    // Check for existing active home
+    // Guard: no duplicate active home
     const { data: existing } = await supabase
       .from("active_homes")
       .select("id")
@@ -420,46 +427,53 @@ app.post("/make-server-08c694dc/active-homes/confirm", async (c) => {
       return c.json({ error: "already_has_active_home" }, 409);
     }
 
-    // Insert active home using service role (bypasses RLS)
+    // ── STEP 1: Mark room as occupied (FATAL — done first so any failure is surfaced immediately)
+    const { data: updatedRooms, error: roomError } = await supabase
+      .from("rooms")
+      .update({
+        status: "occupied",
+        occupied_by: authed.user.id,
+        move_in_date: moveInDate || null,
+      })
+      .eq("id", roomId)
+      .select("id");
+    if (roomError) {
+      console.log(`[confirm-stay] room update error: ${roomError.message}`);
+      return c.json({ error: `Erro ao ocupar quarto: ${roomError.message}` }, 500);
+    }
+    if (!updatedRooms || updatedRooms.length === 0) {
+      console.log(`[confirm-stay] room not found: ${roomId}`);
+      return c.json({ error: `Quarto ${roomId} não encontrado na base de dados` }, 404);
+    }
+
+    // ── STEP 2: Create active_homes record (FATAL — rollback room on failure)
     const { error: insertError } = await supabase.from("active_homes").insert({
       id: crypto.randomUUID(),
       student_id: authed.user.id,
       landlord_id: landlordId,
       property_id: propertyId,
-      room_id: roomId || null,
+      room_id: roomId,
       application_id: applicationId,
       move_in_date: moveInDate || null,
     });
     if (insertError) {
-      console.log(`[confirm-stay] insert error: ${insertError.message}`);
-      return c.json({ error: `Failed to create active home: ${insertError.message}` }, 500);
-    }
-
-    // Mark application as confirmed
-    const { error: updateError } = await supabase
-      .from("applications")
-      .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
-      .eq("id", applicationId);
-    if (updateError) {
-      console.log(`[confirm-stay] application update error: ${updateError.message}`);
-      // Non-fatal: active home was created, just log it
-    }
-
-    // Mark room as occupied (admin client bypasses RLS — student cannot do this directly)
-    if (roomId) {
-      const { error: roomError } = await supabase
+      console.log(`[confirm-stay] active_homes insert error: ${insertError.message}`);
+      // Best-effort rollback: revert room to reserved so data stays consistent
+      await supabase
         .from("rooms")
-        .update({
-          status: "occupied",
-          occupied_by: authed.user.id,
-          move_in_date: moveInDate || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ status: "reserved", occupied_by: null, move_in_date: null })
         .eq("id", roomId);
-      if (roomError) {
-        console.log(`[confirm-stay] room update error: ${roomError.message}`);
-        // Non-fatal: log but do not fail the request
-      }
+      return c.json({ error: `Erro ao criar casa ativa: ${insertError.message}` }, 500);
+    }
+
+    // ── STEP 3: Mark application as confirmed (FATAL)
+    const { error: appUpdateError } = await supabase
+      .from("applications")
+      .update({ status: "confirmed", confirmed_at: now })
+      .eq("id", applicationId);
+    if (appUpdateError) {
+      console.log(`[confirm-stay] application update error: ${appUpdateError.message}`);
+      return c.json({ error: `Erro ao confirmar candidatura: ${appUpdateError.message}` }, 500);
     }
 
     return c.json({ success: true });
