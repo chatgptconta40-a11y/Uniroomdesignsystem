@@ -136,9 +136,6 @@ export function useConversations() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
         void refresh();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
-        void refresh();
-      })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [user, refresh]);

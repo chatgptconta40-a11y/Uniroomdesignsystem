@@ -399,19 +399,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
 
     const channel = supabase
       .channel(`uniroom:properties-rooms:${Math.random().toString(36).slice(2, 9)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'properties' }, payload => {
-        if (payload.eventType === 'DELETE') {
-          const removedId = String((payload.old as { id?: string }).id ?? '');
-          if (removedId) setProperties(prev => prev.filter(p => p.id !== removedId));
-          return;
-        }
-        const incoming = normalizeProperty(payload.new);
-        setProperties(prev => {
-          const idx = prev.findIndex(p => p.id === incoming.id);
-          const next = idx === -1 ? [incoming, ...prev] : prev.map(p => p.id === incoming.id ? incoming : p);
-          return attachRoomIds(next, roomsRef.current);
-        });
-      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, payload => {
         if (payload.eventType === 'DELETE') {
           const removedId = String((payload.old as { id?: string }).id ?? '');

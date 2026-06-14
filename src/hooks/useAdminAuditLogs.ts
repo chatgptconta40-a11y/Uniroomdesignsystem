@@ -123,31 +123,6 @@ export function useAdminAuditLogs(opts: { limit?: number } = {}) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`realtime:admin-audit-logs:${Math.random().toString(36).slice(2, 9)}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'admin_audit_logs' },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            const id = String((payload.old as { id?: string } | null)?.id ?? '');
-            if (!id) return;
-            setLogs((prev) => prev.filter((l) => l.id !== id));
-            return;
-          }
-          const incoming = rowToEntry(payload.new);
-          setLogs((prev) => {
-            const idx = prev.findIndex((l) => l.id === incoming.id);
-            if (idx === -1) return [incoming, ...prev].slice(0, limit);
-            return prev.map((l) => (l.id === incoming.id ? incoming : l));
-          });
-        },
-      )
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [limit]);
-
   const createLog = useCallback(async (input: AuditLogInput): Promise<AuditLogEntry | null> => {
     if (!user?.id) {
       console.warn('[useAdminAuditLogs] createLog ignored — no authenticated user');

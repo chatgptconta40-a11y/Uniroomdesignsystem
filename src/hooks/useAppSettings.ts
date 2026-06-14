@@ -83,22 +83,6 @@ export function useAppSettings() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`realtime:app-settings:${Math.random().toString(36).slice(2, 9)}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'app_settings', filter: `id=eq.${APP_SETTINGS_ID}` },
-        (payload) => {
-          const next = (payload.new as { data?: unknown } | null)?.data;
-          if (next !== undefined) setSettings(mergeWithDefaults(next));
-          else void refresh();
-        },
-      )
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [refresh]);
-
   const save = useCallback(async (next: Partial<AppSettings>): Promise<boolean> => {
     setSaving(true);
     const merged: AppSettings = { ...settings, ...next };

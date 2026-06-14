@@ -57,21 +57,5 @@ export function useUserRestrictions(userId: string | undefined): UserRestriction
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  useEffect(() => {
-    if (!userId) return;
-    const channel = supabase
-      .channel(`realtime:user-restrictions:${userId}:${Math.random().toString(36).slice(2, 9)}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
-        (payload) => {
-          if (payload.new) setData(rowToRestrictions(payload.new));
-          else void refresh();
-        },
-      )
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [userId, refresh]);
-
   return { ...data, loading, refresh };
 }

@@ -745,15 +745,6 @@ export function useAdminUsers() {
   useEffect(() => { refresh(); }, [refresh]);
   useDataBusRefresh('adminUsers', refresh);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`realtime:admin-users:profiles:${Math.random().toString(36).slice(2, 9)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        void refresh();
-      })
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [refresh]);
 
   const setStatus = async (id: string, status: AdminUserRow['status']) => {
     const { error } = await supabase.from('profiles').update({ status }).eq('id', id);
@@ -1075,18 +1066,6 @@ export function useStudentProfile(userId: string | undefined) {
     }
   }, [userId]);
 
-  useEffect(() => {
-    if (!userId) return;
-    const channel = supabase
-      .channel(`realtime:student-profile:${userId}:${Math.random().toString(36).slice(2, 9)}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'personal_profiles', filter: `user_id=eq.${userId}` },
-        () => { void refresh(); },
-      )
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [userId, refresh]);
 
   return { profile, loading, refresh };
 }

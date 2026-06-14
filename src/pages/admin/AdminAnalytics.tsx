@@ -52,17 +52,8 @@ export function AdminAnalytics() {
       setTrustLoading(false);
     })();
 
-    const channel = supabase
-      .channel(`realtime:admin-analytics:trust:${Math.random().toString(36).slice(2, 9)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trust_scores' }, async () => {
-        const { data } = await supabase.from('trust_scores').select('user_id, score');
-        if (!cancelled) setTrustRows((data ?? []) as { user_id: string; score: number }[]);
-      })
-      .subscribe();
-
     return () => {
       cancelled = true;
-      void supabase.removeChannel(channel);
     };
   }, []);
 

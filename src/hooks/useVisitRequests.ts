@@ -48,35 +48,6 @@ export function useVisitRequests() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Single realtime channel with cleanup
-  useEffect(() => {
-    if (!user || user.type === 'admin') return;
-    const channel = supabase
-      .channel(`visit_requests:${user.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'room_visit_requests' },
-        payload => {
-          if (payload.eventType === 'DELETE') {
-            const id = String((payload.old as { id?: string }).id ?? '');
-            if (id) setVisitRequests(prev => prev.filter(r => r.id !== id));
-            return;
-          }
-          const row = payload.new as Record<string, unknown>;
-          const isRelevant = row.student_id === user.id || row.landlord_id === user.id;
-          if (!isRelevant) return;
-          const incoming = dbToVisitRequest(row);
-          setVisitRequests(prev => {
-            const idx = prev.findIndex(r => r.id === incoming.id);
-            return idx === -1
-              ? [incoming, ...prev]
-              : prev.map(r => r.id === incoming.id ? incoming : r);
-          });
-        }
-      )
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [user?.id]);
 
   // ── Student creates a visit request ────────────────────────────────────────
   const createVisitRequest = async (input: {
